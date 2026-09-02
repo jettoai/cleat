@@ -1,0 +1,23 @@
+import Foundation
+
+/// Every file Cleat reads or writes. The daemon and the CLI are the same binary, so both sides
+/// resolve these from one place - a second spelling of any of them is a CLI that reports on a
+/// status file nobody writes.
+enum Paths {
+    static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
+
+    /// `~/.config/cleat/` - the user-owned side, edited by hand.
+    static var configDirectory: URL { home.appendingPathComponent(".config/cleat", isDirectory: true) }
+    static var configURL: URL { configDirectory.appendingPathComponent("config.json") }
+
+    /// `~/Library/Application Support/Cleat/` - what the daemon publishes for `cleat status`.
+    static var supportDirectory: URL {
+        home.appendingPathComponent("Library/Application Support/Cleat", isDirectory: true)
+    }
+    static var statusURL: URL { supportDirectory.appendingPathComponent("status.json") }
+
+    /// `~/Library/Logs/Cleat/` - the append-only event log behind `cleat log`.
+    static var logDirectory: URL { home.appendingPathComponent("Library/Logs/Cleat", isDirectory: true) }
+    static var logURL: URL { logDirectory.appendingPathComponent("cleat.log") }
+    static var rotatedLogURL: URL { logDirectory.appendingPathComponent("cleat.log.1") }
+}

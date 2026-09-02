@@ -1,0 +1,9 @@
+{
+  "input": ["Wireless microphone", "Brio 100"],
+  "blockedInput": ["AirPods Max"],
+  "output": [],
+  "balance": 0.5,
+  "inputVolume": { "Wireless microphone": 88, "Brio 100": 75 },
+  "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
+  "launchAtLogin": true
+}

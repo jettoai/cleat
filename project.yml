@@ -1,0 +1,91 @@
+name: Cleat
+options:
+  bundleIdPrefix: ai.jetto
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+  developmentLanguage: en
+
+schemes:
+  Cleat:
+    build:
+      targets:
+        Cleat: all
+        CleatTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CleatTests
+    profile:
+      config: Release
+    archive:
+      config: Release
+
+targets:
+  Cleat:
+    type: application
+    platform: macOS
+    sources:
+      - path: Cleat
+        excludes:
+          - "App/Info.plist"
+          - "App/Cleat.entitlements"
+      # Shipped inside the bundle so a fresh install has something to copy: the README tells people
+      # to cp it out of Contents/Resources.
+      - path: config.example.json
+        buildPhase: resources
+    settings:
+      base:
+        INFOPLIST_FILE: Cleat/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Cleat/App/Cleat.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: ai.jetto.cleat
+        PRODUCT_NAME: Cleat
+        PRODUCT_MODULE_NAME: Cleat
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Swift 5.9 language mode on purpose: `complete` concurrency checking still reports
+        # everything, but as warnings. Swift 6 mode would turn each one into a build error, and
+        # CoreAudio's C callbacks are exactly the code that has to opt out by hand.
+        SWIFT_VERSION: "5.9"
+        SWIFT_STRICT_CONCURRENCY: complete
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 87Z993GX39
+        ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Debug:
+          # The dev build is a separate bundle id so it can run beside a released Cleat and hold
+          # its own microphone TCC grant.
+          PRODUCT_BUNDLE_IDENTIFIER: ai.jetto.cleat.dev
+          PRODUCT_NAME: "Cleat Dev"
+
+  CleatTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - CleatTests
+    dependencies:
+      - target: Cleat
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.jetto.cleat.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"
+        SWIFT_STRICT_CONCURRENCY: complete
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 87Z993GX39
+      configs:
+        # The host app's PRODUCT_NAME differs per configuration, so TEST_HOST is spelled out
+        # rather than left to the generator's target-name guess.
+        Debug:
+          TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Cleat Dev.app/Contents/MacOS/Cleat Dev"
+          BUNDLE_LOADER: "$(TEST_HOST)"
+        Release:
+          TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Cleat.app/Contents/MacOS/Cleat"
+          BUNDLE_LOADER: "$(TEST_HOST)"
