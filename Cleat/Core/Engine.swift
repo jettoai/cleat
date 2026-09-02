@@ -65,9 +65,11 @@ final class Engine: @unchecked Sendable {
 
     // MARK: - Config
 
-    /// Reads the config file. A file that is missing, malformed or out of range never replaces a
-    /// good one: the rule that was in force stays in force, and the reason lands in `configState`
-    /// where `cleat status` shows it. Before any successful load that means everything is off.
+    /// Reads the config file. A file that is malformed or out of range never replaces a good one:
+    /// the rule that was in force stays in force, and the reason lands in `configState` where
+    /// `cleat status` shows it. Before any successful load that means everything is off. A file
+    /// that is *missing* is different: removing the config is how a user says "enforce nothing",
+    /// so every rule goes off (design.md section 3).
     private func loadConfig() {
         guard FileManager.default.fileExists(atPath: Paths.configURL.path) else {
             configState = "missing"

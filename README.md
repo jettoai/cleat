@@ -76,8 +76,9 @@ runs from then on.
 share a name. Names are compared after Unicode normalisation, because some devices carry a
 no-break space in their name that you cannot type (Maono's, for one). Case is not normalised.
 
-A missing, malformed or out-of-range config never replaces a working one: the previous settings
-stay in force and `cleat status` says why. Before any config has loaded, every rule is off.
+A malformed or out-of-range config never replaces a working one: the previous settings stay in
+force and `cleat status` says why. Before any config has loaded, every rule is off. Removing the
+file also turns every rule off - that is the way to switch Cleat off without quitting it.
 
 **Silence detection** (`liveness`) is the one feature that opens the microphone. Cleat runs a HAL
 IOProc on the listed device and checks whether every sample in the buffer is exactly zero - a real
