@@ -95,11 +95,15 @@ extension Engine {
     /// A device is keyed by UID rather than by id because ids are reassigned on replug - the same
     /// receiver coming back with a different id has to get a new detector, not keep pointing an
     /// IOProc at a number that now means something else.
-    private func syncLivenessDetectors(_ snapshot: DeviceSnapshot) {
+    ///
+    /// Safe to call as often as there are events: a device that already has the right detector is
+    /// not touched, so `reconcile` can use this as the retry for a `start()` that failed.
+    func syncLivenessDetectors(_ snapshot: DeviceSnapshot) {
         guard microphoneGranted else {
             // Without the microphone permission an IOProc reads silence forever, which would look
             // exactly like a transmitter that is switched off. Better to measure nothing and let
             // the input rule behave as it did before liveness existed.
+            livenessUnavailable.removeAll()
             stopAllLivenessDetectors(reason: "no microphone permission")
             return
         }
@@ -109,6 +113,9 @@ extension Engine {
             guard let device = snapshot.device(matching: entry, input: true) else { continue }
             wanted[device.uid] = (device, settings.zeroSeconds)
         }
+        // A device that is no longer asked for starts its next spell with a clean slate, so an
+        // unplug and replug reports a failure again rather than failing silently.
+        livenessUnavailable.formIntersection(wanted.keys)
 
         for (uid, detector) in livenessDetectors {
             // Keep only detectors that still match what is asked for, down to the threshold: a
@@ -125,24 +132,26 @@ extension Engine {
             note("liveness: \(detector.name) -> stopped")
         }
 
-        for (uid, entry) in wanted where livenessDetectors[uid] == nil {
-            let detector = ZeroSignalDetector(
-                device: entry.device.id,
-                uid: uid,
-                name: entry.device.name,
-                sampleRate: system.nominalSampleRate(entry.device.id) ?? 48_000,
-                zeroSeconds: entry.zeroSeconds,
-                queue: queue
+        for (uid, entry) in wanted.sorted(by: { $0.key < $1.key }) where livenessDetectors[uid] == nil {
+            let name = entry.device.name
+            let detector = makeDetector(
+                entry.device,
+                system.nominalSampleRate(entry.device.id) ?? 48_000,
+                entry.zeroSeconds,
+                queue
             ) { [weak self] isLive in
-                self?.livenessFlipped(uid: uid, name: entry.device.name, isLive: isLive)
+                self?.livenessFlipped(uid: uid, name: name, isLive: isLive)
             }
 
             if detector.start() {
                 livenessDetectors[uid] = detector
                 livenessState[uid] = .measuring
-                note("liveness: \(entry.device.name) -> measuring")
-            } else {
-                note("liveness: \(entry.device.name) -> unavailable (could not open input)")
+                livenessUnavailable.remove(uid)
+                note("liveness: \(name) -> measuring")
+            } else if livenessUnavailable.insert(uid).inserted {
+                // Once per device, not once per beat: the next reconcile tries again, and a
+                // receiver that stays shut would otherwise write this line all day.
+                note("liveness: \(name) -> unavailable (could not open input)")
             }
         }
     }

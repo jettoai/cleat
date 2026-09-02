@@ -1,6 +1,32 @@
 import CoreAudio
 import Foundation
 
+/// What the engine needs from a silence detector. A protocol so the engine's bookkeeping - which
+/// device gets a detector, and when a failed start is tried again - can be tested without opening a
+/// real input. `ZeroSignalDetector` is the only implementation that ships.
+protocol LivenessDetecting: AnyObject, Sendable {
+    var deviceID: AudioDeviceID { get }
+    var name: String { get }
+    /// The threshold baked in at init, so the engine can tell a running detector that still matches
+    /// the config from one that has to be replaced.
+    var zeroSeconds: Double { get }
+
+    /// False when the input could not be opened; see `ZeroSignalDetector.start()`.
+    @discardableResult
+    func start() -> Bool
+    func stop()
+}
+
+/// How the engine makes one. `AudioDevice` carries the id, uid and name; the sample rate is read
+/// from the audio system by the caller, which is the only part of this that needs the HAL.
+typealias LivenessDetectorFactory = @Sendable (
+    _ device: AudioDevice,
+    _ sampleRate: Double,
+    _ zeroSeconds: Double,
+    _ queue: DispatchQueue,
+    _ onFlip: @escaping @Sendable (Bool) -> Void
+) -> LivenessDetecting
+
 /// Watches one input device for exact digital silence, using a HAL IOProc.
 ///
 /// This is the cheapest place to ask the question: the HAL is already moving these frames, so the
@@ -197,3 +223,6 @@ final class ZeroSignalDetector: @unchecked Sendable {
         bytesPerSample = Int(format.mBitsPerChannel) / 8
     }
 }
+
+/// Every member is already there with the right shape; the conformance only names it.
+extension ZeroSignalDetector: LivenessDetecting {}

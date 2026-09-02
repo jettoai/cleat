@@ -31,16 +31,46 @@ final class Engine: @unchecked Sendable {
     var microphoneGranted = false
     /// Silence verdict per device UID, owned here because the detectors are.
     var livenessState: [String: Liveness] = [:]
-    var livenessDetectors: [String: ZeroSignalDetector] = [:]
+    var livenessDetectors: [String: any LivenessDetecting] = [:]
+    /// UIDs whose detector could not be started. Membership is what keeps the retry quiet: the
+    /// failure is logged when the device joins this set, not on every beat that tries again.
+    var livenessUnavailable: Set<String> = []
     var systemTokens: [ListenerToken] = []
     var deviceTokens: [ListenerToken] = []
     var pendingReconciles: [TimeInterval: DispatchWorkItem] = [:]
     private var recentEvents: [String] = []
     private var watcher: ConfigWatcher?
 
-    init(system: AudioSystem = CoreAudioSystem(), log: EventLog = EventLog()) {
+    private let configURL: URL
+    private let statusURL: URL
+    let makeDetector: LivenessDetectorFactory
+
+    /// The detector the daemon uses. Injectable so the engine's detector bookkeeping can be tested
+    /// without opening a real input.
+    static let liveDetector: LivenessDetectorFactory = { device, sampleRate, zeroSeconds, queue, onFlip in
+        ZeroSignalDetector(
+            device: device.id,
+            uid: device.uid,
+            name: device.name,
+            sampleRate: sampleRate,
+            zeroSeconds: zeroSeconds,
+            queue: queue,
+            onFlip: onFlip
+        )
+    }
+
+    init(
+        system: AudioSystem = CoreAudioSystem(),
+        log: EventLog = EventLog(),
+        configURL: URL = Paths.configURL,
+        statusURL: URL = Paths.statusURL,
+        makeDetector: @escaping LivenessDetectorFactory = Engine.liveDetector
+    ) {
         self.system = system
         self.log = log
+        self.configURL = configURL
+        self.statusURL = statusURL
+        self.makeDetector = makeDetector
     }
 
     // MARK: - Lifecycle
@@ -55,10 +85,28 @@ final class Engine: @unchecked Sendable {
             attachSystemListeners()
             rebindDevices()
 
-            let watcher = ConfigWatcher(queue: queue) { [weak self] in self?.configFileChanged() }
+            let watcher = ConfigWatcher(url: configURL, queue: queue) { [weak self] in
+                self?.configFileChanged()
+            }
             self.watcher = watcher
             watcher.start()
 
+            reconcile()
+        }
+    }
+
+    /// The answer to the microphone dialog, which arrives after the engine is already running: the
+    /// four rules that need no microphone must not wait behind a dialog nobody has looked at yet.
+    /// Silence detection is the only thing the permission gates, so this is where its detectors are
+    /// attached or torn down. An answer that changes nothing is not worth a line in the log.
+    func updateMicrophone(granted: Bool, state: String) {
+        queue.async { [self] in
+            guard granted != microphoneGranted || state != microphone else { return }
+            microphoneGranted = granted
+            microphone = state
+            note("microphone: \(state)")
+
+            rebindDevices()
             reconcile()
         }
     }
@@ -71,13 +119,13 @@ final class Engine: @unchecked Sendable {
     /// that is *missing* is different: removing the config is how a user says "enforce nothing",
     /// so every rule goes off (design.md section 3).
     private func loadConfig() {
-        guard FileManager.default.fileExists(atPath: Paths.configURL.path) else {
+        guard FileManager.default.fileExists(atPath: configURL.path) else {
             configState = "missing"
             config = .disabled
             return
         }
         do {
-            config = try Config.load(from: Paths.configURL)
+            config = try Config.load(from: configURL)
             configState = "ok"
         } catch {
             let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -120,6 +168,11 @@ final class Engine: @unchecked Sendable {
 
     func reconcile() {
         var snapshot = system.snapshot(config: config)
+        // Detectors are brought in line here as well as on a device change, because `start()` can
+        // fail on a device that is listed but not yet ready to be opened. The beats that already
+        // follow every device event are the retry: devices that are measuring are left alone, so a
+        // steady state costs one dictionary walk and no HAL call.
+        syncLivenessDetectors(snapshot)
         snapshot.liveness = livenessState
 
         let inputActions = InputPinRule.reconcile(snapshot, config)
@@ -179,7 +232,7 @@ final class Engine: @unchecked Sendable {
             rules: ruleSummaries(snapshot),
             liveness: livenessSummaries(snapshot),
             recentEvents: recentEvents
-        ))
+        ), to: statusURL)
     }
 
     private func ruleSummaries(_ snapshot: DeviceSnapshot) -> [String: String] {

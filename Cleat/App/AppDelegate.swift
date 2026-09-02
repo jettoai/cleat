@@ -13,13 +13,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
 
         let engine = self.engine
+        // Engine first, dialog second. Four of the five rules need no microphone, and the moment
+        // the TCC dialog is on screen is exactly when a user is plugging things in; waiting for an
+        // answer that may never come would leave the balance and the volume locks off meanwhile.
+        let status = PermissionManager.microphoneStatus
+        engine.start(
+            microphoneGranted: status == .authorized,
+            microphoneState: PermissionManager.describe(status)
+        )
+
         Task {
-            // Permission first: the rules that do not need a microphone start either way, and the
-            // silence detector only runs if this comes back granted.
+            // Only silence detection depends on the answer, and the engine attaches its detectors
+            // when it arrives. Already authorized means this changes nothing and is not logged.
             let granted = await PermissionManager.requestMicrophone()
-            engine.start(
-                microphoneGranted: granted,
-                microphoneState: PermissionManager.describe(PermissionManager.microphoneStatus)
+            engine.updateMicrophone(
+                granted: granted,
+                state: PermissionManager.describe(PermissionManager.microphoneStatus)
             )
         }
     }

@@ -104,7 +104,8 @@ means a quiet day, not a broken daemon - `status` is what tells you it is alive.
 
 Only `liveness` needs it. macOS asks the first time Cleat runs; if you decline, every other rule
 keeps working and `cleat status` shows `microphone: denied`. To change your mind: System Settings
-> Privacy & Security > Microphone.
+> Privacy & Security > Microphone, then restart Cleat - it reads the permission at launch and does
+not watch that switch.
 
 This is also why Cleat is an .app rather than a bare binary on a LaunchAgent - a command-line tool
 started by launchd is often never asked, and the request fails silently instead.
