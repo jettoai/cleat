@@ -39,9 +39,9 @@ final class EngineTests: XCTestCase {
             defaultInput: Fixture.wireless.id
         ))
         let detectors = DetectorLog(startResults: [false, false, false, true])
-        let engine = try makeEngine(config: livenessOnly, system: system, detectors: detectors)
+        let engine = try makeEngine(config: pinningWithLiveness, system: system, detectors: detectors)
 
-        engine.start(microphoneGranted: true, microphoneState: "authorized")
+        engine.start(microphone: .granted)
         drain(engine)
 
         // Two attempts already: the device rebind, then the reconcile that closes `start`.
@@ -71,9 +71,9 @@ final class EngineTests: XCTestCase {
     func testAbsentDeviceIsNotRetriedAndReportsAgainOnReturn() throws {
         let system = FakeAudioSystem(snapshot: DeviceSnapshot(devices: [Fixture.brio]))
         let detectors = DetectorLog(startResults: [false])
-        let engine = try makeEngine(config: livenessOnly, system: system, detectors: detectors)
+        let engine = try makeEngine(config: pinningWithLiveness, system: system, detectors: detectors)
 
-        engine.start(microphoneGranted: true, microphoneState: "authorized")
+        engine.start(microphone: .granted)
         drain(engine)
         XCTAssertEqual(detectors.startCount, 0)
         XCTAssertEqual(status()?.liveness["Wireless microphone"], "absent")
@@ -99,68 +99,116 @@ final class EngineTests: XCTestCase {
 
     // MARK: - Microphone permission
 
-    /// The four rules that need no microphone hold the desk while the TCC dialog is still on
-    /// screen; the detectors attach when the answer arrives, and `cleat status` follows both.
-    func testRulesRunBeforeThePermissionAnswerAndDetectorsFollowIt() throws {
-        var config = livenessOnly
-        config.balance = 0.5
-        config.inputVolume = ["Wireless microphone": 88]
-
+    /// An unanswered dialog must not hand the input to a device nobody has listened to yet. The
+    /// receiver may be switched off, and taking the input now means giving it back three seconds
+    /// after the answer arrives - the startup double switch the measuring gate exists to prevent.
+    func testPendingPermissionDoesNotSwitchToUnmeasuredLivenessDevice() throws {
         let system = FakeAudioSystem(snapshot: DeviceSnapshot(
-            devices: [Fixture.wireless, Fixture.displaySpeakers],
-            defaultInput: Fixture.wireless.id,
-            defaultOutput: Fixture.displaySpeakers.id,
-            outputBalance: 0.2,
-            inputVolumes: [Fixture.wireless.id: 0.6]
+            devices: [Fixture.wireless, Fixture.brio], defaultInput: Fixture.brio.id
         ))
         let detectors = DetectorLog(startResults: [true])
-        let engine = try makeEngine(config: config, system: system, detectors: detectors)
+        let engine = try makeEngine(config: pinningWithLiveness, system: system, detectors: detectors)
 
-        engine.start(microphoneGranted: false, microphoneState: "not determined")
+        engine.start(microphone: .pending)
         drain(engine)
 
-        XCTAssertEqual(system.writes, [
-            "balance:\(Fixture.displaySpeakers.id):0.50",
-            "volume:\(Fixture.wireless.id):0.88"
-        ])
+        XCTAssertEqual(system.writes, [])
         XCTAssertEqual(detectors.startCount, 0)
         XCTAssertEqual(status()?.microphone, "not determined")
-        XCTAssertEqual(
-            status()?.liveness["Wireless microphone"], "disabled (no microphone permission)"
-        )
+        XCTAssertEqual(status()?.liveness["Wireless microphone"], "awaiting microphone permission")
 
-        engine.updateMicrophone(granted: true, state: "authorized")
+        // The answer arrives: now a detector is measuring for real, and the input stays put until
+        // it has a verdict.
+        engine.updateMicrophone(.granted)
         drain(engine)
 
         XCTAssertEqual(detectors.startCount, 1)
         XCTAssertEqual(runningDetectorUIDs(engine), [Fixture.wireless.uid])
-        XCTAssertEqual(status()?.microphone, "authorized")
+        XCTAssertEqual(system.writes, [])
         XCTAssertEqual(status()?.liveness["Wireless microphone"], "measuring")
-        // Nothing was left to write the second time: the locks were already held.
-        XCTAssertEqual(system.writes.count, 2)
-        XCTAssertEqual(logLines().filter { $0.contains("microphone: authorized") }.count, 1)
     }
 
-    /// A refusal tears nothing down, and is recorded where `cleat status` shows it.
-    func testRefusedPermissionLeavesTheOtherRulesRunning() throws {
+    /// A refusal is not an unanswered dialog: it decides that liveness is off, and the device goes
+    /// back to being untracked, which the input rule reads as present. Same setup as the pending
+    /// test above, opposite answer, opposite outcome.
+    func testDeniedPermissionTreatsALivenessDeviceAsPresent() throws {
         let system = FakeAudioSystem(snapshot: DeviceSnapshot(
-            devices: [Fixture.wireless, Fixture.airPods], defaultInput: Fixture.airPods.id
+            devices: [Fixture.wireless, Fixture.brio], defaultInput: Fixture.brio.id
         ))
         let detectors = DetectorLog(startResults: [true])
-        let engine = try makeEngine(config: livenessOnly, system: system, detectors: detectors)
+        let engine = try makeEngine(config: pinningWithLiveness, system: system, detectors: detectors)
 
-        engine.start(microphoneGranted: false, microphoneState: "not determined")
+        engine.start(microphone: .pending)
         drain(engine)
-        engine.updateMicrophone(granted: false, state: "denied")
+        XCTAssertEqual(system.writes, [])
+
+        engine.updateMicrophone(.denied("denied"))
         drain(engine)
 
+        XCTAssertEqual(system.writes, ["input:\(Fixture.wireless.id)"])
         XCTAssertEqual(detectors.startCount, 0)
         XCTAssertEqual(status()?.microphone, "denied")
         XCTAssertEqual(
             status()?.liveness["Wireless microphone"], "disabled (no microphone permission)"
         )
-        // The input pin rule still took the default input back off the blocked AirPods Max.
-        XCTAssertEqual(system.writes, ["input:\(Fixture.wireless.id)"])
+    }
+
+    /// All four rules that need no microphone hold the desk while the dialog is still on screen:
+    /// the input comes back off the blocked AirPods, the output moves to the preferred speakers,
+    /// the input gain is pulled to target, and the balance is centred on the beat after the output
+    /// settles. The detector follows the answer when it lands.
+    func testAllFourRulesRunBeforeThePermissionAnswerAndDetectorsFollowIt() throws {
+        var config = pinningWithLiveness
+        config.output = ["Studio Display Speakers", "MacBook Pro Speakers"]
+        config.balance = 0.5
+        config.inputVolume = ["Brio 100": 75]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [
+                Fixture.wireless, Fixture.brio, Fixture.airPods,
+                Fixture.displaySpeakers, Fixture.macSpeakers
+            ],
+            defaultInput: Fixture.airPods.id,
+            defaultOutput: Fixture.macSpeakers.id,
+            outputBalance: 0.2,
+            inputVolumes: [Fixture.brio.id: 0.6]
+        ))
+        let detectors = DetectorLog(startResults: [true])
+        let engine = try makeEngine(config: config, system: system, detectors: detectors)
+
+        engine.start(microphone: .pending)
+        drain(engine)
+
+        XCTAssertEqual(system.writes, [
+            "input:\(Fixture.brio.id)",
+            "output:\(Fixture.displaySpeakers.id)",
+            "volume:\(Fixture.brio.id):0.75"
+        ])
+        // Balance stands aside on the pass that moves the default output - writing it then would
+        // set the balance of the device being left - and lands on the next beat instead.
+        engine.queue.sync { engine.reconcile() }
+        XCTAssertEqual(system.writes, [
+            "input:\(Fixture.brio.id)",
+            "output:\(Fixture.displaySpeakers.id)",
+            "volume:\(Fixture.brio.id):0.75",
+            "balance:\(Fixture.displaySpeakers.id):0.50"
+        ])
+
+        XCTAssertEqual(detectors.startCount, 0)
+        XCTAssertEqual(status()?.microphone, "not determined")
+        XCTAssertEqual(status()?.liveness["Wireless microphone"], "awaiting microphone permission")
+
+        let writesBeforeAnswer = system.writes
+        engine.updateMicrophone(.granted)
+        drain(engine)
+
+        XCTAssertEqual(detectors.startCount, 1)
+        XCTAssertEqual(runningDetectorUIDs(engine), [Fixture.wireless.uid])
+        // Nothing was left to write: the locks were already held.
+        XCTAssertEqual(system.writes, writesBeforeAnswer)
+        XCTAssertEqual(status()?.microphone, "authorized")
+        XCTAssertEqual(status()?.liveness["Wireless microphone"], "measuring")
+        XCTAssertEqual(logLines().filter { $0.contains("microphone: authorized") }.count, 1)
     }
 
     /// An answer that says what the engine already knew is not worth a line in the log.
@@ -169,13 +217,13 @@ final class EngineTests: XCTestCase {
             devices: [Fixture.wireless], defaultInput: Fixture.wireless.id
         ))
         let detectors = DetectorLog(startResults: [true])
-        let engine = try makeEngine(config: livenessOnly, system: system, detectors: detectors)
+        let engine = try makeEngine(config: pinningWithLiveness, system: system, detectors: detectors)
 
-        engine.start(microphoneGranted: true, microphoneState: "authorized")
+        engine.start(microphone: .granted)
         drain(engine)
         let linesBefore = logLines().count
 
-        engine.updateMicrophone(granted: true, state: "authorized")
+        engine.updateMicrophone(.granted)
         drain(engine)
 
         XCTAssertEqual(logLines().count, linesBefore)
@@ -188,7 +236,7 @@ final class EngineTests: XCTestCase {
     /// Albert's input pinning plus the one liveness entry, with the login item left out: the test
     /// host is a real app bundle, and `syncLaunchAtLogin` only stays out of SMAppService's way
     /// because the wanted state already matches.
-    private var livenessOnly: Config {
+    private var pinningWithLiveness: Config {
         Config(
             input: Fixture.pinnedInput.input,
             blockedInput: Fixture.pinnedInput.blockedInput,

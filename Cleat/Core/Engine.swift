@@ -27,8 +27,7 @@ final class Engine: @unchecked Sendable {
     // wiring can live in Engine+Listeners.swift without a second queue-discipline story.
     var config = Config.disabled
     var configState = "missing"
-    var microphone = "not determined"
-    var microphoneGranted = false
+    var microphone = MicrophonePermission.pending
     /// Silence verdict per device UID, owned here because the detectors are.
     var livenessState: [String: Liveness] = [:]
     var livenessDetectors: [String: any LivenessDetecting] = [:]
@@ -75,12 +74,11 @@ final class Engine: @unchecked Sendable {
 
     // MARK: - Lifecycle
 
-    func start(microphoneGranted: Bool, microphoneState: String) {
+    func start(microphone permission: MicrophonePermission) {
         queue.async { [self] in
-            self.microphoneGranted = microphoneGranted
-            microphone = microphoneState
+            microphone = permission
             loadConfig()
-            note("engine started (config: \(configState), microphone: \(microphone))")
+            note("engine started (config: \(configState), microphone: \(permission.label))")
             syncLaunchAtLogin()
             attachSystemListeners()
             rebindDevices()
@@ -99,12 +97,11 @@ final class Engine: @unchecked Sendable {
     /// four rules that need no microphone must not wait behind a dialog nobody has looked at yet.
     /// Silence detection is the only thing the permission gates, so this is where its detectors are
     /// attached or torn down. An answer that changes nothing is not worth a line in the log.
-    func updateMicrophone(granted: Bool, state: String) {
+    func updateMicrophone(_ permission: MicrophonePermission) {
         queue.async { [self] in
-            guard granted != microphoneGranted || state != microphone else { return }
-            microphoneGranted = granted
-            microphone = state
-            note("microphone: \(state)")
+            guard permission != microphone else { return }
+            microphone = permission
+            note("microphone: \(permission.label)")
 
             rebindDevices()
             reconcile()
@@ -173,7 +170,7 @@ final class Engine: @unchecked Sendable {
         // follow every device event are the retry: devices that are measuring are left alone, so a
         // steady state costs one dictionary walk and no HAL call.
         syncLivenessDetectors(snapshot)
-        snapshot.liveness = livenessState
+        snapshot.liveness = livenessForRules(snapshot)
 
         let inputActions = InputPinRule.reconcile(snapshot, config)
         let outputActions = OutputPinRule.reconcile(snapshot, config)
@@ -187,6 +184,26 @@ final class Engine: @unchecked Sendable {
             apply(action)
         }
         writeStatus(snapshot)
+    }
+
+    /// What the rules are told about silence, which is not always what the detectors know.
+    ///
+    /// While the dialog is unanswered no detector has run, so every configured device would be
+    /// missing from `livenessState` - and a missing key means "present" to the input rule, which
+    /// would pin the input to a receiver that may well be switched off, then move it back three
+    /// seconds after the permission lands. That is the startup double switch the measuring gate
+    /// exists to prevent, so an unmeasured device reads as `measuring` until there is an answer:
+    /// it may keep the input it already holds, but nothing switches to it. A refusal is different -
+    /// it is a decision that liveness is off, and the devices go back to being untracked.
+    private func livenessForRules(_ snapshot: DeviceSnapshot) -> [String: Liveness] {
+        guard microphone == .pending else { return livenessState }
+
+        var liveness = livenessState
+        for entry in config.liveness.keys {
+            guard let device = snapshot.device(matching: entry, input: true) else { continue }
+            if liveness[device.uid] == nil { liveness[device.uid] = .measuring }
+        }
+        return liveness
     }
 
     /// Writes one action back. A failure is logged with its `OSStatus` and dropped - the next
@@ -226,7 +243,7 @@ final class Engine: @unchecked Sendable {
     private func writeStatus(_ snapshot: DeviceSnapshot) {
         StatusStore.write(Status(
             configState: configState,
-            microphone: microphone,
+            microphone: microphone.label,
             defaultInput: snapshot.defaultInput.flatMap { snapshot.device(id: $0)?.name },
             defaultOutput: snapshot.defaultOutput.flatMap { snapshot.device(id: $0)?.name },
             rules: ruleSummaries(snapshot),
@@ -280,8 +297,10 @@ final class Engine: @unchecked Sendable {
                 summaries[entry] = "absent"
                 continue
             }
-            guard microphoneGranted else {
-                summaries[entry] = "disabled (no microphone permission)"
+            guard microphone.isGranted else {
+                summaries[entry] = microphone == .pending
+                    ? "awaiting microphone permission"
+                    : "disabled (no microphone permission)"
                 continue
             }
             switch livenessState[device.uid] {

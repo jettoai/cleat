@@ -99,7 +99,7 @@ extension Engine {
     /// Safe to call as often as there are events: a device that already has the right detector is
     /// not touched, so `reconcile` can use this as the retry for a `start()` that failed.
     func syncLivenessDetectors(_ snapshot: DeviceSnapshot) {
-        guard microphoneGranted else {
+        guard microphone.isGranted else {
             // Without the microphone permission an IOProc reads silence forever, which would look
             // exactly like a transmitter that is switched off. Better to measure nothing and let
             // the input rule behave as it did before liveness existed.

@@ -7,28 +7,28 @@ import AVFoundation
 /// silently instead.
 enum PermissionManager {
 
-    static var microphoneStatus: AVAuthorizationStatus {
-        AVCaptureDevice.authorizationStatus(for: .audio)
+    /// What TCC says right now, without asking anybody anything.
+    static var current: MicrophonePermission {
+        permission(for: AVCaptureDevice.authorizationStatus(for: .audio))
     }
 
-    static func requestMicrophone() async -> Bool {
-        switch microphoneStatus {
-        case .authorized:
-            return true
-        case .notDetermined:
-            return await AVCaptureDevice.requestAccess(for: .audio)
-        default:
-            return false
+    /// Shows the dialog if it has never been answered, then reports the state it left behind.
+    /// Reading the status afterwards rather than trusting the returned Bool keeps one source for
+    /// the answer, including the "restricted" case that is never asked at all.
+    static func request() async -> MicrophonePermission {
+        if current == .pending {
+            _ = await AVCaptureDevice.requestAccess(for: .audio)
         }
+        return current
     }
 
-    static func describe(_ status: AVAuthorizationStatus) -> String {
+    static func permission(for status: AVAuthorizationStatus) -> MicrophonePermission {
         switch status {
-        case .authorized: return "authorized"
-        case .denied: return "denied"
-        case .restricted: return "restricted"
-        case .notDetermined: return "not determined"
-        @unknown default: return "unknown"
+        case .authorized: return .granted
+        case .notDetermined: return .pending
+        case .denied: return .denied("denied")
+        case .restricted: return .denied("restricted")
+        @unknown default: return .denied("unknown")
         }
     }
 }
