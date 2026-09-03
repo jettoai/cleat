@@ -29,6 +29,8 @@ virtual device - Cleat leaves it alone.
 
 ```sh
 brew tap jettoai/tap
+# Homebrew requires third-party taps to be trusted before it will load their casks.
+brew trust jettoai/tap
 brew install --cask cleat
 ```
 
