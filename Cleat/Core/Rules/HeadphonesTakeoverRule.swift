@@ -18,17 +18,43 @@ import CoreAudio
 /// headphones are around, and a headset does not have to be listed to be wanted.
 enum HeadphonesTakeoverRule {
 
-    static func reconcile(_ snapshot: DeviceSnapshot, _ config: Config) -> [Action] {
+    /// Whether this rule owns the device: a Bluetooth output while takeover is on. `OutputPinRule`
+    /// asks the same question before deciding whether the priority list may move the output, so
+    /// the two rules cannot drift into disagreeing about which devices are headphones.
+    ///
+    /// `blockedOutput` wins over "it is a headset": that list is the user saying "never this one",
+    /// without qualification.
+    static func owns(_ device: AudioDevice, _ config: Config) -> Bool {
+        config.headphonesTakeOver
+            && device.isBluetooth
+            && !device.isListed(in: config.blockedOutput)
+    }
+
+    /// The headsets this rule would act on, most preferred first. Two connecting on the same pass
+    /// is a tie the name order breaks, the same way every other list in Cleat is ordered, so the
+    /// outcome does not depend on what order the HAL happened to hand the devices back.
+    ///
+    /// Honouring `blockedOutput` here rather than leaving it to the next beat is what keeps that
+    /// list's promise real: grabbing the device and letting another rule drop it half a second
+    /// later would keep it only on paper.
+    static func eligibleArrivals(_ snapshot: DeviceSnapshot, _ config: Config) -> [AudioDevice] {
         guard config.headphonesTakeOver else { return [] }
-
-        // Two headsets connecting on the same pass is a tie the name order breaks, the same way
-        // every other list in Cleat is ordered, so the outcome does not depend on what order the
-        // HAL happened to hand the devices back.
-        let candidates = snapshot.devices
-            .filter { snapshot.arrived.contains($0.uid) && $0.hasOutput && $0.isBluetooth }
+        return snapshot.devices
+            .filter { snapshot.arrived.contains($0.uid) && $0.hasOutput && owns($0, config) }
             .sorted(by: AudioDevice.byName)
+    }
 
-        guard let target = candidates.first else { return [] }
+    /// Whether this pass belongs to a headset that just arrived. The engine asks before running
+    /// `OutputPinRule`, because "the rule wrote nothing" and "there was nothing to take over" are
+    /// different things: when macOS has already moved the output to the arriving headset, this
+    /// rule is quiet, and the priority list must not read that silence as permission to move the
+    /// output somewhere else.
+    static func hasEligibleArrival(_ snapshot: DeviceSnapshot, _ config: Config) -> Bool {
+        !eligibleArrivals(snapshot, config).isEmpty
+    }
+
+    static func reconcile(_ snapshot: DeviceSnapshot, _ config: Config) -> [Action] {
+        guard let target = eligibleArrivals(snapshot, config).first else { return [] }
         guard snapshot.defaultOutput != target.id else { return [] }
 
         let current = snapshot.defaultOutput.flatMap { snapshot.device(id: $0)?.name } ?? "-"

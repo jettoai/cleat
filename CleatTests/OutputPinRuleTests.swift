@@ -93,6 +93,63 @@ final class OutputPinRuleTests: XCTestCase {
         XCTAssertEqual(OutputPinRule.reconcile(snapshot, config), [])
     }
 
+    // MARK: - Headphone takeover changes whose business a Bluetooth output is
+
+    /// With takeover on, the list neither moves the output off a connected headset nor reaches
+    /// for one. With takeover off, nothing about this rule changes.
+    func testTakeoverOnLeavesABluetoothOutputAlone() {
+        var config = self.config
+        config.output = ["Studio Display Speakers", "AirPods Max"]
+        let snapshot = snapshot([Fixture.airPods, Fixture.displaySpeakers], current: Fixture.airPods)
+
+        config.headphonesTakeOver = true
+        XCTAssertEqual(OutputPinRule.reconcile(snapshot, config), [])
+
+        config.headphonesTakeOver = false
+        XCTAssertEqual(
+            OutputPinRule.reconcile(snapshot, config),
+            [.setDefaultOutput(
+                Fixture.displaySpeakers.id,
+                reason: "AirPods Max -> Studio Display Speakers (higher priority present)"
+            )]
+        )
+    }
+
+    /// A listed headset is not a target either, or picking the speakers by hand would be undone.
+    func testTakeoverOnDoesNotSwitchToAListedBluetoothDevice() {
+        var config = self.config
+        config.output = ["AirPods Max", "Studio Display Speakers", "MacBook Pro Speakers"]
+        config.headphonesTakeOver = true
+        // The AirPods top the list and are right here, so without the filter they would be the
+        // target and the hand-picked speakers would be taken away.
+        let snapshot = snapshot(
+            [Fixture.airPods, Fixture.displaySpeakers, Fixture.macSpeakers], current: Fixture.macSpeakers
+        )
+        XCTAssertEqual(
+            OutputPinRule.reconcile(snapshot, config),
+            [.setDefaultOutput(
+                Fixture.displaySpeakers.id,
+                reason: "MacBook Pro Speakers -> Studio Display Speakers (higher priority present)"
+            )]
+        )
+    }
+
+    /// Blocked outranks "it is a headset": a Bluetooth device on the blocked list is still moved
+    /// off the output.
+    func testBlockedBluetoothDeviceIsStillReplacedWithTakeoverOn() {
+        var config = self.config
+        config.headphonesTakeOver = true
+        config.blockedOutput = ["AirPods Max"]
+        let snapshot = snapshot([Fixture.airPods, Fixture.displaySpeakers], current: Fixture.airPods)
+        XCTAssertEqual(
+            OutputPinRule.reconcile(snapshot, config),
+            [.setDefaultOutput(
+                Fixture.displaySpeakers.id,
+                reason: "AirPods Max -> Studio Display Speakers (blocked)"
+            )]
+        )
+    }
+
     func testNoDefaultOutputDoesNothing() {
         let snapshot = snapshot([Fixture.displaySpeakers, Fixture.macSpeakers], current: nil)
         XCTAssertEqual(OutputPinRule.reconcile(snapshot, config), [])

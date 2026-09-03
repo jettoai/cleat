@@ -92,7 +92,9 @@ final class Engine: @unchecked Sendable {
             self.watcher = watcher
             watcher.start()
 
-            reconcile()
+            // The first pass is the baseline: it records what was already plugged in, so nothing
+            // present at launch counts as having just arrived.
+            reconcile(consumingArrivals: true)
         }
     }
 
@@ -171,8 +173,15 @@ final class Engine: @unchecked Sendable {
     /// while a device that has just appeared is still not selectable, and `setDefaultOutput` on
     /// such a device returns success without sticking. Those beats see the arrival and may act on
     /// it, but do not mark it as seen, so the 0.5s settle beat gets the same arrival and the same
-    /// chance. Everything from the settle beat onwards consumes it.
-    func reconcile(consumingArrivals: Bool = true) {
+    /// chance.
+    ///
+    /// Not consuming is the default because everything that reconciles for a reason of its own -
+    /// a liveness flip, the permission answer, a config reload - can land inside that same window
+    /// and has no idea whether the device list has settled. Only the scheduler knows how long it
+    /// waited, so it is the one that passes `Engine.consumesArrivals(after:)`. `start` is the
+    /// exception: it consumes to lay down the first mark, because until there is one, every
+    /// arrival compares against nothing and is dropped.
+    func reconcile(consumingArrivals: Bool = false) {
         var snapshot = system.snapshot(config: config)
         snapshot.arrived = arrivals(in: snapshot, consuming: consumingArrivals)
         // Detectors are brought in line here as well as on a device change, because `start()` can
@@ -183,13 +192,14 @@ final class Engine: @unchecked Sendable {
         snapshot.liveness = livenessForRules(snapshot)
 
         let inputActions = InputPinRule.reconcile(snapshot, config)
-        // Headphones that just connected outrank the priority list: the list says what plays when
-        // no headphones are around. Only when nothing arrived does the list get a say, which is
-        // also what stops the two rules from writing two different outputs on one pass.
-        let takeoverActions = HeadphonesTakeoverRule.reconcile(snapshot, config)
-        let outputActions = takeoverActions.isEmpty
-            ? OutputPinRule.reconcile(snapshot, config)
-            : takeoverActions
+        // Headphones that just connected outrank the priority list, and the question asked here is
+        // "did a headset arrive", not "did the takeover rule write something". The rule stays quiet
+        // when macOS has already moved the output to the arriving headset, and reading that silence
+        // as permission to run the priority list is how the output ends up back on the speakers
+        // half a second after it reached the headphones.
+        let outputActions = HeadphonesTakeoverRule.hasEligibleArrival(snapshot, config)
+            ? HeadphonesTakeoverRule.reconcile(snapshot, config)
+            : OutputPinRule.reconcile(snapshot, config)
         // Balance belongs to a specific device, and this pass may be about to move the default
         // output somewhere else. Writing it now would set the balance of the device being left;
         // the 'dOut' listener brings us straight back here against the new one.
@@ -332,7 +342,11 @@ final class Engine: @unchecked Sendable {
     /// priority list, and the blocked list when there is one. An empty priority list is the rule
     /// being off.
     private static func pinSummary(_ priority: [String], blocked: [String]) -> String {
-        guard !priority.isEmpty else { return "off" }
+        guard !priority.isEmpty else {
+            // An empty priority list turns the whole rule off, blocked list and all. Saying only
+            // "off" would leave someone who wrote a blocked list believing it is in force.
+            return blocked.isEmpty ? "off" : "off (blocked list needs a priority list)"
+        }
         var summary = "on (\(priority.joined(separator: ", ")))"
         if !blocked.isEmpty {
             summary += ", blocked: \(blocked.joined(separator: ", "))"

@@ -82,6 +82,33 @@ final class HeadphonesTakeoverRuleTests: XCTestCase {
         XCTAssertEqual(HeadphonesTakeoverRule.reconcile(snapshot, config), [])
     }
 
+    /// "Never allowed to be the default output" has no exception for headphones. A Bluetooth
+    /// speaker someone keeps on the blocked list must not be grabbed on arrival and dropped again
+    /// by the priority list half a second later.
+    func testArrivedBluetoothOutputOnTheBlockedListIsNotTakenOver() {
+        var config = self.config
+        config.blockedOutput = ["AirPods Max"]
+        let snapshot = snapshot(
+            [Fixture.macStudioSpeakers, Fixture.airPods],
+            current: Fixture.macStudioSpeakers,
+            arrived: [Fixture.airPods]
+        )
+        XCTAssertEqual(HeadphonesTakeoverRule.reconcile(snapshot, config), [])
+        XCTAssertFalse(HeadphonesTakeoverRule.hasEligibleArrival(snapshot, config))
+    }
+
+    /// The gate the engine asks about is "did a headset arrive", which is true even on the pass
+    /// where the rule itself has nothing to write because macOS got there first.
+    func testGateIsTrueEvenWhenTheHeadsetAlreadyHoldsTheOutput() {
+        let snapshot = snapshot(
+            [Fixture.macStudioSpeakers, Fixture.airPods],
+            current: Fixture.airPods,
+            arrived: [Fixture.airPods]
+        )
+        XCTAssertEqual(HeadphonesTakeoverRule.reconcile(snapshot, config), [])
+        XCTAssertTrue(HeadphonesTakeoverRule.hasEligibleArrival(snapshot, config))
+    }
+
     func testRuleOffDoesNothing() {
         let snapshot = snapshot(
             [Fixture.macStudioSpeakers, Fixture.airPods],

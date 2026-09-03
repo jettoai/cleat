@@ -40,6 +40,12 @@ Or download the zip from [Releases](https://github.com/jettoai/cleat/releases), 
 
 Then write a config and start it:
 
+**Read the example before you copy it.** It is the author's own setup, not a neutral starting
+point: it holds every input device's gain at 100 percent (`"inputVolume": {"*": 100, ...}`) and it
+turns headphone takeover on, so any Bluetooth headset becomes the output as soon as it connects.
+The device names in it are the author's, so the rest of it does nothing on your machine until you
+put your own there. Edit it for your devices first, or start from `{}` and add one rule at a time.
+
 ```sh
 mkdir -p ~/.config/cleat
 cp /Applications/Cleat.app/Contents/Resources/config.example.json ~/.config/cleat/config.json
@@ -73,7 +79,7 @@ runs from then on.
 | `blockedInput` | array of strings | `[]` | Never allowed to be the default input |
 | `output` | array of strings | `[]` | Output priority. Empty turns the rule off |
 | `blockedOutput` | array of strings | `[]` | Never allowed to be the default output |
-| `headphonesTakeOver` | boolean | `false` | Bluetooth output devices take the output when they connect |
+| `headphonesTakeOver` | boolean | `false` (the example turns it on) | Bluetooth output devices take the output when they connect |
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
@@ -87,8 +93,11 @@ still has its gain held, and devices whose gain cannot be read - some virtual de
 alone either way.
 
 **Headphones.** When a Bluetooth output device appears, it becomes the output. Choosing another
-device by hand while it stays connected is respected. `output` then only decides what plays when no
-headphones are around. macOS does this for wired headphones already and iOS does it for AirPods;
+device by hand while it stays connected is respected: with `headphonesTakeOver` on, `output` never
+moves the sound off a connected Bluetooth device and never moves it onto one, so the priority list
+decides what plays when no headphones hold the output. Listing a headset in `output` as well is
+therefore neither necessary nor harmful. macOS does this for wired headphones already and iOS does
+it for AirPods;
 over Bluetooth on a Mac, reconnecting a headset that was last paired to a phone leaves the sound
 coming out of the speakers, which is the gap this fills. Headphones already connected when Cleat
 starts are not treated as having just arrived, so restarting Cleat never moves the output.

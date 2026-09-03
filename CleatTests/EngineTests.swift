@@ -254,14 +254,14 @@ final class EngineTests: XCTestCase {
         // They disconnect. Still nothing to do: the speakers already hold the output.
         engine.queue.sync {
             system.snapshotValue.devices = [Fixture.macStudioSpeakers]
-            engine.reconcile()
+            engine.reconcile(consumingArrivals: true)
         }
         XCTAssertEqual(system.writes, [])
 
-        // And they connect again. That is the arrival.
+        // And they connect again. That is the arrival, seen by the settle beat.
         engine.queue.sync {
             system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
-            engine.reconcile()
+            engine.reconcile(consumingArrivals: true)
         }
         XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
         XCTAssertEqual(
@@ -272,15 +272,15 @@ final class EngineTests: XCTestCase {
         )
 
         // The beats that follow a device change see the same devices, so the arrival is spent.
-        engine.queue.sync { engine.reconcile() }
-        engine.queue.sync { engine.reconcile() }
+        engine.queue.sync { engine.reconcile(consumingArrivals: true) }
+        engine.queue.sync { engine.reconcile(consumingArrivals: true) }
         XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
 
         // The user picks the speakers by hand with the headphones still on. Nothing takes them
         // back: the priority list is what plays when no headphones are around, and they are here.
         engine.queue.sync {
             system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
-            engine.reconcile()
+            engine.reconcile(consumingArrivals: true)
         }
         XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
 
@@ -317,7 +317,7 @@ final class EngineTests: XCTestCase {
         engine.queue.sync {
             system.snapshotValue.devices = [Fixture.macStudioSpeakers, maonoSpeakers]
             system.snapshotValue.defaultOutput = maonoSpeakers.id
-            engine.reconcile()
+            engine.reconcile(consumingArrivals: true)
         }
         XCTAssertEqual(system.writes, ["output:\(Fixture.macStudioSpeakers.id)"])
         XCTAssertEqual(
@@ -367,7 +367,7 @@ final class EngineTests: XCTestCase {
 
         // Half a second later the device list has settled and the same arrival is still there.
         system.outputWritesStick = true
-        engine.queue.sync { engine.reconcile() }
+        engine.queue.sync { engine.reconcile(consumingArrivals: true) }
         XCTAssertEqual(
             system.writes, ["output:\(Fixture.airPods.id)", "output:\(Fixture.airPods.id)"]
         )
@@ -377,8 +377,8 @@ final class EngineTests: XCTestCase {
         // beat takes them back.
         engine.queue.sync {
             system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
-            engine.reconcile()
-            engine.reconcile()
+            engine.reconcile(consumingArrivals: true)
+            engine.reconcile(consumingArrivals: true)
         }
         XCTAssertEqual(
             system.writes, ["output:\(Fixture.airPods.id)", "output:\(Fixture.airPods.id)"]
@@ -406,12 +406,148 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
         XCTAssertEqual(system.snapshotValue.defaultOutput, Fixture.airPods.id)
 
-        engine.queue.sync { engine.reconcile() }
-        engine.queue.sync { engine.reconcile() }
+        engine.queue.sync { engine.reconcile(consumingArrivals: true) }
+        engine.queue.sync { engine.reconcile(consumingArrivals: true) }
         XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
         XCTAssertEqual(
             logLines().filter { $0.contains("(headphones connected)") }.count, 1
         )
+    }
+
+    /// The headset is on the priority list too, below the speakers. Taking it over and then
+    /// letting the list put the speakers back is the bounce this whole rule exists to prevent, and
+    /// the beat that would do it is the 1s retry, after the arrival has been spent.
+    func testListedHeadsetIsNotPutBackOnTheSpeakersByTheNextBeat() throws {
+        var config = headphonesConfig
+        config.output = ["Mac Studio的揚聲器", "AirPods Max"]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.macStudioSpeakers],
+            defaultOutput: Fixture.macStudioSpeakers.id
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        engine.queue.sync {
+            system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+            engine.reconcile(consumingArrivals: true)
+        }
+        XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
+
+        // The 1/3/6 beats: the arrival is spent, and the priority list must still leave the
+        // headphones where they are.
+        engine.queue.sync {
+            engine.reconcile(consumingArrivals: true)
+            engine.reconcile(consumingArrivals: true)
+        }
+        XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
+    }
+
+    /// The hand-picked speakers stay hand-picked even when the headset is on the priority list:
+    /// with takeover on, the list does not reach for a Bluetooth device either.
+    func testListedHeadsetIsNotTakenBackAfterTheUserPicksTheSpeakers() throws {
+        var config = headphonesConfig
+        config.output = ["AirPods Max", "Mac Studio的揚聲器"]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.macStudioSpeakers, Fixture.airPods],
+            defaultOutput: Fixture.airPods.id
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+        XCTAssertEqual(system.writes, [])
+
+        // The user moves the sound to the speakers with the headphones still connected.
+        engine.queue.sync {
+            system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
+            engine.reconcile(consumingArrivals: true)
+            engine.reconcile(consumingArrivals: true)
+        }
+        XCTAssertEqual(system.writes, [])
+    }
+
+    /// Everything that reconciles for a reason of its own can land inside the settle window, so
+    /// none of them consume: a liveness flip half a second after the headphones connect must not
+    /// be what spends the arrival.
+    func testUnscheduledReconcileDoesNotSpendTheArrival() throws {
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.macStudioSpeakers],
+            defaultOutput: Fixture.macStudioSpeakers.id
+        ))
+        let engine = try makeEngine(
+            config: headphonesConfig, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        // The headphones connect, and the write does not stick yet.
+        system.outputWritesStick = false
+        engine.queue.sync {
+            system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+            engine.reconcile()   // the default: a pass nobody scheduled
+        }
+        XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
+
+        // The settle beat still sees the arrival.
+        system.outputWritesStick = true
+        engine.queue.sync { engine.reconcile(consumingArrivals: true) }
+        XCTAssertEqual(
+            system.writes, ["output:\(Fixture.airPods.id)", "output:\(Fixture.airPods.id)"]
+        )
+        XCTAssertEqual(system.snapshotValue.defaultOutput, Fixture.airPods.id)
+    }
+
+    /// `start` is the one unscheduled pass that consumes, because it is laying down the first
+    /// mark. Without it every arrival would compare against nothing and be dropped, and the first
+    /// headset to connect after launch would never be taken over.
+    func testFirstArrivalAfterStartIsStillSeen() throws {
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.macStudioSpeakers],
+            defaultOutput: Fixture.macStudioSpeakers.id
+        ))
+        let engine = try makeEngine(
+            config: headphonesConfig, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        engine.queue.sync {
+            system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+            engine.reconcile(consumingArrivals: true)
+        }
+        XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
+    }
+
+    /// A blocked list with no priority list to go with it enforces nothing, and the status line
+    /// says so rather than reporting a bare "off".
+    func testBlockedListWithoutAPriorityListSaysWhyItIsOff() throws {
+        var config = headphonesConfig
+        config.output = []
+        config.blockedOutput = ["Maono AI Microphone"]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.macStudioSpeakers], defaultOutput: Fixture.macStudioSpeakers.id
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        XCTAssertEqual(status()?.rules["outputPin"], "off (blocked list needs a priority list)")
+        // And with neither list, the plain "off" is unchanged.
+        XCTAssertEqual(status()?.rules["inputPin"], "off")
     }
 
     // MARK: - Status

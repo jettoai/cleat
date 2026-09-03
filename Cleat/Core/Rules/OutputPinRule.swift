@@ -10,17 +10,28 @@ import CoreAudio
 /// read as a hand-picked output and be left there.
 ///
 /// Which output is wanted while headphones are connected is not this rule's business; that is
-/// `HeadphonesTakeoverRule`, and the engine runs this one only when that one had nothing to say.
+/// `HeadphonesTakeoverRule`. With `headphonesTakeOver` on, a Bluetooth output is outside this
+/// rule's jurisdiction in both directions: it is never the device this list switches to, and it is
+/// never the device this list switches away from. Without that, listing a headset in `output` as
+/// well would produce two audible bounces - the takeover on the settle beat undone by the retry
+/// beat, and a hand-picked speaker taken back the moment the list ran again. The list means "what
+/// plays when no headphones hold the output", and this is what makes that sentence true.
+///
+/// A blocked device is not headphones for this purpose. `blockedOutput` is the user saying "never
+/// this one", which outranks "this one is a headset".
 enum OutputPinRule {
 
     static func reconcile(_ snapshot: DeviceSnapshot, _ config: Config) -> [Action] {
         guard !config.output.isEmpty else { return [] }
 
-        let candidates = config.output.compactMap { snapshot.device(matching: $0, input: false) }
+        let candidates = config.output
+            .compactMap { snapshot.device(matching: $0, input: false) }
+            .filter { !HeadphonesTakeoverRule.owns($0, config) }
         guard let target = candidates.first else { return [] }
 
         guard let currentID = snapshot.defaultOutput, currentID != target.id else { return [] }
         guard let current = snapshot.device(id: currentID) else { return [] }
+        guard !HeadphonesTakeoverRule.owns(current, config) else { return [] }
 
         let isPinned = current.isListed(in: config.output)
         let isBlocked = current.isListed(in: config.blockedOutput)
