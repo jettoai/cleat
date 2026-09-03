@@ -187,7 +187,7 @@ extension Engine {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             pendingReconciles[delay] = nil
-            reconcile()
+            reconcile(consumingArrivals: Engine.consumesArrivals(after: delay))
         }
         pendingReconciles[delay] = work
         queue.asyncAfter(deadline: .now() + delay, execute: work)

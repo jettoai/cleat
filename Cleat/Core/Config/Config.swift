@@ -39,6 +39,10 @@ struct Config: Codable, Equatable, Sendable {
     var blockedInput: [String]
     /// Output device priority, most preferred first. Empty disables the output pin rule.
     var output: [String]
+    /// Devices that must never be the default output.
+    var blockedOutput: [String]
+    /// Whether a Bluetooth output device becomes the output the moment it connects.
+    var headphonesTakeOver: Bool
     /// 0.0-1.0, 0.5 is centred. `nil` disables the balance rule.
     var balance: Double?
     /// Input volume, 0-100 percent, keyed by device or by `"*"`. A named device overrides the
@@ -56,6 +60,8 @@ struct Config: Codable, Equatable, Sendable {
         input: [String] = [],
         blockedInput: [String] = [],
         output: [String] = [],
+        blockedOutput: [String] = [],
+        headphonesTakeOver: Bool = false,
         balance: Double? = nil,
         inputVolume: [String: Double] = [:],
         liveness: [String: LivenessConfig] = [:],
@@ -64,6 +70,8 @@ struct Config: Codable, Equatable, Sendable {
         self.input = input
         self.blockedInput = blockedInput
         self.output = output
+        self.blockedOutput = blockedOutput
+        self.headphonesTakeOver = headphonesTakeOver
         self.balance = balance
         self.inputVolume = inputVolume
         self.liveness = liveness
@@ -75,6 +83,8 @@ struct Config: Codable, Equatable, Sendable {
         input = try container.decodeIfPresent([String].self, forKey: .input) ?? []
         blockedInput = try container.decodeIfPresent([String].self, forKey: .blockedInput) ?? []
         output = try container.decodeIfPresent([String].self, forKey: .output) ?? []
+        blockedOutput = try container.decodeIfPresent([String].self, forKey: .blockedOutput) ?? []
+        headphonesTakeOver = try container.decodeIfPresent(Bool.self, forKey: .headphonesTakeOver) ?? false
         balance = try container.decodeIfPresent(Double.self, forKey: .balance)
         inputVolume = try container.decodeIfPresent([String: Double].self, forKey: .inputVolume) ?? [:]
         liveness = try container.decodeIfPresent([String: LivenessConfig].self, forKey: .liveness) ?? [:]

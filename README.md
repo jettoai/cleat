@@ -10,7 +10,7 @@ and leave the gain somewhere else. Balance drifts off centre after some reconnec
 receiver whose transmitter is switched off is still a perfectly good CoreAudio device that happens
 to be sending nothing at all.
 
-Cleat does five things, all the same shape: subscribe to a CoreAudio property, compare against the
+Cleat does six things, all the same shape: subscribe to a CoreAudio property, compare against the
 config, write back if they differ.
 
 | | What | Config |
@@ -20,6 +20,7 @@ config, write back if they differ.
 | 3 | Hold the output balance | `balance` |
 | 4 | Output device priority list | `output` |
 | 5 | Hold input gain per device | `inputVolume` |
+| 6 | Bluetooth headphones take over the output when they connect | `headphonesTakeOver` |
 
 It never takes over a device you picked yourself. If the current default input is not on your
 priority list and not on the blocklist - a mic you chose in System Settings, Zoom's or Teams'
@@ -56,9 +57,11 @@ runs from then on.
 {
   "input": ["Wireless microphone", "Brio 100"],
   "blockedInput": ["AirPods Max"],
-  "output": [],
+  "output": ["外接耳機", "Mac Studio的揚聲器"],
+  "blockedOutput": ["Maono AI Microphone"],
+  "headphonesTakeOver": true,
   "balance": 0.5,
-  "inputVolume": { "Wireless microphone": 88, "Brio 100": 75 },
+  "inputVolume": { "*": 100, "Wireless microphone": 88, "Brio 100": 75 },
   "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
   "launchAtLogin": true
 }
@@ -69,6 +72,8 @@ runs from then on.
 | `input` | array of strings | `[]` | Input priority, most preferred first. Empty turns the rule off |
 | `blockedInput` | array of strings | `[]` | Never allowed to be the default input |
 | `output` | array of strings | `[]` | Output priority. Empty turns the rule off |
+| `blockedOutput` | array of strings | `[]` | Never allowed to be the default output |
+| `headphonesTakeOver` | boolean | `false` | Bluetooth output devices take the output when they connect |
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
@@ -80,6 +85,17 @@ which is held at 75. Without a `"*"` entry, a device the config does not name is
 wildcard covers blocked devices too, so an AirPods Max kept out of the input slot by `blockedInput`
 still has its gain held, and devices whose gain cannot be read - some virtual devices - are left
 alone either way.
+
+**Headphones.** When a Bluetooth output device appears, it becomes the output. Choosing another
+device by hand while it stays connected is respected. `output` then only decides what plays when no
+headphones are around. macOS does this for wired headphones already and iOS does it for AirPods;
+over Bluetooth on a Mac, reconnecting a headset that was last paired to a phone leaves the sound
+coming out of the speakers, which is the gap this fills. Headphones already connected when Cleat
+starts are not treated as having just arrived, so restarting Cleat never moves the output.
+
+`blockedOutput` is the other half of it. Some USB microphones carry a speaker end, and that is
+where macOS lands when the headphones leave. It is not on your priority list, so without the
+blocked list Cleat would read it as an output you picked yourself and leave it there.
 
 **Naming a device.** Use the name shown in System Settings, or its CoreAudio UID if two devices
 share a name. Names are compared after Unicode normalisation, because some devices carry a

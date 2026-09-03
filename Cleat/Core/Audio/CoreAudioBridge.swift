@@ -77,7 +77,8 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
             defaultOutput: defaultOutput,
             outputBalance: defaultOutput.flatMap(balance),
             inputVolumes: inputVolumes,
-            liveness: [:]  // filled in by the engine, which owns the detectors
+            liveness: [:],  // filled in by the engine, which owns the detectors
+            arrived: []     // and so is this: only the engine remembers the previous pass
         )
     }
 
@@ -91,7 +92,10 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
             name: name,
             uid: uid,
             hasInput: AudioProperty.channelCount(id, scope: kAudioObjectPropertyScopeInput) > 0,
-            hasOutput: AudioProperty.channelCount(id, scope: kAudioObjectPropertyScopeOutput) > 0
+            hasOutput: AudioProperty.channelCount(id, scope: kAudioObjectPropertyScopeOutput) > 0,
+            transport: AudioProperty.value(
+                id, AudioProperty.address(kAudioDevicePropertyTransportType), as: UInt32.self
+            ) ?? kAudioDeviceTransportTypeUnknown
         )
     }
 

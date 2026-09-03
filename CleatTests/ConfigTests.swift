@@ -13,6 +13,8 @@ final class ConfigTests: XCTestCase {
           "input": ["Wireless microphone", "Brio 100"],
           "blockedInput": ["AirPods Max"],
           "output": ["Studio Display Speakers"],
+          "blockedOutput": ["Maono AI Microphone"],
+          "headphonesTakeOver": true,
           "balance": 0.5,
           "inputVolume": { "Wireless microphone": 88, "Brio 100": 75 },
           "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
@@ -23,6 +25,8 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.input, ["Wireless microphone", "Brio 100"])
         XCTAssertEqual(config.blockedInput, ["AirPods Max"])
         XCTAssertEqual(config.output, ["Studio Display Speakers"])
+        XCTAssertEqual(config.blockedOutput, ["Maono AI Microphone"])
+        XCTAssertTrue(config.headphonesTakeOver)
         XCTAssertEqual(config.balance, 0.5)
         XCTAssertEqual(config.inputVolume, ["Wireless microphone": 88, "Brio 100": 75])
         XCTAssertEqual(config.liveness, ["Wireless microphone": LivenessConfig(zeroSeconds: 3)])
@@ -37,6 +41,10 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.input, [])
         XCTAssertEqual(config.blockedInput, [])
         XCTAssertEqual(config.output, [])
+        XCTAssertEqual(config.blockedOutput, [])
+        // Off unless asked for: a config that says nothing must not start moving the output when
+        // headphones connect.
+        XCTAssertFalse(config.headphonesTakeOver)
         XCTAssertNil(config.balance)
         XCTAssertEqual(config.inputVolume, [:])
         XCTAssertEqual(config.liveness, [:])
@@ -51,6 +59,16 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.input, ["Brio 100"])
         XCTAssertNil(config.balance)
         XCTAssertTrue(config.launchAtLogin)
+    }
+
+    /// The key on its own, without the output list the other output rule needs: takeover does not
+    /// read `output` at all, so this is a complete config for it.
+    func testHeadphonesTakeOverDecodesOnItsOwn() throws {
+        let config = try decode(#"{"headphonesTakeOver": true}"#)
+
+        XCTAssertTrue(config.headphonesTakeOver)
+        XCTAssertEqual(config.output, [])
+        XCTAssertNoThrow(try config.validate())
     }
 
     func testMalformedJSONThrows() {

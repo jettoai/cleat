@@ -9,13 +9,32 @@ struct AudioDevice: Equatable, Sendable {
     let uid: String
     let hasInput: Bool
     let hasOutput: Bool
+    /// `kAudioDevicePropertyTransportType`, the bus the device is on. Read for one question only -
+    /// is this a pair of wireless headphones - and defaulted to unknown so a device the HAL will
+    /// not answer for behaves as it did before this field existed.
+    let transport: UInt32
 
-    init(id: AudioDeviceID, name: String, uid: String, hasInput: Bool, hasOutput: Bool) {
+    init(
+        id: AudioDeviceID,
+        name: String,
+        uid: String,
+        hasInput: Bool,
+        hasOutput: Bool,
+        transport: UInt32 = kAudioDeviceTransportTypeUnknown
+    ) {
         self.id = id
         self.name = name
         self.uid = uid
         self.hasInput = hasInput
         self.hasOutput = hasOutput
+        self.transport = transport
+    }
+
+    /// Both Bluetooth transports count: classic carries AirPods and most headsets, LE is what
+    /// newer devices negotiate, and the takeover rule wants either.
+    var isBluetooth: Bool {
+        transport == kAudioDeviceTransportTypeBluetooth
+            || transport == kAudioDeviceTransportTypeBluetoothLE
     }
 
     /// True when any of these config entries names this device.
@@ -56,6 +75,10 @@ struct DeviceSnapshot: Equatable, Sendable {
     /// Silence detection verdict per device UID. A missing key means "not tracked", which the
     /// input rule reads as present - the same behaviour as before liveness existed.
     var liveness: [String: Liveness]
+    /// UIDs of the devices that appeared on this pass and were not here on the last one. Filled in
+    /// by the engine, which is the only thing that remembers what the previous pass saw. Empty on
+    /// the first pass after launch: everything already plugged in was not "just connected".
+    var arrived: Set<String>
 
     init(
         devices: [AudioDevice] = [],
@@ -63,7 +86,8 @@ struct DeviceSnapshot: Equatable, Sendable {
         defaultOutput: AudioDeviceID? = nil,
         outputBalance: Float? = nil,
         inputVolumes: [AudioDeviceID: Float] = [:],
-        liveness: [String: Liveness] = [:]
+        liveness: [String: Liveness] = [:],
+        arrived: Set<String> = []
     ) {
         self.devices = devices
         self.defaultInput = defaultInput
@@ -71,6 +95,7 @@ struct DeviceSnapshot: Equatable, Sendable {
         self.outputBalance = outputBalance
         self.inputVolumes = inputVolumes
         self.liveness = liveness
+        self.arrived = arrived
     }
 
     /// The present device a config entry names, or nil. `input` picks which side must exist:

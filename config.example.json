@@ -1,9 +1,11 @@
 {
   "input": ["Wireless microphone", "Brio 100"],
   "blockedInput": ["AirPods Max"],
-  "output": [],
+  "output": ["外接耳機", "Mac Studio的揚聲器"],
+  "blockedOutput": ["Maono AI Microphone"],
+  "headphonesTakeOver": true,
   "balance": 0.5,
-  "inputVolume": { "Wireless microphone": 88, "Brio 100": 75 },
+  "inputVolume": { "*": 100, "Wireless microphone": 88, "Brio 100": 75 },
   "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
   "launchAtLogin": true
 }

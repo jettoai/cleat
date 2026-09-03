@@ -34,6 +34,9 @@ final class Engine: @unchecked Sendable {
     /// UIDs whose detector could not be started. Membership is what keeps the retry quiet: the
     /// failure is logged when the device joins this set, not on every beat that tries again.
     var livenessUnavailable: Set<String> = []
+    /// The device UIDs the previous reconcile saw, or nil before the first one. What makes
+    /// `snapshot.arrived` an edge rather than a state.
+    private var previousDeviceUIDs: Set<String>?
     var systemTokens: [ListenerToken] = []
     var deviceTokens: [ListenerToken] = []
     var pendingReconciles: [TimeInterval: DispatchWorkItem] = [:]
@@ -163,8 +166,15 @@ final class Engine: @unchecked Sendable {
 
     // MARK: - Reconcile
 
-    func reconcile() {
+    /// `consumingArrivals` is what keeps a device arrival from being spent before the device can
+    /// be selected. A zero-delay beat - the volume and balance listeners ask for one - can land
+    /// while a device that has just appeared is still not selectable, and `setDefaultOutput` on
+    /// such a device returns success without sticking. Those beats see the arrival and may act on
+    /// it, but do not mark it as seen, so the 0.5s settle beat gets the same arrival and the same
+    /// chance. Everything from the settle beat onwards consumes it.
+    func reconcile(consumingArrivals: Bool = true) {
         var snapshot = system.snapshot(config: config)
+        snapshot.arrived = arrivals(in: snapshot, consuming: consumingArrivals)
         // Detectors are brought in line here as well as on a device change, because `start()` can
         // fail on a device that is listed but not yet ready to be opened. The beats that already
         // follow every device event are the retry: devices that are measuring are left alone, so a
@@ -173,7 +183,13 @@ final class Engine: @unchecked Sendable {
         snapshot.liveness = livenessForRules(snapshot)
 
         let inputActions = InputPinRule.reconcile(snapshot, config)
-        let outputActions = OutputPinRule.reconcile(snapshot, config)
+        // Headphones that just connected outrank the priority list: the list says what plays when
+        // no headphones are around. Only when nothing arrived does the list get a say, which is
+        // also what stops the two rules from writing two different outputs on one pass.
+        let takeoverActions = HeadphonesTakeoverRule.reconcile(snapshot, config)
+        let outputActions = takeoverActions.isEmpty
+            ? OutputPinRule.reconcile(snapshot, config)
+            : takeoverActions
         // Balance belongs to a specific device, and this pass may be about to move the default
         // output somewhere else. Writing it now would set the balance of the device being left;
         // the 'dOut' listener brings us straight back here against the new one.
@@ -185,6 +201,31 @@ final class Engine: @unchecked Sendable {
         }
         writeStatus(snapshot)
     }
+
+    /// Which devices are new since the last pass, and the bookkeeping that decides it.
+    ///
+    /// A consuming pass moves the mark: the next pass compares against what this one saw, so one
+    /// plug-in produces one arrival across the 0.5/1/3/6 beats that follow it rather than four. A
+    /// pass that is not consuming reports the same arrival and leaves the mark where it was, which
+    /// is how a beat that lands before the device is selectable gets to try without spending the
+    /// only chance (see `reconcile(consumingArrivals:)`).
+    ///
+    /// Two consequences worth naming. Headphones already connected when Cleat starts never arrive:
+    /// the first pass has nothing to compare against, and a daemon that grabs the output every
+    /// time it is restarted is worse than one that waits for the next reconnect. And once a
+    /// consuming pass has been through, a failed `setDefaultOutput` is not retried - no write in
+    /// Cleat is - so the next connect is the next chance.
+    private func arrivals(in snapshot: DeviceSnapshot, consuming: Bool) -> Set<String> {
+        let present = Set(snapshot.devices.map(\.uid))
+        defer { if consuming { previousDeviceUIDs = present } }
+        guard let previous = previousDeviceUIDs else { return [] }
+        return present.subtracting(previous)
+    }
+
+    /// Whether a scheduled beat is late enough to spend an arrival. The settle beat is defined as
+    /// "the device list has settled", so it and everything after it consume; the zero-delay beats
+    /// the volume and balance listeners ask for come too early to be the only attempt.
+    static func consumesArrivals(after delay: TimeInterval) -> Bool { delay >= settleBeat }
 
     /// What the rules are told about silence, which is not always what the detectors know.
     ///
@@ -255,17 +296,12 @@ final class Engine: @unchecked Sendable {
     private func ruleSummaries(_ snapshot: DeviceSnapshot) -> [String: String] {
         var rules: [String: String] = [:]
 
-        if config.input.isEmpty {
-            rules["inputPin"] = "off"
-        } else {
-            var summary = "on (\(config.input.joined(separator: ", ")))"
-            if !config.blockedInput.isEmpty {
-                summary += ", blocked: \(config.blockedInput.joined(separator: ", "))"
-            }
-            rules["inputPin"] = summary
-        }
+        rules["inputPin"] = Self.pinSummary(config.input, blocked: config.blockedInput)
+        rules["outputPin"] = Self.pinSummary(config.output, blocked: config.blockedOutput)
 
-        rules["outputPin"] = config.output.isEmpty ? "off" : "on (\(config.output.joined(separator: ", ")))"
+        rules["headphones"] = config.headphonesTakeOver
+            ? "on (bluetooth output takes over when it connects)"
+            : "off"
 
         if let balance = config.balance {
             let current = snapshot.outputBalance.map { String(format: "%.2f", $0) } ?? "unreadable"
@@ -290,6 +326,18 @@ final class Engine: @unchecked Sendable {
         }
 
         return rules
+    }
+
+    /// The `inputPin` and `outputPin` lines, which say the same two things on both sides: the
+    /// priority list, and the blocked list when there is one. An empty priority list is the rule
+    /// being off.
+    private static func pinSummary(_ priority: [String], blocked: [String]) -> String {
+        guard !priority.isEmpty else { return "off" }
+        var summary = "on (\(priority.joined(separator: ", ")))"
+        if !blocked.isEmpty {
+            summary += ", blocked: \(blocked.joined(separator: ", "))"
+        }
+        return summary
     }
 
     /// The `inputVolume` line when a wildcard is in force: the default first, then every input
