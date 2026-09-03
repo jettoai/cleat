@@ -233,9 +233,9 @@ final class EngineTests: XCTestCase {
 
     // MARK: - Status
 
-    /// With a wildcard the status line leads with the default and then names what it covers:
-    /// the named override first, then the device that takes the default, then the named device
-    /// that is not plugged in. The gains are the ones read before this pass wrote anything.
+    /// With a wildcard the status line leads with the default and then names every input device
+    /// present, by name, with the named entry that matches nothing here last. The gains are the
+    /// ones read before this pass wrote anything.
     func testWildcardVolumeStatusLeadsWithTheDefault() throws {
         var config = pinningWithLiveness
         config.inputVolume = ["*": 100, "Brio 100": 75, "Wireless microphone": 88]
@@ -254,11 +254,68 @@ final class EngineTests: XCTestCase {
 
         XCTAssertEqual(
             status()?.rules["inputVolume"],
-            "on (default 100%; Brio 100 75% (now 75%), AirPods Max 100% (now 97%), "
+            "on (default 100%; AirPods Max 100% (now 97%), Brio 100 75% (now 75%), "
                 + "Wireless microphone 88% (absent))"
         )
         // The AirPods are held to the default even though they are a blocked input: the wildcard
         // covers every input device present.
+        XCTAssertEqual(system.writes, ["volume:\(Fixture.airPods.id):1.00"])
+    }
+
+    /// Two devices sharing a name are both held to the override that names them, so the status
+    /// says so twice rather than reporting the second one at the wildcard default.
+    func testSameNamedDevicesBothReportTheOverride() throws {
+        let secondBrio = AudioDevice(
+            id: 21, name: "Brio 100", uid: "AppleUSBAudioEngine:Brio 100:C",
+            hasInput: true, hasOutput: false
+        )
+        var config = pinningWithLiveness
+        config.inputVolume = ["*": 100, "Brio 100": 75]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.brio, secondBrio],
+            defaultInput: Fixture.brio.id,
+            inputVolumes: [Fixture.brio.id: 0.75, secondBrio.id: 0.60]
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        XCTAssertEqual(
+            status()?.rules["inputVolume"],
+            "on (default 100%; Brio 100 75% (now 75%), Brio 100 75% (now 60%))"
+        )
+        // And it is the override that is written, not the wildcard default.
+        XCTAssertEqual(system.writes, ["volume:\(secondBrio.id):0.75"])
+    }
+
+    /// A device that is plugged in but whose gain could not be read this pass is unreadable, not
+    /// absent: nothing is being held to the target, but the device is right here.
+    func testPresentDeviceWithNoReadingIsUnreadableNotAbsent() throws {
+        var config = pinningWithLiveness
+        config.inputVolume = ["*": 100, "Brio 100": 75, "Wireless microphone": 88]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.brio, Fixture.airPods],
+            defaultInput: Fixture.brio.id,
+            inputVolumes: [Fixture.airPods.id: 0.97]
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        XCTAssertEqual(
+            status()?.rules["inputVolume"],
+            "on (default 100%; AirPods Max 100% (now 97%), Brio 100 75% (unreadable), "
+                + "Wireless microphone 88% (absent))"
+        )
+        // Unreadable means untouched: only the AirPods are written.
         XCTAssertEqual(system.writes, ["volume:\(Fixture.airPods.id):1.00"])
     }
 
