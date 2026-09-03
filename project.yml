@@ -44,7 +44,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.jetto.cleat
         PRODUCT_NAME: Cleat
         PRODUCT_MODULE_NAME: Cleat
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "0.1.1"
         CURRENT_PROJECT_VERSION: "1"
         # Swift 5.9 language mode on purpose: `complete` concurrency checking still reports
         # everything, but as warnings. Swift 6 mode would turn each one into a build error, and
