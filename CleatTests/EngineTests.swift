@@ -231,6 +231,63 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(detectors.stopCount, 0)
     }
 
+    // MARK: - Status
+
+    /// With a wildcard the status line leads with the default and then names what it covers:
+    /// the named override first, then the device that takes the default, then the named device
+    /// that is not plugged in. The gains are the ones read before this pass wrote anything.
+    func testWildcardVolumeStatusLeadsWithTheDefault() throws {
+        var config = pinningWithLiveness
+        config.inputVolume = ["*": 100, "Brio 100": 75, "Wireless microphone": 88]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.brio, Fixture.airPods],
+            defaultInput: Fixture.brio.id,
+            inputVolumes: [Fixture.brio.id: 0.75, Fixture.airPods.id: 0.97]
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        XCTAssertEqual(
+            status()?.rules["inputVolume"],
+            "on (default 100%; Brio 100 75% (now 75%), AirPods Max 100% (now 97%), "
+                + "Wireless microphone 88% (absent))"
+        )
+        // The AirPods are held to the default even though they are a blocked input: the wildcard
+        // covers every input device present.
+        XCTAssertEqual(system.writes, ["volume:\(Fixture.airPods.id):1.00"])
+    }
+
+    /// Without a wildcard the line is exactly what it always was: the configured entries, in key
+    /// order, absent ones in place rather than at the end.
+    func testNamedOnlyVolumeStatusIsUnchanged() throws {
+        var config = pinningWithLiveness
+        config.inputVolume = ["Brio 100": 75, "Wireless microphone": 88]
+
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.brio, Fixture.airPods],
+            defaultInput: Fixture.brio.id,
+            inputVolumes: [Fixture.brio.id: 0.75, Fixture.airPods.id: 0.97]
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        XCTAssertEqual(
+            status()?.rules["inputVolume"],
+            "on (Brio 100 75% (now 75%), Wireless microphone 88% (absent))"
+        )
+        // Nothing to write: the AirPods are not listed, so their gain is nobody's business.
+        XCTAssertEqual(system.writes, [])
+    }
+
     // MARK: - Helpers
 
     /// Albert's input pinning plus the one liveness entry, with the login item left out: the test

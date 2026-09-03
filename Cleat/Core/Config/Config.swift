@@ -41,7 +41,8 @@ struct Config: Codable, Equatable, Sendable {
     var output: [String]
     /// 0.0-1.0, 0.5 is centred. `nil` disables the balance rule.
     var balance: Double?
-    /// Per-device input volume, 0-100 percent. Devices not listed are left alone.
+    /// Input volume, 0-100 percent, keyed by device or by `"*"`. A named device overrides the
+    /// wildcard; without a wildcard, devices not listed are left alone.
     var inputVolume: [String: Double]
     /// Per-device silence detection. Devices not listed are never measured.
     var liveness: [String: LivenessConfig]
@@ -92,6 +93,27 @@ struct Config: Codable, Equatable, Sendable {
         for (device, entry) in liveness where entry.zeroSeconds < 1 {
             throw ConfigError.zeroSecondsTooSmall(device: device, value: entry.zeroSeconds)
         }
+    }
+
+    // MARK: - Input volume
+
+    /// The `inputVolume` key that means "every input device present".
+    static let inputVolumeWildcard = "*"
+
+    /// True when the config declares a default gain for every input device.
+    var inputVolumeHasWildcard: Bool { inputVolume[Self.inputVolumeWildcard] != nil }
+
+    /// The gain this device should be held at, in percent, or nil to leave it alone.
+    ///
+    /// A named entry wins over the wildcard, so `{"*": 100, "Brio 100": 75}` means "everything at
+    /// 100, except the Brio at 75". Entries are searched in sorted order, so a device that two
+    /// entries name - by name and by UID, say - resolves to the same one every time.
+    func inputVolumeTarget(for device: AudioDevice) -> Double? {
+        let named = inputVolume
+            .filter { $0.key != Self.inputVolumeWildcard }
+            .sorted { $0.key < $1.key }
+            .first { DeviceName.matches(entry: $0.key, name: device.name, uid: device.uid) }
+        return named?.value ?? inputVolume[Self.inputVolumeWildcard]
     }
 
     static func load(from url: URL) throws -> Config {

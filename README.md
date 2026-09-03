@@ -70,9 +70,16 @@ runs from then on.
 | `blockedInput` | array of strings | `[]` | Never allowed to be the default input |
 | `output` | array of strings | `[]` | Output priority. Empty turns the rule off |
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
-| `inputVolume` | object | `{}` | Device name to percent, 0-100. Devices not listed are untouched |
+| `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
 | `launchAtLogin` | boolean | `true` | Register with SMAppService as a login item |
+
+**Input gain.** `"*"` sets the target for every input device present, and a named entry overrides
+it for that device: `{"*": 100, "Brio 100": 75}` holds everything at 100 percent except the Brio,
+which is held at 75. Without a `"*"` entry, a device the config does not name is left alone. The
+wildcard covers blocked devices too, so an AirPods Max kept out of the input slot by `blockedInput`
+still has its gain held, and devices whose gain cannot be read - some virtual devices - are left
+alone either way.
 
 **Naming a device.** Use the name shown in System Settings, or its CoreAudio UID if two devices
 share a name. Names are compared after Unicode normalisation, because some devices carry a

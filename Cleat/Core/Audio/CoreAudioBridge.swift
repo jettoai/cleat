@@ -7,8 +7,8 @@ import Foundation
 /// implementation that ships.
 protocol AudioSystem: AnyObject {
     /// One consistent reading. `config` is passed in because the volumes worth reading are exactly
-    /// the ones the config asks about - enumerating every device's every channel is IPC we would
-    /// throw away.
+    /// the ones the config asks about - the named devices, or every input device when the config
+    /// carries the `"*"` wildcard. Reading more than that is IPC we would throw away.
     func snapshot(config: Config) -> DeviceSnapshot
 
     func setDefaultInput(_ device: AudioDeviceID) -> OSStatus
@@ -53,11 +53,19 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         let defaultInput = defaultDevice(kAudioHardwarePropertyDefaultInputDevice)
         let defaultOutput = defaultDevice(kAudioHardwarePropertyDefaultOutputDevice)
 
+        // A wildcard gives every input device a target, so every input device's gain is worth
+        // reading; without one, only the named devices are, and the rest is IPC we would throw
+        // away.
+        let worthReading = config.inputVolumeHasWildcard
+            ? devices.filter(\.hasInput)
+            : config.inputVolume.keys.compactMap { entry in
+                devices.first {
+                    $0.hasInput && DeviceName.matches(entry: entry, name: $0.name, uid: $0.uid)
+                }
+            }
+
         var inputVolumes: [AudioDeviceID: Float] = [:]
-        for entry in config.inputVolume.keys {
-            guard let device = devices.first(where: {
-                $0.hasInput && DeviceName.matches(entry: entry, name: $0.name, uid: $0.uid)
-            }) else { continue }
+        for device in worthReading {
             if let volume = inputVolume(device.id) {
                 inputVolumes[device.id] = volume
             }

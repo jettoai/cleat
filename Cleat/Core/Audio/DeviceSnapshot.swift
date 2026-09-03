@@ -22,6 +22,13 @@ struct AudioDevice: Equatable, Sendable {
     func isListed(in entries: [String]) -> Bool {
         entries.contains { DeviceName.matches(entry: $0, name: name, uid: uid) }
     }
+
+    /// Ordering for anything that walks the device list: by name, id breaking the tie, because
+    /// two devices can share a name and the order CoreAudio hands them back is not promised.
+    /// Shared so the action list and the status line agree on it.
+    static func byName(_ lhs: AudioDevice, _ rhs: AudioDevice) -> Bool {
+        lhs.name == rhs.name ? lhs.id < rhs.id : lhs.name < rhs.name
+    }
 }
 
 /// What silence detection currently says about one device. A missing key is not a fourth case: it

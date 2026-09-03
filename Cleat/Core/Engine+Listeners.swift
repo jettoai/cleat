@@ -70,8 +70,13 @@ extension Engine {
             ) { [weak self] in self?.scheduleReconcile(after: 0) })
         }
 
-        for entry in config.inputVolume.keys.sorted() {
-            guard let device = snapshot.device(matching: entry, input: true) else { continue }
+        // Every device the volume rule has a target for, which with a `"*"` wildcard is every
+        // input device present: a gain nobody listens to is only pulled back on the next
+        // unrelated event, which is exactly the drift this rule exists to catch.
+        let held = snapshot.devices
+            .filter { $0.hasInput && config.inputVolumeTarget(for: $0) != nil }
+            .sorted { $0.id < $1.id }
+        for device in held {
             // Main plus both channels: a device that has no main volume element reports changes
             // per channel instead, and registering for a property a device lacks is a no-op.
             // Several callbacks for one change collapse into a single reconcile below.

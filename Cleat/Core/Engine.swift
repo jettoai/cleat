@@ -276,6 +276,8 @@ final class Engine: @unchecked Sendable {
 
         if config.inputVolume.isEmpty {
             rules["inputVolume"] = "off"
+        } else if let wildcard = config.inputVolume[Config.inputVolumeWildcard] {
+            rules["inputVolume"] = wildcardVolumeSummary(snapshot, default: wildcard)
         } else {
             let parts = config.inputVolume.sorted { $0.key < $1.key }.map { entry, wanted -> String in
                 guard let device = snapshot.device(matching: entry, input: true),
@@ -288,6 +290,50 @@ final class Engine: @unchecked Sendable {
         }
 
         return rules
+    }
+
+    /// The `inputVolume` line when a wildcard is in force: the default first, then the devices it
+    /// currently covers - named overrides ahead of the rest, because those are the entries someone
+    /// wrote by hand - and finally the named devices that are not here to be held.
+    ///
+    /// A device whose gain cannot be read is left out of the covered list for the same reason the
+    /// rule skips it: nothing is being held, so reporting a number would be a fiction.
+    private func wildcardVolumeSummary(_ snapshot: DeviceSnapshot, default wildcard: Double) -> String {
+        let named = config.inputVolume
+            .filter { $0.key != Config.inputVolumeWildcard }
+            .sorted { $0.key < $1.key }
+
+        func held(_ entry: String) -> AudioDevice? {
+            guard let device = snapshot.device(matching: entry, input: true),
+                  snapshot.inputVolumes[device.id] != nil else { return nil }
+            return device
+        }
+
+        func reading(_ device: AudioDevice, _ wanted: Double) -> String {
+            let now = Double(snapshot.inputVolumes[device.id] ?? 0) * 100
+            return String(format: "%@ %.0f%% (now %.0f%%)", device.name, wanted, now)
+        }
+
+        var overridden: Set<AudioDeviceID> = []
+        var parts: [String] = []
+        var absent: [String] = []
+        for (entry, wanted) in named {
+            if let device = held(entry) {
+                overridden.insert(device.id)
+                parts.append(reading(device, wanted))
+            } else {
+                absent.append(String(format: "%@ %.0f%% (absent)", entry, wanted))
+            }
+        }
+
+        let covered = snapshot.devices
+            .filter { $0.hasInput && !overridden.contains($0.id) && snapshot.inputVolumes[$0.id] != nil }
+            .sorted(by: AudioDevice.byName)
+        parts.append(contentsOf: covered.map { reading($0, wildcard) })
+        parts.append(contentsOf: absent)
+
+        guard !parts.isEmpty else { return String(format: "on (default %.0f%%)", wildcard) }
+        return String(format: "on (default %.0f%%; %@)", wildcard, parts.joined(separator: ", "))
     }
 
     private func livenessSummaries(_ snapshot: DeviceSnapshot) -> [String: String] {

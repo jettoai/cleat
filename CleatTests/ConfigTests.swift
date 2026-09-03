@@ -87,6 +87,51 @@ final class ConfigTests: XCTestCase {
         }
     }
 
+    // MARK: - Input volume wildcard
+
+    func testWildcardVolumeDecodes() throws {
+        let config = try decode(#"{"inputVolume": {"*": 100, "Brio 100": 75}}"#)
+
+        XCTAssertEqual(config.inputVolume, ["*": 100, "Brio 100": 75])
+        XCTAssertTrue(config.inputVolumeHasWildcard)
+        XCTAssertNoThrow(try config.validate())
+    }
+
+    func testWildcardOutOfRangeFailsValidation() throws {
+        let config = try decode(#"{"inputVolume": {"*": 140}}"#)
+        XCTAssertThrowsError(try config.validate()) { error in
+            XCTAssertEqual(error as? ConfigError, .volumeOutOfRange(device: "*", value: 140))
+        }
+    }
+
+    func testNamedTargetWinsOverWildcard() throws {
+        let config = try decode(#"{"inputVolume": {"*": 100, "Brio 100": 75}}"#)
+        XCTAssertEqual(config.inputVolumeTarget(for: Fixture.brio), 75)
+    }
+
+    func testUnnamedDeviceTakesTheWildcardTarget() throws {
+        let config = try decode(#"{"inputVolume": {"*": 100, "Brio 100": 75}}"#)
+        XCTAssertEqual(config.inputVolumeTarget(for: Fixture.airPods), 100)
+    }
+
+    /// A UID entry names the device just as a name does, and still beats the wildcard.
+    func testUIDEntryWinsOverWildcard() throws {
+        let config = Config(inputVolume: ["*": 100, Fixture.airPods.uid: 60])
+        XCTAssertEqual(config.inputVolumeTarget(for: Fixture.airPods), 60)
+    }
+
+    func testWithoutWildcardAnUnnamedDeviceHasNoTarget() throws {
+        let config = try decode(#"{"inputVolume": {"Brio 100": 75}}"#)
+        XCTAssertFalse(config.inputVolumeHasWildcard)
+        XCTAssertNil(config.inputVolumeTarget(for: Fixture.airPods))
+        XCTAssertEqual(config.inputVolumeTarget(for: Fixture.brio), 75)
+    }
+
+    func testEmptyInputVolumeHasNoTargets() {
+        XCTAssertFalse(Config.disabled.inputVolumeHasWildcard)
+        XCTAssertNil(Config.disabled.inputVolumeTarget(for: Fixture.brio))
+    }
+
     func testLoadFromFileRoundTrips() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("cleat-config-\(UUID().uuidString).json")
