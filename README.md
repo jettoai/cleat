@@ -28,11 +28,11 @@ virtual device - Cleat leaves it alone.
 ## Install
 
 ```sh
-brew tap dreamerhyde/tap
+brew tap jettoai/tap
 brew install --cask cleat
 ```
 
-Or download the zip from [Releases](https://github.com/dreamerhyde/cleat/releases), unzip it into
+Or download the zip from [Releases](https://github.com/jettoai/cleat/releases), unzip it into
 `/Applications`, and open it once.
 
 Then write a config and start it:

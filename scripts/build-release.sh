@@ -89,5 +89,5 @@ xcrun stapler validate "$APP"
 echo "==> done: $ZIP"
 echo "sha256: $(shasum -a 256 "$ZIP" | awk '{print $1}')"
 echo
-echo "Next: create the GitHub release, then update Casks/cleat.rb in dreamerhyde/homebrew-tap"
+echo "Next: create the GitHub release, then update Casks/cleat.rb in jettoai/homebrew-tap"
 echo "with this version and sha256."

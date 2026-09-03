@@ -1,13 +1,13 @@
-# Template for the cask that ships in dreamerhyde/homebrew-tap. `version` and `sha256` come from
+# Template for the cask that ships in jettoai/homebrew-tap. `version` and `sha256` come from
 # scripts/build-release.sh, which prints both after notarizing.
 cask "cleat" do
   version "0.1.0"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 
-  url "https://github.com/dreamerhyde/cleat/releases/download/v#{version}/Cleat-#{version}.zip"
+  url "https://github.com/jettoai/cleat/releases/download/v#{version}/Cleat-#{version}.zip"
   name "Cleat"
   desc "Keeps macOS audio devices where you declared them"
-  homepage "https://github.com/dreamerhyde/cleat"
+  homepage "https://github.com/jettoai/cleat"
 
   depends_on macos: ">= :sonoma"
 
