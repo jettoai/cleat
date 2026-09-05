@@ -14,12 +14,6 @@ struct BluetoothHeadset: Equatable, Sendable {
     let address: String
     let isConnected: Bool
 
-    init(name: String, address: String, isConnected: Bool) {
-        self.name = name
-        self.address = address
-        self.isConnected = isConnected
-    }
-
     /// `70-f9-4a-b6-0c-c9` (what IOBluetooth reports) to `70:F9:4A:B6:0C:C9` (what the routing
     /// daemon expects). Anything already in that form is returned unchanged.
     static func canonicalAddress(_ value: String) -> String {

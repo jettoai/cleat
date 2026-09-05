@@ -157,11 +157,12 @@ enum CLI {
             return fail("reclaim: no answer in \(Int(responseTimeout))s")
         }
 
+        let outcome = answer.outcome
         print("action:  \(answer.action.map(String.init) ?? "-")")
         print("reason:  \(answer.reason ?? "-")")
         if let error = answer.error { print("error:   \(error)") }
-        print("verdict: \(verdict(answer.outcome))")
-        return answer.outcome == .routed || answer.outcome == .alreadyRouted ? 0 : 1
+        print("verdict: \(verdict(outcome))")
+        return outcome == .routed || outcome == .alreadyRouted ? 0 : 1
     }
 
     /// Observed in about ten milliseconds every time; the wait is this long only so a daemon that

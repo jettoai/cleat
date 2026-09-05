@@ -71,7 +71,7 @@ enum OutputPinRule {
                 && !$0.isListed(in: config.blockedOutput)
                 && !HeadphonesTakeoverRule.owns($0, config)
         }
-        guard let escape = escapes.sorted(by: AudioDevice.byName).first else { return [] }
+        guard let escape = escapes.min(by: AudioDevice.byName) else { return [] }
 
         return [.setDefaultOutput(
             escape.id, reason: "\(current.name) -> \(escape.name) (blocked)"

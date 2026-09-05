@@ -40,11 +40,14 @@ struct RouteResponse: Equatable, Sendable {
 
     var outcome: Outcome {
         let text = reason ?? ""
+        // Matched case insensitively, folded once: the daemon's wording is not promised to keep
+        // its capitalisation. The detail below is cut from `text`, which keeps its own.
+        let folded = text.lowercased()
         // "Already routed" wins over a Route action: whatever the daemon reports having done,
         // the headset was here before we asked, so nothing about this pass changed anything.
-        if contains(text, "already routed") { return .alreadyRouted }
+        if folded.contains("already routed") { return .alreadyRouted }
         if action == Self.routeAction { return .routed }
-        if contains(text, "remote category") {
+        if folded.contains("remote category") {
             // The reason reads "Rejected, Remote Category 301 > Local Category 200, ..."; the
             // "Rejected" half is already said by the log line this ends up in.
             let detail = text.hasPrefix("Rejected, ") ? String(text.dropFirst("Rejected, ".count)) : text
@@ -52,14 +55,10 @@ struct RouteResponse: Equatable, Sendable {
         }
         // "Previous hijack hasn't finished". Matched on two words rather than on the apostrophe,
         // which is the character most likely to be spelled differently in another build.
-        if contains(text, "hijack"), contains(text, "finished") { return .busy }
+        if folded.contains("hijack"), folded.contains("finished") { return .busy }
 
         if !text.isEmpty { return .refused(text) }
         return .refused(error ?? "no reason given")
-    }
-
-    private func contains(_ haystack: String, _ needle: String) -> Bool {
-        haystack.range(of: needle, options: .caseInsensitive) != nil
     }
 }
 

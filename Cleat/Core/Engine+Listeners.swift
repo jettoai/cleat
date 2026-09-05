@@ -86,10 +86,9 @@ extension Engine {
 
         // Every device the volume rule has a target for, which with a `"*"` wildcard is every
         // input device present: a gain nobody listens to is only pulled back on the next
-        // unrelated event, which is exactly the drift this rule exists to catch.
-        let held = snapshot.devices
-            .filter { $0.hasInput && config.inputVolumeTarget(for: $0) != nil }
-            .sorted { $0.id < $1.id }
+        // unrelated event, which is exactly the drift this rule exists to catch. The same
+        // question the snapshot asks before reading those gains, asked in one place.
+        let held = config.inputVolumeDevices(among: snapshot.devices).sorted { $0.id < $1.id }
         for device in held {
             // Main plus both channels: a device that has no main volume element reports changes
             // per channel instead, and registering for a property a device lacks is a no-op.

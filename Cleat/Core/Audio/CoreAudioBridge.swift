@@ -66,9 +66,8 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
 
         // Only the reclaim rule asks whether the Mac is playing, so only a config that turns it on
         // pays for the read.
-        let outputRunning = config.reclaim.isEmpty
-            ? false
-            : defaultOutput.map(isRunningSomewhere) ?? false
+        let outputRunning = !config.reclaim.isEmpty
+            && (defaultOutput.map(isRunningSomewhere) ?? false)
 
         return DeviceSnapshot(
             devices: devices,

@@ -288,13 +288,6 @@ final class Engine: @unchecked Sendable {
     /// event reconciles again, and a retry loop against a device that is disappearing is how a
     /// daemon ends up fighting the system.
     private func apply(_ action: Action) {
-        // The one action that is not a write: it is a question for another daemon, and what
-        // happened is only known when the answer arrives, which is where its log line is written.
-        if case .requestRoute(let name, let address, let reason) = action {
-            requestRoute(name: name, address: address, reason: reason)
-            return
-        }
-
         let status: OSStatus
         switch action {
         case .setDefaultInput(let device, _):
@@ -305,8 +298,13 @@ final class Engine: @unchecked Sendable {
             status = system.setBalance(device, value)
         case .setInputVolume(let device, let value, _):
             status = system.setInputVolume(device, value)
-        case .requestRoute:
-            return  // handled above, before there was an OSStatus to talk about
+
+        case .requestRoute(let name, let address, let reason):
+            // The one action that is not a write: it is a question for another daemon, and what
+            // happened is only known when the answer arrives, which is where its log line is
+            // written. There is no OSStatus to fall through to.
+            requestRoute(name: name, address: address, reason: reason)
+            return
         }
 
         if status == noErr {
