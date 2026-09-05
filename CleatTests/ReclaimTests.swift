@@ -619,23 +619,14 @@ final class ReclaimTests: XCTestCase {
     private final class ListReader: @unchecked Sendable {
 
         var answer: [BluetoothHeadset]?
-        private let lock = NSLock()
-        private var count = 0
+        private(set) var reads = 0
 
         init(answer: [BluetoothHeadset]?) {
             self.answer = answer
         }
 
-        var reads: Int {
-            lock.lock()
-            defer { lock.unlock() }
-            return count
-        }
-
         func read() -> [BluetoothHeadset]? {
-            lock.lock()
-            count += 1
-            lock.unlock()
+            reads += 1
             return answer
         }
     }

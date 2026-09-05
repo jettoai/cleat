@@ -19,8 +19,9 @@ enum Paths {
     /// where they are, so `cleat status` reports on the same files whichever config was loaded,
     /// and a stray variable can never hide the real daemon's state behind a second copy.
     static var configURL: URL {
-        let override = ProcessInfo.processInfo.environment[configOverrideVariable] ?? ""
-        guard !override.isEmpty else { return configDirectory.appendingPathComponent("config.json") }
+        guard let override = ProcessInfo.processInfo.environment[configOverrideVariable],
+              !override.isEmpty
+        else { return configDirectory.appendingPathComponent("config.json") }
         return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
     }
 
