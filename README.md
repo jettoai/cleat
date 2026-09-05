@@ -45,8 +45,10 @@ Then write a config and start it:
 **Read the example before you copy it.** It is the author's own setup, not a neutral starting
 point: it holds every input device's gain at 100 percent (`"inputVolume": {"*": 100, ...}`) and it
 turns headphone takeover on, so any Bluetooth headset becomes the output as soon as it connects.
-The device names in it are the author's, so the rest of it does nothing on your machine until you
-put your own there. Edit it for your devices first, or start from `{}` and add one rule at a time.
+The device names in it are the author's, so the rules that name devices do nothing on your machine
+until you put your own there - but two settings in it name no device and take effect at once:
+`balance` pulls whatever output you are on back to centre, and `launchAtLogin` registers Cleat as a
+login item. Edit it for your devices first, or start from `{}` and add one rule at a time.
 
 ```sh
 mkdir -p ~/.config/cleat
@@ -98,17 +100,20 @@ alone either way.
 
 **Headphones.** When a Bluetooth output device appears, it becomes the output. Choosing another
 device by hand while it stays connected is respected: with `headphonesTakeOver` on, `output` never
-moves the sound off a connected Bluetooth device and never moves it onto one, so the priority list
-decides what plays when no headphones hold the output. Listing a headset in `output` as well is
-therefore neither necessary nor harmful. macOS does this for wired headphones already and iOS does
-it for AirPods;
+moves the sound off a connected Bluetooth device and never moves it onto one, unless that device is
+on `blockedOutput` - that list says "never this one", and it outranks "this one is a headset". So
+the priority list decides what plays when no headphones hold the output. macOS does this for wired
+headphones already and iOS does it for AirPods;
 over Bluetooth on a Mac, reconnecting a headset that was last paired to a phone leaves the sound
 coming out of the speakers, which is the gap this fills. Headphones already connected when Cleat
 starts are not treated as having just arrived, so restarting Cleat never moves the output.
 
 `blockedOutput` is the other half of it. Some USB microphones carry a speaker end, and that is
 where macOS lands when the headphones leave. It is not on your priority list, so without the
-blocked list Cleat would read it as an output you picked yourself and leave it there.
+blocked list Cleat would read it as an output you picked yourself and leave it there. A blocked
+device is moved off even when the priority list has nowhere to send the sound - when every device
+it names is a headset Cleat may not touch, the sound goes to the first output present that is
+neither blocked nor a headset, and only stays put when there is no such device.
 
 **Reclaim.** AirPods paired to both a Mac and a phone belong to whichever one last asked for
 them. The phone asks by playing something; when it stops, nothing on the Mac asks again, so the

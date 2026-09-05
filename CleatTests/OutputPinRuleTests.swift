@@ -150,6 +150,48 @@ final class OutputPinRuleTests: XCTestCase {
         )
     }
 
+    /// Every listed output is a headset the rule may not touch, so the list has no candidate - but
+    /// the current output is blocked, and that list is not suspended just because the priority
+    /// list ran out. The sound moves to the first output present that is neither blocked nor a
+    /// headset.
+    func testBlockedCurrentOutputIsEvictedWhenEveryListedOutputIsAHeadset() {
+        var config = Config(output: ["AirPods Max"])
+        config.headphonesTakeOver = true
+        config.blockedOutput = ["Maono AI Microphone"]
+        let snapshot = snapshot(
+            [maonoSpeakers, Fixture.airPods, Fixture.displaySpeakers], current: maonoSpeakers
+        )
+        XCTAssertEqual(
+            OutputPinRule.reconcile(snapshot, config),
+            [.setDefaultOutput(
+                Fixture.displaySpeakers.id,
+                reason: "Maono\u{00A0}AI Microphone -> Studio Display Speakers (blocked)"
+            )]
+        )
+    }
+
+    /// Nowhere to go: the only other output present is the headset itself, which this rule may not
+    /// switch to. The blocked device keeps the output rather than the sound going nowhere.
+    func testBlockedCurrentOutputStaysWhenTheOnlyEscapeIsAHeadset() {
+        var config = Config(output: ["AirPods Max"])
+        config.headphonesTakeOver = true
+        config.blockedOutput = ["Maono AI Microphone"]
+        let snapshot = snapshot([maonoSpeakers, Fixture.airPods], current: maonoSpeakers)
+        XCTAssertEqual(OutputPinRule.reconcile(snapshot, config), [])
+    }
+
+    /// The escape is only for blocked outputs. A hand-picked one that is merely unlisted stays,
+    /// exactly as it does when the list does have a candidate.
+    func testUnlistedCurrentOutputIsLeftAloneWhenEveryListedOutputIsAHeadset() {
+        var config = Config(output: ["AirPods Max"])
+        config.headphonesTakeOver = true
+        config.blockedOutput = ["Maono AI Microphone"]
+        let snapshot = snapshot(
+            [Fixture.macSpeakers, Fixture.airPods, Fixture.displaySpeakers], current: Fixture.macSpeakers
+        )
+        XCTAssertEqual(OutputPinRule.reconcile(snapshot, config), [])
+    }
+
     func testNoDefaultOutputDoesNothing() {
         let snapshot = snapshot([Fixture.displaySpeakers, Fixture.macSpeakers], current: nil)
         XCTAssertEqual(OutputPinRule.reconcile(snapshot, config), [])

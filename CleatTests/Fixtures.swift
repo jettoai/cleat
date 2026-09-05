@@ -19,6 +19,12 @@ enum Fixture {
         id: 20, name: "Brio 100", uid: "AppleUSBAudioEngine:Brio 100:B",
         hasInput: true, hasOutput: false, transport: kAudioDeviceTransportTypeUSB
     )
+    /// A second webcam of the same model: same name, different UID and id. One config entry names
+    /// both of them, which is what keeps the second one from being the device nothing holds.
+    static let secondBrio = AudioDevice(
+        id: 21, name: "Brio 100", uid: "AppleUSBAudioEngine:Brio 100:C",
+        hasInput: true, hasOutput: false, transport: kAudioDeviceTransportTypeUSB
+    )
     static let airPods = AudioDevice(
         id: 30, name: "AirPods Max", uid: "AirPodsMax-UID",
         hasInput: true, hasOutput: true, transport: kAudioDeviceTransportTypeBluetooth

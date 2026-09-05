@@ -30,6 +30,23 @@ final class InputVolumeRuleTests: XCTestCase {
         )
     }
 
+    /// Two webcams of the same model, one entry naming both: the drift is held on each of them,
+    /// not only on the one the device list happened to put first.
+    func testBothDevicesSharingANameAreHeld() {
+        let snapshot = DeviceSnapshot(
+            devices: [Fixture.brio, Fixture.secondBrio],
+            defaultInput: Fixture.brio.id,
+            inputVolumes: [Fixture.brio.id: 0.40, Fixture.secondBrio.id: 0.50]
+        )
+        XCTAssertEqual(
+            InputVolumeRule.reconcile(snapshot, config),
+            [
+                .setInputVolume(Fixture.brio.id, 0.75, reason: "Brio 100 40% -> 75%"),
+                .setInputVolume(Fixture.secondBrio.id, 0.75, reason: "Brio 100 50% -> 75%")
+            ]
+        )
+    }
+
     func testNonDefaultDeviceIsAlsoHeld() {
         // Zoom lowers the gain of the device IT uses, which need not be the system default.
         let snapshot = snapshot([Fixture.wireless.id: 0.88, Fixture.brio.id: 0.40], default: Fixture.wireless.id)

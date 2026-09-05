@@ -155,6 +155,37 @@ final class ConfigTests: XCTestCase {
         XCTAssertNil(Config.disabled.inputVolumeTarget(for: Fixture.brio))
     }
 
+    // MARK: - Which devices are worth reading
+
+    /// Two devices sharing a name are two devices: one entry names both, so both gains are read
+    /// and both are held. Taking whichever one the HAL listed first would leave the second one
+    /// drifting with nothing watching it.
+    func testBothDevicesSharingANameAreWorthReading() {
+        let config = Config(inputVolume: ["Brio 100": 75])
+        XCTAssertEqual(
+            config.inputVolumeDevices(among: [Fixture.brio, Fixture.secondBrio, Fixture.wireless]),
+            [Fixture.brio, Fixture.secondBrio]
+        )
+    }
+
+    /// The rest of the question, unchanged: outputs are not input devices, a wildcard takes every
+    /// input device, and an empty `inputVolume` reads nothing at all.
+    func testOnlyInputDevicesWithATargetAreWorthReading() {
+        let named = Config(inputVolume: ["Brio 100": 75])
+        XCTAssertEqual(
+            named.inputVolumeDevices(among: [Fixture.brio, Fixture.displaySpeakers, Fixture.wireless]),
+            [Fixture.brio]
+        )
+
+        let wildcard = Config(inputVolume: ["*": 100])
+        XCTAssertEqual(
+            wildcard.inputVolumeDevices(among: [Fixture.brio, Fixture.displaySpeakers, Fixture.wireless]),
+            [Fixture.brio, Fixture.wireless]
+        )
+
+        XCTAssertEqual(Config.disabled.inputVolumeDevices(among: [Fixture.brio]), [])
+    }
+
     func testLoadFromFileRoundTrips() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("cleat-config-\(UUID().uuidString).json")

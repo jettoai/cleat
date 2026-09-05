@@ -345,9 +345,7 @@ final class Engine: @unchecked Sendable {
         rules["inputPin"] = Self.pinSummary(config.input, blocked: config.blockedInput)
         rules["outputPin"] = Self.pinSummary(config.output, blocked: config.blockedOutput)
 
-        rules["headphones"] = config.headphonesTakeOver
-            ? "on (bluetooth output takes over when it connects)"
-            : "off"
+        rules["headphones"] = Self.headphonesSummary(config)
 
         rules["reclaim"] = reclaimSummary()
 
@@ -376,14 +374,29 @@ final class Engine: @unchecked Sendable {
         return rules
     }
 
+    /// The `headphones` line. The blocked list is named here because it is this rule that honours
+    /// it when a headset connects, and it does so whether or not `output` names anything: saying
+    /// so on the `outputPin` line alone would leave the blocking looking like the priority list's
+    /// doing.
+    private static func headphonesSummary(_ config: Config) -> String {
+        guard config.headphonesTakeOver else { return "off" }
+        var summary = "on (bluetooth output takes over when it connects"
+        if !config.blockedOutput.isEmpty {
+            summary += "; blocked from taking over: \(config.blockedOutput.joined(separator: ", "))"
+        }
+        return summary + ")"
+    }
+
     /// The `inputPin` and `outputPin` lines, which say the same two things on both sides: the
     /// priority list, and the blocked list when there is one. An empty priority list is the rule
     /// being off.
     private static func pinSummary(_ priority: [String], blocked: [String]) -> String {
         guard !priority.isEmpty else {
-            // An empty priority list turns the whole rule off, blocked list and all. Saying only
-            // "off" would leave someone who wrote a blocked list believing it is in force.
-            return blocked.isEmpty ? "off" : "off (blocked list needs a priority list)"
+            // An empty priority list turns this rule off, blocked list and all, so a bare "off"
+            // would leave someone who wrote a blocked list believing this rule enforces it. It
+            // says only why this rule is off: on the output side the blocked list still has a
+            // reader - headphone takeover - and the `headphones` line is where that is said.
+            return blocked.isEmpty ? "off" : "off (no priority list)"
         }
         var summary = "on (\(priority.joined(separator: ", ")))"
         if !blocked.isEmpty {

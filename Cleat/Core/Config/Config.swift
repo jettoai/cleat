@@ -132,6 +132,19 @@ struct Config: Codable, Equatable, Sendable {
         return named?.value ?? inputVolume[Self.inputVolumeWildcard]
     }
 
+    /// The devices among these whose gain this config asks to hold, and so the ones whose gain is
+    /// worth reading. Asked of the devices rather than of the entries, so two devices sharing a
+    /// name are two devices here and both are held: an entry names a device, not one device.
+    ///
+    /// A wildcard gives every input device a target, which makes the per-device question
+    /// redundant; without one it is the question, and every device that no entry names is IPC we
+    /// would throw away.
+    func inputVolumeDevices(among devices: [AudioDevice]) -> [AudioDevice] {
+        guard !inputVolume.isEmpty else { return [] }
+        let inputs = devices.filter(\.hasInput)
+        return inputVolumeHasWildcard ? inputs : inputs.filter { inputVolumeTarget(for: $0) != nil }
+    }
+
     static func load(from url: URL) throws -> Config {
         let data = try Data(contentsOf: url)
         let config = try JSONDecoder().decode(Config.self, from: data)

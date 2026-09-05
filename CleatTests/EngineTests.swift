@@ -285,7 +285,9 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
 
         XCTAssertEqual(
-            status()?.rules["headphones"], "on (bluetooth output takes over when it connects)"
+            status()?.rules["headphones"],
+            "on (bluetooth output takes over when it connects; "
+                + "blocked from taking over: Maono AI Microphone)"
         )
         XCTAssertEqual(
             status()?.rules["outputPin"],
@@ -528,8 +530,10 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(system.writes, ["output:\(Fixture.airPods.id)"])
     }
 
-    /// A blocked list with no priority list to go with it enforces nothing, and the status line
-    /// says so rather than reporting a bare "off".
+    /// A blocked list with no priority list gives the pin rule nothing to enforce, and the status
+    /// line says why rather than reporting a bare "off". It does not say the blocked list is dead:
+    /// with takeover on, that list still keeps a headset from grabbing the output, which is what
+    /// the `headphones` line reports.
     func testBlockedListWithoutAPriorityListSaysWhyItIsOff() throws {
         var config = headphonesConfig
         config.output = []
@@ -545,9 +549,15 @@ final class EngineTests: XCTestCase {
         engine.start(microphone: .granted)
         drain(engine)
 
-        XCTAssertEqual(status()?.rules["outputPin"], "off (blocked list needs a priority list)")
+        XCTAssertEqual(status()?.rules["outputPin"], "off (no priority list)")
         // And with neither list, the plain "off" is unchanged.
         XCTAssertEqual(status()?.rules["inputPin"], "off")
+        // The blocked list is still in force where it has a reader: takeover honours it.
+        XCTAssertEqual(
+            status()?.rules["headphones"],
+            "on (bluetooth output takes over when it connects; "
+                + "blocked from taking over: Maono AI Microphone)"
+        )
     }
 
     // MARK: - Status

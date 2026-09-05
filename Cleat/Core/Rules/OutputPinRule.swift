@@ -18,19 +18,24 @@ import CoreAudio
 /// plays when no headphones hold the output", and this is what makes that sentence true.
 ///
 /// A blocked device is not headphones for this purpose. `blockedOutput` is the user saying "never
-/// this one", which outranks "this one is a headset".
+/// this one", which outranks "this one is a headset" - both when a headset asks to be the output
+/// and when the list runs out of anywhere to send the sound instead.
 enum OutputPinRule {
 
     static func reconcile(_ snapshot: DeviceSnapshot, _ config: Config) -> [Action] {
         guard !config.output.isEmpty else { return [] }
 
-        let candidates = config.output
-            .compactMap { snapshot.device(matching: $0, input: false) }
-            .filter { !HeadphonesTakeoverRule.owns($0, config) }
-        guard let target = candidates.first else { return [] }
+        let listed = config.output.compactMap { snapshot.device(matching: $0, input: false) }
+        let candidates = listed.filter { !HeadphonesTakeoverRule.owns($0, config) }
 
-        guard let currentID = snapshot.defaultOutput, currentID != target.id else { return [] }
-        guard let current = snapshot.device(id: currentID) else { return [] }
+        guard let currentID = snapshot.defaultOutput,
+              let current = snapshot.device(id: currentID) else { return [] }
+
+        guard let target = candidates.first else {
+            return evictBlocked(current, snapshot, config, anyListedPresent: !listed.isEmpty)
+        }
+
+        guard currentID != target.id else { return [] }
         guard !HeadphonesTakeoverRule.owns(current, config) else { return [] }
 
         let isPinned = current.isListed(in: config.output)
@@ -40,6 +45,36 @@ enum OutputPinRule {
         let cause = isBlocked ? "blocked" : "higher priority present"
         return [.setDefaultOutput(
             target.id, reason: "\(current.name) -> \(target.name) (\(cause))"
+        )]
+    }
+
+    /// Every listed output that is here is a headset this rule may not switch to, so the priority
+    /// list has nothing to offer. That is not a reason to leave the sound on a device the user
+    /// blocked: `blockedOutput` is "never this one", and it outranks the list running out of
+    /// candidates. The way out is the first output present that is neither blocked nor a headset,
+    /// in name order, so the choice does not depend on the order the HAL handed the devices back.
+    ///
+    /// It is deliberately narrow. With no listed device here at all the rule stays silent as
+    /// before: the list is what says where sound belongs, and a list that names nothing present
+    /// has not said anything. And a current output that is merely unlisted was picked by hand, so
+    /// only a blocked one is moved.
+    private static func evictBlocked(
+        _ current: AudioDevice,
+        _ snapshot: DeviceSnapshot,
+        _ config: Config,
+        anyListedPresent: Bool
+    ) -> [Action] {
+        guard anyListedPresent, current.isListed(in: config.blockedOutput) else { return [] }
+
+        let escapes = snapshot.devices.filter {
+            $0.hasOutput
+                && !$0.isListed(in: config.blockedOutput)
+                && !HeadphonesTakeoverRule.owns($0, config)
+        }
+        guard let escape = escapes.sorted(by: AudioDevice.byName).first else { return [] }
+
+        return [.setDefaultOutput(
+            escape.id, reason: "\(current.name) -> \(escape.name) (blocked)"
         )]
     }
 }

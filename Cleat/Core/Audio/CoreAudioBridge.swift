@@ -53,16 +53,9 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         let defaultInput = defaultDevice(kAudioHardwarePropertyDefaultInputDevice)
         let defaultOutput = defaultDevice(kAudioHardwarePropertyDefaultOutputDevice)
 
-        // A wildcard gives every input device a target, so every input device's gain is worth
-        // reading; without one, only the named devices are, and the rest is IPC we would throw
-        // away.
-        let worthReading = config.inputVolumeHasWildcard
-            ? devices.filter(\.hasInput)
-            : config.inputVolume.keys.compactMap { entry in
-                devices.first {
-                    $0.hasInput && DeviceName.matches(entry: entry, name: $0.name, uid: $0.uid)
-                }
-            }
+        // Exactly the devices the input volume rule has a target for: the read set and the
+        // enforced set are the same question, asked in one place.
+        let worthReading = config.inputVolumeDevices(among: devices)
 
         var inputVolumes: [AudioDeviceID: Float] = [:]
         for device in worthReading {
