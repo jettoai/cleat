@@ -47,9 +47,11 @@ final class Engine: @unchecked Sendable {
     // because it is memory of what was asked and when, which a pure function must not have.
     /// The earliest the next request for this headset may go out.
     var reclaimNextAttempt: [String: Date] = [:]
-    /// Requests sent and not yet answered. One per headset at a time, which is what bounds the
-    /// client's parked-request table.
-    var reclaimInFlight: Set<String> = []
+    /// Requests sent and not yet answered, each with the moment it went out. One per headset at
+    /// a time, which is what bounds the client's parked-request table - and a reply that never
+    /// arrives stops counting after `reclaimInterval`, so a lost answer costs one interval rather
+    /// than every request for the rest of the session.
+    var reclaimInFlight: [String: Date] = [:]
     /// Headsets whose "the phone has it" line is already in the log. Cleared when the headset
     /// comes back, so the next spell reports for itself.
     var reclaimHeldLogged: Set<String> = []

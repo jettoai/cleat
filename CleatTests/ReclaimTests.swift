@@ -116,6 +116,30 @@ final class ReclaimTests: XCTestCase {
         )
     }
 
+    /// The engine's memory of what it asked for lately reaches the rule as an exclusion list, so
+    /// the single request a pass allows is spent on a headset that can actually be asked for
+    /// rather than on the first name in the list regardless.
+    func testBlockedHeadsetStepsAsideForTheNextOne() {
+        var config = self.config
+        config.reclaim = ["AirPods Max", "AirPods Pro"]
+
+        XCTAssertEqual(
+            ReclaimRule.reconcile(
+                playing(), [connectedAirPodsPro, connectedAirPods], config,
+                excluding: [connectedAirPods.address]
+            ),
+            [request(connectedAirPodsPro)]
+        )
+        // Every candidate blocked is nothing asked for, not the next name down anyway.
+        XCTAssertEqual(
+            ReclaimRule.reconcile(
+                playing(), [connectedAirPodsPro, connectedAirPods], config,
+                excluding: [connectedAirPods.address, connectedAirPodsPro.address]
+            ),
+            []
+        )
+    }
+
     // MARK: - Naming a headset
 
     func testHeadsetIsNamedByAddressInEitherForm() {
@@ -277,6 +301,45 @@ final class ReclaimTests: XCTestCase {
         world.reconcile()
         XCTAssertEqual(world.routing.addresses.count, 2)
         XCTAssertEqual(world.lines { $0.contains("reclaim:") }, 0)
+    }
+
+    /// A request the daemon never answers is a request that must expire. The reply is an XPC
+    /// message like any other; if it is lost, the headset was blocked until the next restart.
+    func testUnansweredRequestStopsBlockingAfterTheInterval() throws {
+        let world = try World(config: config)
+        // No answer at all - the routing daemon takes the request and says nothing.
+        world.routing.answer = nil
+
+        world.start()
+        XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress])
+
+        // Inside the interval nothing is asked again, exactly as when an answer did arrive.
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress])
+
+        world.advance(Engine.reclaimInterval + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress, Self.airPodsAddress])
+    }
+
+    /// Two listed headsets, the first one held by a phone. The pass that cannot ask for it is the
+    /// second one's turn: a backoff on the first headset used to swallow every beat, and the other
+    /// headset was never asked for at all.
+    func testBackedOffHeadsetDoesNotStarveTheOtherOne() throws {
+        var config = self.config
+        config.reclaim = ["AirPods Max", "AirPods Pro"]
+        let world = try World(config: config, headsets: [connectedAirPodsPro, connectedAirPods])
+        world.routing.answer = RouteResponse(
+            action: 0, reason: "Rejected, Remote Category 301 > Local Category 200, audio streaming"
+        )
+
+        world.start()
+        XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress])
+
+        world.reconcile()
+        XCTAssertEqual(
+            world.routing.addresses, [Self.airPodsAddress, connectedAirPodsPro.address]
+        )
     }
 
     /// A macOS without the routing class turns the rule off: one line, and nothing is ever asked.

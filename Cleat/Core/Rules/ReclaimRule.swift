@@ -26,8 +26,13 @@ enum ReclaimRule {
         "cleat: \(headset.name) connected but not an audio device, Mac is playing"
     }
 
+    /// `excluding` is the engine's memory of what has been asked for lately: headsets it is still
+    /// waiting on an answer about, and headsets a backoff is holding down. They are taken out
+    /// before the pick rather than after it, so a headset that cannot be asked for right now does
+    /// not spend this pass's one request while another listed headset goes unasked.
     static func reconcile(
-        _ snapshot: DeviceSnapshot, _ headsets: [BluetoothHeadset], _ config: Config
+        _ snapshot: DeviceSnapshot, _ headsets: [BluetoothHeadset], _ config: Config,
+        excluding blocked: Set<String> = []
     ) -> [Action] {
         // Nothing is asked for while the Mac is silent: a Mac that is not playing has no claim to
         // make, and taking the headset off a phone that is using it would be exactly the rudeness
@@ -37,25 +42,34 @@ enum ReclaimRule {
         // One request at a time. Only one device can hold the output, so asking for two headsets
         // on the same pass could only start a fight between them; the name order is the same tie
         // break every other list in Cleat uses.
-        guard let target = candidates(snapshot, headsets, config).first else { return [] }
+        let target = candidates(snapshot, headsets, config).first { !blocked.contains($0.address) }
+        guard let target else { return [] }
         return [.requestRoute(
             name: target.name, address: target.address, reason: requestReason(for: target)
         )]
     }
 
     /// The listed headsets that are connected to this Mac and have no CoreAudio device here, in
-    /// the order the rule would act on them. Shared with `cleat reclaim`, so the manual button and
-    /// the daemon can never disagree about which headset the config means.
+    /// the order the rule would act on them. `cleat reclaim` cannot use this list - it has no
+    /// CoreAudio snapshot to leave devices out by - but it picks from the listed and connected
+    /// headsets in the same `inRuleOrder`, and sends the same `requestReason`, so a config entry
+    /// that matches two headsets means the same one to the button and to the daemon.
     static func candidates(
         _ snapshot: DeviceSnapshot, _ headsets: [BluetoothHeadset], _ config: Config
     ) -> [BluetoothHeadset] {
-        headsets
-            .filter { headset in
+        inRuleOrder(
+            headsets.filter { headset in
                 headset.isConnected
                     && headset.isListed(in: config.reclaim)
                     && !isAudioDevice(headset, in: snapshot)
             }
-            .sorted { $0.name == $1.name ? $0.address < $1.address : $0.name < $1.name }
+        )
+    }
+
+    /// Name first, address as the tie break: the order every list in Cleat is read in, and the
+    /// order both this rule and `cleat reclaim` act on headsets in.
+    static func inRuleOrder(_ headsets: [BluetoothHeadset]) -> [BluetoothHeadset] {
+        headsets.sorted { $0.name == $1.name ? $0.address < $1.address : $0.name < $1.name }
     }
 
     /// Whether this headset is already an output device the Mac can see. Matched on the Bluetooth

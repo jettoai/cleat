@@ -128,12 +128,21 @@ enum CLI {
             wanted = arguments
         }
 
-        let headsets = IOBluetoothPairings().pairedHeadsets()
-        guard let target = headsets.first(where: { $0.isListed(in: wanted) }) else {
+        // The pairing list arrives in no particular order and a name can match more than one
+        // headset, so the connected ones are what is picked from - in the rule's own order, so
+        // this button and the daemon ask for the same headset - and the disconnected ones are
+        // only what the message names when there is nothing to ask.
+        let listed = ReclaimRule.inRuleOrder(
+            IOBluetoothPairings().pairedHeadsets().filter { $0.isListed(in: wanted) }
+        )
+        guard !listed.isEmpty else {
             return fail("reclaim: none of \(wanted.joined(separator: ", ")) is paired with this Mac")
         }
-        guard target.isConnected else {
-            return fail("reclaim: \(target.name) is paired but not connected")
+        guard let target = listed.first(where: { $0.isConnected }) else {
+            let names = listed.map(\.name).joined(separator: ", ")
+            return fail(
+                "reclaim: \(names) \(listed.count == 1 ? "is" : "are") paired but not connected"
+            )
         }
 
         print("asking for \(target.name) (\(target.address)) with score \(Engine.reclaimScore)")
