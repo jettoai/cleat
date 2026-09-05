@@ -175,7 +175,7 @@ final class ReclaimTests: XCTestCase {
     }
     """
 
-    func testPairingListIsReadFromSystemProfiler() {
+    func testPairingListParsesSystemProfilerJSON() {
         let headsets = SystemProfilerPairings.parse(Data(Self.pairingListJSON.utf8))
 
         // The entry with no address is dropped: an address is what a request is addressed to.
@@ -210,7 +210,7 @@ final class ReclaimTests: XCTestCase {
     func testPairingListIsReusedForAsLongAsARequestIsThrottled() {
         let clock = World.Clock()
         let reader = ListReader(answer: [connectedAirPods])
-        let pairings = SystemProfilerPairings(now: { clock.now }, read: reader.read)
+        let pairings = SystemProfilerPairings(now: { clock.now }, read: { reader.read() })
 
         XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
         XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
@@ -230,13 +230,32 @@ final class ReclaimTests: XCTestCase {
     func testFailedPairingListIsNotRemembered() {
         let clock = World.Clock()
         let reader = ListReader(answer: nil)
-        let pairings = SystemProfilerPairings(now: { clock.now }, read: reader.read)
+        let pairings = SystemProfilerPairings(now: { clock.now }, read: { reader.read() })
 
         XCTAssertEqual(pairings.pairedHeadsets(), [])
         XCTAssertEqual(pairings.pairedHeadsets(), [])
         XCTAssertEqual(reader.reads, 2)
 
         // The first reading that works is kept, from that moment.
+        reader.answer = [connectedAirPods]
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(reader.reads, 3)
+    }
+
+    /// An empty reading is not an answer to hold on to either. Nothing tells a Mac with no
+    /// pairings apart from a report Cleat could recognise nothing in, and the cheap direction to
+    /// be wrong in is asking again on the next beat.
+    func testEmptyPairingListIsNotRemembered() {
+        let clock = World.Clock()
+        let reader = ListReader(answer: [])
+        let pairings = SystemProfilerPairings(now: { clock.now }, read: { reader.read() })
+
+        XCTAssertEqual(pairings.pairedHeadsets(), [])
+        XCTAssertEqual(pairings.pairedHeadsets(), [])
+        XCTAssertEqual(reader.reads, 2)
+
+        // And the first reading that finds something is kept, from that moment.
         reader.answer = [connectedAirPods]
         XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
         XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])

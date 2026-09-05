@@ -60,15 +60,21 @@ final class SystemProfilerPairings: BluetoothInventory, @unchecked Sendable {
 
     private static let toolURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
 
-    /// How long a reconcile beat will wait for the list. The measured answer is far inside this;
-    /// the limit is for the answer that never comes, which has to cost the engine one beat rather
-    /// than the daemon's life. That is the whole lesson of 0.3.0.
+    /// How long a reconcile beat will wait for the list before giving up on it. The measured
+    /// answer is far inside this; the limit is for the answer that never comes, which has to cost
+    /// the engine one beat rather than the daemon's life. That is the whole lesson of 0.3.0.
+    ///
+    /// It is a limit on this side's wait, not on the tool's life - `readPairingList` says why
+    /// nothing done to the child can be relied on to end a read.
     static let timeout: TimeInterval = 5
 
-    /// How long an answer is reused before the tool is run again. Tied to the request throttle on
-    /// purpose: a headset cannot be asked for twice inside that window, so a list fresher than it
-    /// could not change what the rule does - it would only spawn another process per beat, and
-    /// beats are cheap to come by, a liveness flip on a microphone in use being one.
+    /// How long an answer worth keeping is reused before the tool is run again. Tied to the
+    /// request throttle on purpose: a headset already asked for cannot be asked for again inside
+    /// that window, so re-reading the list on its account would only spawn another process per
+    /// beat, and beats are cheap to come by, a liveness flip on a microphone in use being one.
+    /// What the window does cost is a headset that pairs or connects part way through it: that
+    /// one stays out of the rule's sight until the window is up. That is the trade, and it is
+    /// only taken for a reading that found something - see `pairedHeadsets`.
     static let reuseWindow: TimeInterval = Engine.reclaimInterval
 
     private let now: @Sendable () -> Date
@@ -96,9 +102,13 @@ final class SystemProfilerPairings: BluetoothInventory, @unchecked Sendable {
 
         // Asked for outside the lock: this spawns a process, and holding a lock across it would
         // hand every other caller the wait the reuse window exists to remove.
-        guard let headsets = read() else {
-            // A failed read is not an answer. Remembering it would turn one bad reading into
-            // thirty seconds of telling the rule this Mac has no paired headsets.
+        guard let headsets = read(), !headsets.isEmpty else {
+            // Neither a failed reading nor an empty one is an answer to keep. Remembering either
+            // would turn one bad reading - a tool that would not start, one that did not answer
+            // in time, or a document with nothing recognisable in it - into half a minute of
+            // telling the rule this Mac has no paired headsets. A Mac that really has none pays
+            // one subprocess per beat instead, and only while something is playing and reclaim is
+            // configured, which is the only state that asks for this list at all.
             return []
         }
 
@@ -119,8 +129,13 @@ final class SystemProfilerPairings: BluetoothInventory, @unchecked Sendable {
         return answer.headsets
     }
 
-    /// One reading of the pairing list, or nil when the tool failed, had to be stopped, or printed
-    /// something that is not the report Cleat asked for.
+    /// One reading of the pairing list, or nil when the tool failed to start, exited badly, or
+    /// did not answer inside the deadline.
+    ///
+    /// A document that is not the report Cleat asked for does not come back as nil: `parse`
+    /// returns what it could recognise, and recognising nothing is an empty list, which is
+    /// indistinguishable from a Mac with no pairings. `pairedHeadsets` is where the two failure
+    /// shapes meet the same fate - neither is cached, so the next beat asks again.
     static func query() -> [BluetoothHeadset]? {
         guard let data = readPairingList() else { return nil }
         return parse(data)
@@ -153,7 +168,8 @@ final class SystemProfilerPairings: BluetoothInventory, @unchecked Sendable {
         }
     }
 
-    /// Runs the tool and hands back what it printed, or nil if it failed or had to be stopped.
+    /// Runs the tool and hands back what it printed, or nil if it would not start, exited badly,
+    /// or did not answer inside `timeout`.
     private static func readPairingList() -> Data? {
         let task = Process()
         task.executableURL = toolURL
@@ -163,40 +179,93 @@ final class SystemProfilerPairings: BluetoothInventory, @unchecked Sendable {
         task.standardError = FileHandle.nullDevice
         guard (try? task.run()) != nil else { return nil }
 
-        // The read below is what the calling queue is parked on, and only the child closing its
-        // end releases it - so the deadline has to act on the child, not on the read.
-        let watchdog = ChildProcess(task)
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { watchdog.stop() }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
-        watchdog.settle()
-        return task.terminationStatus == 0 ? data : nil
+        // Reading to EOF ends when every writer has let go of the pipe, and the writers are not
+        // only the process Cleat started: `system_profiler` forks a worker of its own that
+        // inherits the same fd. Signals are a poor way to end a read even so. Measured with this
+        // exact Process and Pipe against a 5s deadline: a child that ignores SIGTERM keeps the
+        // reader parked to 12.60s, a signal it ignores having cost it nothing; and a child that
+        // forks a grandchild and exits cleanly keeps it parked to 9.01s while reporting status 0,
+        // so a truncated document would have been taken for an answer. Foundation does give the
+        // child a process group of its own and `terminate()` reaches all of it, but that only
+        // buries what is still in the group and still answering to a pid the system has not
+        // handed on since. A good effort, and not a deadline.
+        //
+        // The deadline therefore belongs on this side of the pipe. The read runs on a queue that
+        // is allowed to stay parked; `Engine.queue` waits here only as long as it agreed to.
+        let child = ChildProcess(task)
+        child.readInBackground(pipe.fileHandleForReading)
+        return child.answer(within: timeout)
     }
 }
 
-/// A child process two queues share: the one waiting for its output, and the one holding the
-/// deadline. The lock is what keeps "it is still running" and "stop it" from being separated by
-/// the child exiting in between.
+/// A tool held at arm's length: its output is read on a queue that is allowed to stay parked for
+/// as long as the tool likes, while the caller waits on a semaphore that is not.
+///
+/// The lock keeps "it is still running" and "signal it" from being separated by the child exiting
+/// and being waited for in between, which would leave a signal aimed at a process id the system is
+/// free to have given to somebody else.
 private final class ChildProcess: @unchecked Sendable {
     private let lock = NSLock()
+    private let finished = DispatchSemaphore(value: 0)
     private let task: Process
     private var reaped = false
+    private var output: Data?
 
     init(_ task: Process) { self.task = task }
 
-    /// The deadline fired. Stops the child unless it has already finished on its own.
-    func stop() {
+    /// Reads to EOF, waits for the child, and keeps what a clean run printed.
+    ///
+    /// Both halves have to hold for an answer. EOF alone only says every writer let go, which a
+    /// tool that printed half a document and exited also does - and it exits 0 while doing it.
+    func readInBackground(_ handle: FileHandle) {
+        DispatchQueue.global().async { [self] in
+            let data = handle.readDataToEndOfFile()
+            task.waitUntilExit()
+            let clean = task.terminationStatus == 0
+            lock.lock()
+            reaped = true
+            output = clean ? data : nil
+            lock.unlock()
+            finished.signal()
+        }
+    }
+
+    /// What the tool printed, or nil if it failed or is not done in time. The wait ends at the
+    /// deadline whatever the child is doing: a run that outlives it is abandoned, never awaited.
+    func answer(within timeout: TimeInterval) -> Data? {
+        guard finished.wait(timeout: .now() + timeout) == .success else {
+            abandon()
+            return nil
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        return output
+    }
+
+    /// Nobody is waiting for this run any more. Ask it to leave, insist a second later, and let
+    /// the reading queue see EOF whenever it comes - what it reads then goes nowhere.
+    ///
+    /// This is a burial, not the deadline: it is what keeps an abandoned run from holding a queue
+    /// and a descriptor for as long as it likes, and the deadline above holds whether it works.
+    private func abandon() {
+        send(SIGTERM)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { [self] in send(SIGKILL) }
+    }
+
+    /// Signals the run, group and all, unless it has already been waited for.
+    ///
+    /// The group is the point: the tool forks a worker that inherits the pipe, so signalling the
+    /// one process Cleat started leaves the reading queue parked on a grandchild that nobody is
+    /// going to stop. Foundation gives the child a process group of its own - measured: the
+    /// child's pid is its own pgid, and neither is Cleat's - and that is what makes a group signal
+    /// both worth sending and safe to send. The check is the whole safety argument, so it fails
+    /// towards the narrow signal: a child that is somehow not its own group leader is in Cleat's
+    /// group, and signalling that group would take the daemon down with the tool.
+    private func send(_ number: Int32) {
         lock.lock()
         defer { lock.unlock() }
         guard !reaped, task.isRunning else { return }
-        task.terminate()
-    }
-
-    /// The child finished and has been waited for; the deadline must not touch it again.
-    func settle() {
-        lock.lock()
-        reaped = true
-        lock.unlock()
+        let pid = task.processIdentifier
+        kill(getpgid(pid) == pid ? -pid : pid, number)
     }
 }
