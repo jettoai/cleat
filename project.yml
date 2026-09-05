@@ -37,6 +37,10 @@ targets:
       # to cp it out of Contents/Resources.
       - path: config.example.json
         buildPhase: resources
+    dependencies:
+      # Rule 7 reads the Bluetooth pairing list to find a headset that is connected but has no
+      # CoreAudio device yet.
+      - sdk: IOBluetooth.framework
     settings:
       base:
         INFOPLIST_FILE: Cleat/App/Info.plist

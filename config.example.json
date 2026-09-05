@@ -7,5 +7,6 @@
   "balance": 0.5,
   "inputVolume": { "*": 100, "Wireless microphone": 88, "Brio 100": 75 },
   "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
+  "reclaim": ["AirPods Max"],
   "launchAtLogin": true
 }

@@ -50,6 +50,9 @@ struct Config: Codable, Equatable, Sendable {
     var inputVolume: [String: Double]
     /// Per-device silence detection. Devices not listed are never measured.
     var liveness: [String: LivenessConfig]
+    /// Bluetooth headsets to ask back from whatever took them, by name or by address. Empty
+    /// disables the reclaim rule.
+    var reclaim: [String]
     /// Whether the app registers itself with SMAppService as a login item.
     var launchAtLogin: Bool
 
@@ -65,6 +68,7 @@ struct Config: Codable, Equatable, Sendable {
         balance: Double? = nil,
         inputVolume: [String: Double] = [:],
         liveness: [String: LivenessConfig] = [:],
+        reclaim: [String] = [],
         launchAtLogin: Bool = true
     ) {
         self.input = input
@@ -75,6 +79,7 @@ struct Config: Codable, Equatable, Sendable {
         self.balance = balance
         self.inputVolume = inputVolume
         self.liveness = liveness
+        self.reclaim = reclaim
         self.launchAtLogin = launchAtLogin
     }
 
@@ -88,6 +93,7 @@ struct Config: Codable, Equatable, Sendable {
         balance = try container.decodeIfPresent(Double.self, forKey: .balance)
         inputVolume = try container.decodeIfPresent([String: Double].self, forKey: .inputVolume) ?? [:]
         liveness = try container.decodeIfPresent([String: LivenessConfig].self, forKey: .liveness) ?? [:]
+        reclaim = try container.decodeIfPresent([String].self, forKey: .reclaim) ?? []
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
     }
 

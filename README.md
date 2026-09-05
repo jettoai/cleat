@@ -10,8 +10,9 @@ and leave the gain somewhere else. Balance drifts off centre after some reconnec
 receiver whose transmitter is switched off is still a perfectly good CoreAudio device that happens
 to be sending nothing at all.
 
-Cleat does six things, all the same shape: subscribe to a CoreAudio property, compare against the
-config, write back if they differ.
+Cleat does seven things. Six are the same shape: subscribe to a CoreAudio property, compare
+against the config, write back if they differ. The seventh asks another daemon for a headset back,
+because a headset a phone has taken is not a CoreAudio property to write.
 
 | | What | Config |
 |---|---|---|
@@ -21,6 +22,7 @@ config, write back if they differ.
 | 4 | Output device priority list | `output` |
 | 5 | Hold input gain per device | `inputVolume` |
 | 6 | Bluetooth headphones take over the output when they connect | `headphonesTakeOver` |
+| 7 | Ask a Bluetooth headset back when a phone has taken it | `reclaim` |
 
 It never takes over a device you picked yourself. If the current default input is not on your
 priority list and not on the blocklist - a mic you chose in System Settings, Zoom's or Teams'
@@ -69,6 +71,7 @@ runs from then on.
   "balance": 0.5,
   "inputVolume": { "*": 100, "Wireless microphone": 88, "Brio 100": 75 },
   "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
+  "reclaim": ["AirPods Max"],
   "launchAtLogin": true
 }
 ```
@@ -83,6 +86,7 @@ runs from then on.
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
+| `reclaim` | array of strings | `[]` | Bluetooth headsets to ask back when another device holds them, by name or address |
 | `launchAtLogin` | boolean | `true` | Register with SMAppService as a login item |
 
 **Input gain.** `"*"` sets the target for every input device present, and a named entry overrides
@@ -106,6 +110,31 @@ starts are not treated as having just arrived, so restarting Cleat never moves t
 where macOS lands when the headphones leave. It is not on your priority list, so without the
 blocked list Cleat would read it as an output you picked yourself and leave it there.
 
+**Reclaim.** AirPods paired to both a Mac and a phone belong to whichever one last asked for
+them. The phone asks by playing something; when it stops, nothing on the Mac asks again, so the
+headset stays with the phone - still connected over Bluetooth, gone from the audio device list -
+and the Mac's sound comes out of the speakers for the rest of the day. macOS only reclaims the
+headset when an app on this side *starts* playing, and by then the sound has already gone
+somewhere else.
+
+Listing a headset under `reclaim` asks for it back. Cleat sends the same routing request macOS
+itself sends, and the accessory decides between the two devices by what each one is doing: the
+request says this Mac has a playback session, which outranks a phone sitting idle and is outranked
+by a phone playing media or on a call. So an idle phone gives the headset up and a phone actually
+using it keeps it - the phone comes first, and Cleat only asks for a headset it is not using.
+Four things have to be
+true before a request goes out - the headset is listed, it is connected to this Mac, it has no
+audio device here, and something is playing through whatever holds the output - so an idle Mac
+never takes a headset off anybody. A headset the phone keeps is left alone for a minute before
+asking again, and said once in the log rather than once a beat.
+
+A headset may be named by its Bluetooth address (`"70:F9:4A:B6:0C:C9"`, dashes and lower case
+accepted) as well as by name, which is how two headsets called the same thing are told apart.
+`cleat reclaim` sends one request by hand and prints the answer, which is the way to see what the
+arbitration is saying. This rule uses a private system interface: on a macOS that does not have
+it, the rule turns itself off, says so once in the log, and `cleat status` reports it as
+unavailable rather than on.
+
 **Naming a device.** Use the name shown in System Settings, or its CoreAudio UID if two devices
 share a name. Names are compared after Unicode normalisation, because some devices carry a
 no-break space in their name that you cannot type (Maono's, for one). Case is not normalised.
@@ -127,6 +156,7 @@ The app bundle is the CLI. The Homebrew cask links it as `cleat`.
 ```sh
 cleat status      # what it is holding right now, and why
 cleat log -n 50   # recent events
+cleat reclaim     # ask for the headsets under "reclaim", once, and print the answer
 cleat version
 ```
 

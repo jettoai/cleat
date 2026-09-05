@@ -22,6 +22,8 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Cleat reads the Bluetooth pairing list to ask a headset back when another device has taken it.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cleat listens to configured microphones only to detect whether they are sending silence.</string>
 </dict>

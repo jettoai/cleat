@@ -43,9 +43,26 @@ final class Engine: @unchecked Sendable {
     private var recentEvents: [String] = []
     private var watcher: ConfigWatcher?
 
+    // Reclaim bookkeeping, all keyed by Bluetooth address. It lives here rather than in the rule
+    // because it is memory of what was asked and when, which a pure function must not have.
+    /// The earliest the next request for this headset may go out.
+    var reclaimNextAttempt: [String: Date] = [:]
+    /// Requests sent and not yet answered. One per headset at a time, which is what bounds the
+    /// client's parked-request table.
+    var reclaimInFlight: Set<String> = []
+    /// Headsets whose "the phone has it" line is already in the log. Cleared when the headset
+    /// comes back, so the next spell reports for itself.
+    var reclaimHeldLogged: Set<String> = []
+    /// Whether the "no routing service" line has been written. Once is enough.
+    var reclaimUnavailableLogged = false
+
     private let configURL: URL
     private let statusURL: URL
     let makeDetector: LivenessDetectorFactory
+    let routing: any RouteRequesting
+    let bluetooth: any BluetoothInventory
+    /// Injectable so the throttle and the backoff can be tested without waiting a minute.
+    let now: () -> Date
 
     /// The detector the daemon uses. Injectable so the engine's detector bookkeeping can be tested
     /// without opening a real input.
@@ -66,13 +83,19 @@ final class Engine: @unchecked Sendable {
         log: EventLog = EventLog(),
         configURL: URL = Paths.configURL,
         statusURL: URL = Paths.statusURL,
-        makeDetector: @escaping LivenessDetectorFactory = Engine.liveDetector
+        makeDetector: @escaping LivenessDetectorFactory = Engine.liveDetector,
+        routing: any RouteRequesting = SmartRoutingClient(),
+        bluetooth: any BluetoothInventory = IOBluetoothPairings(),
+        now: @escaping () -> Date = Date.init
     ) {
         self.system = system
         self.log = log
         self.configURL = configURL
         self.statusURL = statusURL
         self.makeDetector = makeDetector
+        self.routing = routing
+        self.bluetooth = bluetooth
+        self.now = now
     }
 
     // MARK: - Lifecycle
@@ -205,8 +228,12 @@ final class Engine: @unchecked Sendable {
         // the 'dOut' listener brings us straight back here against the new one.
         let balanceActions = outputActions.isEmpty ? BalanceRule.reconcile(snapshot, config) : []
         let volumeActions = InputVolumeRule.reconcile(snapshot, config)
+        // Last, and not a CoreAudio write at all: a headset that is not in the device list cannot
+        // be pinned, taken over or balanced, so this is the one rule with nothing to say about the
+        // devices the four above just decided on.
+        let reclaimActions = reclaimRequests(snapshot)
 
-        for action in inputActions + outputActions + balanceActions + volumeActions {
+        for action in inputActions + outputActions + balanceActions + volumeActions + reclaimActions {
             apply(action)
         }
         writeStatus(snapshot)
@@ -261,6 +288,13 @@ final class Engine: @unchecked Sendable {
     /// event reconciles again, and a retry loop against a device that is disappearing is how a
     /// daemon ends up fighting the system.
     private func apply(_ action: Action) {
+        // The one action that is not a write: it is a question for another daemon, and what
+        // happened is only known when the answer arrives, which is where its log line is written.
+        if case .requestRoute(let name, let address, let reason) = action {
+            requestRoute(name: name, address: address, reason: reason)
+            return
+        }
+
         let status: OSStatus
         switch action {
         case .setDefaultInput(let device, _):
@@ -271,6 +305,8 @@ final class Engine: @unchecked Sendable {
             status = system.setBalance(device, value)
         case .setInputVolume(let device, let value, _):
             status = system.setInputVolume(device, value)
+        case .requestRoute:
+            return  // handled above, before there was an OSStatus to talk about
         }
 
         if status == noErr {
@@ -312,6 +348,8 @@ final class Engine: @unchecked Sendable {
         rules["headphones"] = config.headphonesTakeOver
             ? "on (bluetooth output takes over when it connects)"
             : "off"
+
+        rules["reclaim"] = reclaimSummary()
 
         if let balance = config.balance {
             let current = snapshot.outputBalance.map { String(format: "%.2f", $0) } ?? "unreadable"

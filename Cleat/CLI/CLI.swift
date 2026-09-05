@@ -18,6 +18,8 @@ enum CLI {
             return status()
         case "log":
             return log(Array(arguments.dropFirst()))
+        case "reclaim":
+            return reclaim(Array(arguments.dropFirst()))
         case "version", "--version":
             print(version)
             return 0
@@ -99,7 +101,95 @@ enum CLI {
         return 0
     }
 
+    // MARK: - reclaim
+
+    /// Sends one routing request by hand and prints what came back. The daemon does this on its
+    /// own when the Mac is playing; this is the button for the times it did not, and the way to
+    /// find out what the arbitration is answering without reading the system log.
+    ///
+    /// A device may be named on the command line, which is how this is exercised without editing
+    /// the config file. With no argument it asks for whatever `reclaim` lists.
+    private static func reclaim(_ arguments: [String]) -> Int32 {
+        let client = SmartRoutingClient()
+        guard client.isAvailable else {
+            return fail("reclaim: this macOS has no BTAudioRoutingRequest, the rule is off here")
+        }
+
+        let wanted: [String]
+        if arguments.isEmpty {
+            guard let config = try? Config.load(from: Paths.configURL) else {
+                return fail("reclaim: no usable config at \(tildePath(Paths.configURL))")
+            }
+            guard !config.reclaim.isEmpty else {
+                return fail("reclaim: nothing listed under \"reclaim\" in \(tildePath(Paths.configURL))")
+            }
+            wanted = config.reclaim
+        } else {
+            wanted = arguments
+        }
+
+        let headsets = IOBluetoothPairings().pairedHeadsets()
+        guard let target = headsets.first(where: { $0.isListed(in: wanted) }) else {
+            return fail("reclaim: none of \(wanted.joined(separator: ", ")) is paired with this Mac")
+        }
+        guard target.isConnected else {
+            return fail("reclaim: \(target.name) is paired but not connected")
+        }
+
+        print("asking for \(target.name) (\(target.address)) with score \(Engine.reclaimScore)")
+
+        let answered = DispatchSemaphore(value: 0)
+        // The CLI is one short-lived process, so there is nothing to serialise against: the reply
+        // lands on a queue of its own while this thread waits for it.
+        let queue = DispatchQueue(label: "ai.jetto.cleat.cli.reclaim")
+        let box = Answer()
+        client.request(
+            address: target.address,
+            score: Engine.reclaimScore,
+            reason: ReclaimRule.requestReason(for: target),
+            queue: queue
+        ) { response in
+            box.value = response
+            answered.signal()
+        }
+
+        guard answered.wait(timeout: .now() + responseTimeout) == .success, let answer = box.value else {
+            return fail("reclaim: no answer in \(Int(responseTimeout))s")
+        }
+
+        print("action:  \(answer.action.map(String.init) ?? "-")")
+        print("reason:  \(answer.reason ?? "-")")
+        if let error = answer.error { print("error:   \(error)") }
+        print("verdict: \(verdict(answer.outcome))")
+        return answer.outcome == .routed || answer.outcome == .alreadyRouted ? 0 : 1
+    }
+
+    /// Observed in about ten milliseconds every time; the wait is this long only so a daemon that
+    /// is wedged ends the command rather than the command ending the day.
+    private static let responseTimeout: TimeInterval = 8
+
+    /// The reply arrives on another queue, and the semaphore is what publishes it: a reference the
+    /// waiting thread reads after the wait, rather than a captured variable written across queues.
+    private final class Answer: @unchecked Sendable {
+        var value: RouteResponse?
+    }
+
+    private static func verdict(_ outcome: RouteResponse.Outcome) -> String {
+        switch outcome {
+        case .routed: return "routed here"
+        case .alreadyRouted: return "already here"
+        case .heldByRemote(let detail): return "held by the remote device (\(detail))"
+        case .busy: return "a previous request is still running"
+        case .refused(let detail): return "refused (\(detail))"
+        }
+    }
+
     // MARK: - Helpers
+
+    private static func fail(_ message: String) -> Int32 {
+        FileHandle.standardError.write(Data("cleat \(message)\n".utf8))
+        return 1
+    }
 
     private static var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
@@ -142,6 +232,9 @@ enum CLI {
         usage:
           cleat status        what the daemon is holding right now
           cleat log [-n 50]   recent events
+          cleat reclaim [device]
+                              ask a Bluetooth headset back from whatever took it, once,
+                              and print the answer. Defaults to the config's "reclaim" list
           cleat version
 
         Running Cleat.app with no arguments starts the daemon.

@@ -18,6 +18,7 @@ final class ConfigTests: XCTestCase {
           "balance": 0.5,
           "inputVolume": { "Wireless microphone": 88, "Brio 100": 75 },
           "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
+          "reclaim": ["AirPods Max"],
           "launchAtLogin": false
         }
         """)
@@ -30,6 +31,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.balance, 0.5)
         XCTAssertEqual(config.inputVolume, ["Wireless microphone": 88, "Brio 100": 75])
         XCTAssertEqual(config.liveness, ["Wireless microphone": LivenessConfig(zeroSeconds: 3)])
+        XCTAssertEqual(config.reclaim, ["AirPods Max"])
         XCTAssertFalse(config.launchAtLogin)
         XCTAssertNoThrow(try config.validate())
     }
@@ -48,6 +50,9 @@ final class ConfigTests: XCTestCase {
         XCTAssertNil(config.balance)
         XCTAssertEqual(config.inputVolume, [:])
         XCTAssertEqual(config.liveness, [:])
+        // Off unless asked for, same as headphone takeover: a config that says nothing must not
+        // start asking a phone for a headset.
+        XCTAssertEqual(config.reclaim, [])
         // launchAtLogin is the one default that is on: a config file that says nothing still
         // means "keep Cleat running".
         XCTAssertTrue(config.launchAtLogin)

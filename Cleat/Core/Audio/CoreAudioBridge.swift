@@ -71,11 +71,18 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
             }
         }
 
+        // Only the reclaim rule asks whether the Mac is playing, so only a config that turns it on
+        // pays for the read.
+        let outputRunning = config.reclaim.isEmpty
+            ? false
+            : defaultOutput.map(isRunningSomewhere) ?? false
+
         return DeviceSnapshot(
             devices: devices,
             defaultInput: defaultInput,
             defaultOutput: defaultOutput,
             outputBalance: defaultOutput.flatMap(balance),
+            outputRunning: outputRunning,
             inputVolumes: inputVolumes,
             liveness: [:],  // filled in by the engine, which owns the detectors
             arrived: []     // and so is this: only the engine remembers the previous pass
@@ -116,6 +123,17 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
 
     private func balance(_ device: AudioDeviceID) -> Float? {
         AudioProperty.value(device, Self.balanceAddress, as: Float32.self)
+    }
+
+    /// Whether any process is running IO on this device. "Somewhere" is the point: it counts other
+    /// applications, which is what makes it the answer to "is the Mac playing", rather than
+    /// `kAudioDevicePropertyDeviceIsRunning`, which only sees this process. A device that will not
+    /// answer reads as not playing, so the reclaim rule stays quiet rather than guessing.
+    private func isRunningSomewhere(_ device: AudioDeviceID) -> Bool {
+        let value = AudioProperty.value(
+            device, AudioProperty.address(kAudioDevicePropertyDeviceIsRunningSomewhere), as: UInt32.self
+        )
+        return (value ?? 0) != 0
     }
 
     /// Main element first; devices that expose no main volume are read as the mean of the two

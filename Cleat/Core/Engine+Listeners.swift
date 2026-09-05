@@ -70,6 +70,20 @@ extension Engine {
             ) { [weak self] in self?.scheduleReconcile(after: 0) })
         }
 
+        // "Is anything playing" is a property of whichever device holds the output, so this
+        // listener moves with the default output the same way the balance one does. It is the
+        // event the reclaim rule waits for: the headset is off with a phone, the sound starts
+        // coming out of the speakers, and that is the moment to ask for it back.
+        if !config.reclaim.isEmpty, let output = snapshot.defaultOutput {
+            deviceTokens.append(system.addDeviceListener(
+                device: output,
+                selector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain,
+                queue: queue
+            ) { [weak self] in self?.scheduleReconcile(after: 0) })
+        }
+
         // Every device the volume rule has a target for, which with a `"*"` wildcard is every
         // input device present: a gain nobody listens to is only pulled back on the next
         // unrelated event, which is exactly the drift this rule exists to catch.
