@@ -45,13 +45,10 @@ final class Engine: @unchecked Sendable {
 
     // Reclaim bookkeeping, all keyed by Bluetooth address. It lives here rather than in the rule
     // because it is memory of what was asked and when, which a pure function must not have.
-    /// The earliest the next request for this headset may go out.
+    /// The earliest the next request for this headset may go out. Set as a request goes out, so
+    /// it stands in for the request being unanswered as well: a reply that never arrives costs one
+    /// `reclaimInterval` rather than every request for the rest of the session.
     var reclaimNextAttempt: [String: Date] = [:]
-    /// Requests sent and not yet answered, each with the moment it went out. One per headset at
-    /// a time, which is what bounds the client's parked-request table - and a reply that never
-    /// arrives stops counting after `reclaimInterval`, so a lost answer costs one interval rather
-    /// than every request for the rest of the session.
-    var reclaimInFlight: [String: Date] = [:]
     /// Headsets whose "the phone has it" line is already in the log. Cleared when the headset
     /// comes back, so the next spell reports for itself.
     var reclaimHeldLogged: Set<String> = []

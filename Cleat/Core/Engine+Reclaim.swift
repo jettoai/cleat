@@ -42,37 +42,25 @@ extension Engine {
 
         return ReclaimRule.reconcile(
             snapshot, bluetooth.pairedHeadsets(), config, excluding: heldDownHeadsets()
-        ).filter { action in
-            if case .requestRoute = action { return true }
-            return false
-        }
+        )
     }
 
-    /// The headsets this pass must not ask for: one asked for less than an interval ago and still
-    /// unanswered, and one a backoff is holding down. The rule is told about them before it picks
-    /// rather than being filtered after, so a headset that cannot be asked for now steps aside for
-    /// the next one on the list instead of spending the single request a pass allows.
+    /// The headsets this pass must not ask for: one asked for less than an interval ago, and one a
+    /// backoff is holding down. The rule is told about them before it picks rather than being
+    /// filtered after, so a headset that cannot be asked for now steps aside for the next one on
+    /// the list instead of spending the single request a pass allows.
     ///
-    /// An unanswered request stops counting after `reclaimInterval` because the throttle set when
-    /// it was sent expires then too: an answer that never comes leaves nothing behind that a later
-    /// beat cannot get past.
+    /// Both readings come off `reclaimNextAttempt` because `requestRoute` sets it as the request
+    /// goes out: an answer that never comes holds its headset down for `reclaimInterval` and no
+    /// longer, leaving nothing behind that a later beat cannot get past.
     private func heldDownHeadsets() -> Set<String> {
         let moment = now()
-        var addresses = Set(
-            reclaimInFlight
-                .filter { moment.timeIntervalSince($0.value) < Engine.reclaimInterval }
-                .keys
-        )
-        for (address, next) in reclaimNextAttempt where moment < next {
-            addresses.insert(address)
-        }
-        return addresses
+        return Set(reclaimNextAttempt.filter { moment < $0.value }.keys)
     }
 
     /// Sends one request. The throttle is set here rather than when the answer comes back, so a
     /// reply that never arrives still cannot turn into a request per beat.
     func requestRoute(name: String, address: String, reason: String) {
-        reclaimInFlight[address] = now()
         reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimInterval)
 
         routing.request(
@@ -87,8 +75,6 @@ extension Engine {
     /// output by itself, and if it does not, the device arriving is an ordinary arrival that
     /// `HeadphonesTakeoverRule` already knows what to do with.
     private func routeAnswered(name: String, address: String, response: RouteResponse) {
-        reclaimInFlight.removeValue(forKey: address)
-
         switch response.outcome {
         case .routed:
             reclaimHeldLogged.remove(address)
