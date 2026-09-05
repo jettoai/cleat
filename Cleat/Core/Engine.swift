@@ -84,7 +84,7 @@ final class Engine: @unchecked Sendable {
         statusURL: URL = Paths.statusURL,
         makeDetector: @escaping LivenessDetectorFactory = Engine.liveDetector,
         routing: any RouteRequesting = SmartRoutingClient(),
-        bluetooth: any BluetoothInventory = IOBluetoothPairings(),
+        bluetooth: any BluetoothInventory = SystemProfilerPairings(),
         now: @escaping () -> Date = Date.init
     ) {
         self.system = system

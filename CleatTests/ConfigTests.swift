@@ -202,4 +202,27 @@ final class ConfigTests: XCTestCase {
             .appendingPathComponent("cleat-absent-\(UUID().uuidString).json")
         XCTAssertThrowsError(try Config.load(from: url))
     }
+
+    func testConfigPathFallsBackToTheUserConfigDirectory() {
+        unsetenv(Paths.configOverrideVariable)
+        XCTAssertEqual(Paths.configURL, Paths.configDirectory.appendingPathComponent("config.json"))
+    }
+
+    func testConfigPathHonoursTheEnvironmentOverride() {
+        setenv(Paths.configOverrideVariable, "/tmp/cleat-probe/config.json", 1)
+        defer { unsetenv(Paths.configOverrideVariable) }
+
+        XCTAssertEqual(Paths.configURL.path, "/tmp/cleat-probe/config.json")
+        // Only the config moves: a dev build pointed elsewhere still reports on the real status
+        // file and appends to the real log.
+        XCTAssertEqual(Paths.statusURL, Paths.supportDirectory.appendingPathComponent("status.json"))
+        XCTAssertEqual(Paths.logURL, Paths.logDirectory.appendingPathComponent("cleat.log"))
+    }
+
+    func testConfigPathIgnoresAnEmptyOverride() {
+        setenv(Paths.configOverrideVariable, "", 1)
+        defer { unsetenv(Paths.configOverrideVariable) }
+
+        XCTAssertEqual(Paths.configURL, Paths.configDirectory.appendingPathComponent("config.json"))
+    }
 }

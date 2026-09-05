@@ -6,9 +6,23 @@ import Foundation
 enum Paths {
     static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
+    /// The environment variable that moves the config file somewhere else.
+    static let configOverrideVariable = "CLEAT_CONFIG"
+
     /// `~/.config/cleat/` - the user-owned side, edited by hand.
     static var configDirectory: URL { home.appendingPathComponent(".config/cleat", isDirectory: true) }
-    static var configURL: URL { configDirectory.appendingPathComponent("config.json") }
+
+    /// `~/.config/cleat/config.json`, unless `CLEAT_CONFIG` names another file.
+    ///
+    /// The override is there so a dev build can be pointed at a throwaway config and enforce
+    /// nothing on the machine it is being tested on. It moves this path only: status and log stay
+    /// where they are, so `cleat status` reports on the same files whichever config was loaded,
+    /// and a stray variable can never hide the real daemon's state behind a second copy.
+    static var configURL: URL {
+        let override = ProcessInfo.processInfo.environment[configOverrideVariable] ?? ""
+        guard !override.isEmpty else { return configDirectory.appendingPathComponent("config.json") }
+        return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
+    }
 
     /// `~/Library/Application Support/Cleat/` - what the daemon publishes for `cleat status`.
     static var supportDirectory: URL {

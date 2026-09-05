@@ -155,7 +155,95 @@ final class ReclaimTests: XCTestCase {
         XCTAssertTrue(connectedAirPods.isListed(in: ["70:f9:4a:b6:0c:c9"]))
     }
 
-    func testCanonicalAddressNormalisesWhatIOBluetoothReports() {
+    // MARK: - Reading the pairing list
+
+    /// A cut-down `system_profiler SPBluetoothDataType -json` document: one connected headset, one
+    /// paired but idle, and one entry with no address at all.
+    private static let pairingListJSON = """
+    {
+      "SPBluetoothDataType": [
+        {
+          "device_connected": [
+            { "AirPods Max": { "device_address": "70:F9:4A:B6:0C:C9", "device_minorType": "Headphones" } }
+          ],
+          "device_not_connected": [
+            { "Albert iPhone": { "device_address": "f8-c3-cc-85-69-4c" } },
+            { "Nameless thing": { "device_minorType": "Keyboard" } }
+          ]
+        }
+      ]
+    }
+    """
+
+    func testPairingListIsReadFromSystemProfiler() {
+        let headsets = SystemProfilerPairings.parse(Data(Self.pairingListJSON.utf8))
+
+        // The entry with no address is dropped: an address is what a request is addressed to.
+        XCTAssertEqual(headsets.count, 2)
+        XCTAssertEqual(
+            headsets.first,
+            BluetoothHeadset(name: "AirPods Max", address: Self.airPodsAddress, isConnected: true)
+        )
+        // Which list an entry came from is the only thing that says whether it is connected, and
+        // an address is normalised whatever the report spelled it like.
+        XCTAssertEqual(
+            headsets.last,
+            BluetoothHeadset(name: "Albert iPhone", address: "F8:C3:CC:85:69:4C", isConnected: false)
+        )
+    }
+
+    /// Output that is not the report Cleat asked for is no headsets, not a crash: a tool that
+    /// answers with nothing at all leaves the rule with nothing to ask for, which is the same as
+    /// a machine with no paired headsets.
+    func testUnreadablePairingListIsNoHeadsets() {
+        XCTAssertEqual(SystemProfilerPairings.parse(Data("not json".utf8)), [])
+        XCTAssertEqual(SystemProfilerPairings.parse(Data()), [])
+        XCTAssertEqual(SystemProfilerPairings.parse(Data("{}".utf8)), [])
+        XCTAssertEqual(
+            SystemProfilerPairings.parse(Data(#"{"SPBluetoothDataType": []}"#.utf8)), []
+        )
+    }
+
+    /// The tool is run once per throttle window, not once per beat. Anything fresher could not
+    /// change what the rule does, because the same headset cannot be asked for again until the
+    /// window is up.
+    func testPairingListIsReusedForAsLongAsARequestIsThrottled() {
+        let clock = World.Clock()
+        let reader = ListReader(answer: [connectedAirPods])
+        let pairings = SystemProfilerPairings(now: { clock.now }, read: reader.read)
+
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(reader.reads, 1)
+
+        clock.now = clock.now.addingTimeInterval(SystemProfilerPairings.reuseWindow - 1)
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(reader.reads, 1)
+
+        clock.now = clock.now.addingTimeInterval(2)
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(reader.reads, 2)
+    }
+
+    /// A reading that failed is not an answer to hold on to: remembering it would tell the rule
+    /// this Mac has no paired headsets for the next half minute.
+    func testFailedPairingListIsNotRemembered() {
+        let clock = World.Clock()
+        let reader = ListReader(answer: nil)
+        let pairings = SystemProfilerPairings(now: { clock.now }, read: reader.read)
+
+        XCTAssertEqual(pairings.pairedHeadsets(), [])
+        XCTAssertEqual(pairings.pairedHeadsets(), [])
+        XCTAssertEqual(reader.reads, 2)
+
+        // The first reading that works is kept, from that moment.
+        reader.answer = [connectedAirPods]
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(pairings.pairedHeadsets(), [connectedAirPods])
+        XCTAssertEqual(reader.reads, 3)
+    }
+
+    func testCanonicalAddressNormalisesWhatTheBluetoothPaneShows() {
         XCTAssertEqual(
             BluetoothHeadset.canonicalAddress("70-f9-4a-b6-0c-c9"), Self.airPodsAddress
         )
@@ -221,6 +309,26 @@ final class ReclaimTests: XCTestCase {
         world.advance(Engine.reclaimInterval + 1)
         world.reconcile()
         XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress, Self.airPodsAddress])
+    }
+
+    /// A beat while the Mac is silent is not worth a pairing list: the rule would refuse to ask
+    /// anyway, and beats are frequent - every liveness flip is one. The cheap question is asked
+    /// before the expensive one, and the moment the Mac plays, the next beat asks properly.
+    func testSilentMacIsNotWorthReadingThePairingListFor() throws {
+        let world = try World(config: config)
+        world.system.snapshotValue.outputRunning = false
+
+        world.start()
+        world.reconcile()
+
+        XCTAssertEqual(world.bluetooth.reads, 0)
+        XCTAssertEqual(world.routing.addresses, [])
+
+        world.system.snapshotValue.outputRunning = true
+        world.reconcile()
+
+        XCTAssertEqual(world.bluetooth.reads, 1)
+        XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress])
     }
 
     /// The score is the whole policy, so it is pinned to a literal rather than to the constant:
@@ -503,6 +611,32 @@ final class ReclaimTests: XCTestCase {
             reasons.append(reason)
             guard let answer else { return }
             completion(answer)
+        }
+    }
+
+    /// One reading of the pairing list, counted. `answer` is what the tool would have printed,
+    /// and nil is a tool that failed.
+    private final class ListReader: @unchecked Sendable {
+
+        var answer: [BluetoothHeadset]?
+        private let lock = NSLock()
+        private var count = 0
+
+        init(answer: [BluetoothHeadset]?) {
+            self.answer = answer
+        }
+
+        var reads: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func read() -> [BluetoothHeadset]? {
+            lock.lock()
+            count += 1
+            lock.unlock()
+            return answer
         }
     }
 

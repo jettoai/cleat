@@ -133,7 +133,7 @@ enum CLI {
         // this button and the daemon ask for the same headset - and the disconnected ones are
         // only what the message names when there is nothing to ask.
         let listed = ReclaimRule.inRuleOrder(
-            IOBluetoothPairings().pairedHeadsets().filter { $0.isListed(in: wanted) }
+            SystemProfilerPairings().pairedHeadsets().filter { $0.isListed(in: wanted) }
         )
         guard !listed.isEmpty else {
             return fail("reclaim: none of \(wanted.joined(separator: ", ")) is paired with this Mac")

@@ -39,6 +39,12 @@ extension Engine {
             }
             return []
         }
+        // The rule asks this too, and has to: a Mac that is not playing has no claim to make. It
+        // is asked again here, in front of the rule, because reading the pairing list costs a
+        // subprocess and this answer costs nothing. Beats are cheap to come by - a liveness flip
+        // on a microphone in use is one, several times a minute - and every beat that reaches the
+        // rule while the Mac is silent would have paid for a list it then ignores.
+        guard snapshot.outputRunning else { return [] }
 
         return ReclaimRule.reconcile(
             snapshot, bluetooth.pairedHeadsets(), config, excluding: heldDownHeadsets()
