@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The launchd agent that keeps the daemon alive, rendered into the app bundle at
+  Contents/Library/LaunchAgents/<bundle id>.plist by the "LaunchAgent plist" build phase.
+
+  It is a template rather than a finished file because the label and the program differ per
+  configuration: the debug build is ai.jetto.cleat.dev with a binary called "Cleat Dev", and two
+  agents with the same label cannot both be loaded.
+-->
+<plist version="1.0">
+<dict>
+    <!-- SMAppService.agent(plistName:) looks the file up by name, and launchd wants the label to
+         match it, so both are the bundle identifier. -->
+    <key>Label</key>
+    <string>@LABEL@</string>
+    <!-- Relative to the bundle, so the process launchd starts is the app's own binary: the
+         microphone grant is attributed to the bundle, not to a loose executable. -->
+    <key>BundleProgram</key>
+    <string>@PROGRAM@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- Restart on anything that is not a clean exit - killed, crashed, swept up by somebody
+         else's cleanup. A normal quit (Homebrew's upgrade, or a person quitting it) exits 0 and
+         stays down, which is what `cleat restart` is for. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

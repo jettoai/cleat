@@ -1,6 +1,5 @@
 import CoreAudio
 import Foundation
-import ServiceManagement
 
 /// The one place decisions are made.
 ///
@@ -105,6 +104,7 @@ final class Engine: @unchecked Sendable {
             loadConfig()
             note("engine started (config: \(configState), microphone: \(permission.label))")
             syncLaunchAtLogin()
+            handOverToLaunchAgentIfNeeded()
             attachSystemListeners()
             rebindDevices()
 
@@ -166,26 +166,9 @@ final class Engine: @unchecked Sendable {
         note("config: reloaded (\(configState))")
 
         syncLaunchAtLogin()
+        handOverToLaunchAgentIfNeeded()
         rebindDevices()
         reconcile()
-    }
-
-    /// The dev build never touches login items: it shares no bundle id with the release build, so
-    /// registering it would leave a second Cleat starting at login on the developer's machine.
-    private func syncLaunchAtLogin() {
-        guard Bundle.main.bundleIdentifier?.hasSuffix(".dev") != true else { return }
-        guard configState == "ok" else { return }
-
-        let service = SMAppService.mainApp
-        let wanted = config.launchAtLogin
-        guard wanted != (service.status == .enabled) else { return }
-
-        do {
-            if wanted { try service.register() } else { try service.unregister() }
-            note("launchAtLogin: \(wanted ? "registered" : "unregistered")")
-        } catch {
-            note("launchAtLogin: \(wanted ? "register" : "unregister") failed (\(error.localizedDescription))")
-        }
     }
 
     // MARK: - Reconcile

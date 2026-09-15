@@ -33,6 +33,8 @@ targets:
         excludes:
           - "App/Info.plist"
           - "App/Cleat.entitlements"
+          # Rendered into the bundle by the postBuildScripts phase below, not copied as a resource.
+          - "App/LaunchAgents"
       # Shipped inside the bundle so a fresh install has something to copy: the README tells people
       # to cp it out of Contents/Resources.
       - path: config.example.json
@@ -44,7 +46,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.jetto.cleat
         PRODUCT_NAME: Cleat
         PRODUCT_MODULE_NAME: Cleat
-        MARKETING_VERSION: "0.3.2"
+        MARKETING_VERSION: "0.3.3"
         CURRENT_PROJECT_VERSION: "1"
         # Swift 5.9 language mode on purpose: `complete` concurrency checking still reports
         # everything, but as warnings. Swift 6 mode would turn each one into a build error, and
@@ -62,6 +64,25 @@ targets:
           # its own microphone TCC grant.
           PRODUCT_BUNDLE_IDENTIFIER: ai.jetto.cleat.dev
           PRODUCT_NAME: "Cleat Dev"
+    # The launchd agent that keeps the daemon alive. It is rendered rather than copied because its
+    # label is the bundle identifier and its program is the product name, both of which differ
+    # between the release and the dev build. This runs before the code signing phase, so the plist
+    # is inside the signed bundle.
+    postBuildScripts:
+      - name: LaunchAgent plist
+        script: |
+          set -euo pipefail
+          destination="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents"
+          mkdir -p "$destination"
+          sed -e "s|@LABEL@|${PRODUCT_BUNDLE_IDENTIFIER}|g" \
+              -e "s|@PROGRAM@|Contents/MacOS/${PRODUCT_NAME}|g" \
+              "${SCRIPT_INPUT_FILE_0}" > "$destination/${PRODUCT_BUNDLE_IDENTIFIER}.plist"
+          plutil -lint "$destination/${PRODUCT_BUNDLE_IDENTIFIER}.plist" > /dev/null
+        inputFiles:
+          - $(SRCROOT)/Cleat/App/LaunchAgents/LaunchAgent.plist
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/$(PRODUCT_BUNDLE_IDENTIFIER).plist
+        showEnvVars: false
 
   CleatTests:
     type: bundle.unit-test

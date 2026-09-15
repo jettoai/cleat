@@ -1,11 +1,13 @@
 import Darwin
 import Foundation
+import ServiceManagement
 
-/// `cleat status`, `cleat log`, `cleat version`.
+/// `cleat status`, `cleat log`, `cleat restart`, `cleat version`.
 ///
 /// The CLI never talks to the daemon; it reads the two files the daemon writes. That is the whole
 /// design: no IPC to keep alive, and `cleat status` works the same whether the daemon is running,
-/// wedged, or gone - it says which.
+/// wedged, or gone - it says which. `restart` is no exception: it asks launchd to replace the
+/// process, which is the one thing a wedged daemon cannot be asked to do itself.
 enum CLI {
 
     private static let defaultLogLines = 50
@@ -20,6 +22,8 @@ enum CLI {
             return log(Array(arguments.dropFirst()))
         case "reclaim":
             return reclaim(Array(arguments.dropFirst()))
+        case "restart":
+            return restart()
         case "version", "--version":
             print(version)
             return 0
@@ -36,19 +40,23 @@ enum CLI {
 
     private static func status() -> Int32 {
         guard let status = StatusStore.read() else {
-            print("daemon:     not running (no status file at \(tildePath(Paths.statusURL)))")
+            print("daemon:      not running (no status file at \(tildePath(Paths.statusURL)))")
+            print("supervision: \(supervision())")
             return 1
         }
 
         let running = isAlive(status.pid)
-        print("daemon:     " + (running
+        print("daemon:      " + (running
             ? "running (pid \(status.pid))"
             : "not running (last seen as pid \(status.pid))"))
-        print("updated:    \(display(status.updatedAt))")
-        print("config:     \(status.configState) (\(tildePath(Paths.configURL)))")
-        print("microphone: \(status.microphone)")
-        print("input:      \(status.defaultInput ?? "-")")
-        print("output:     \(status.defaultOutput ?? "-")")
+        // Printed next to the daemon line because it is the answer to the question a stopped
+        // daemon raises: is anything supposed to be starting this again?
+        print("supervision: \(supervision())")
+        print("updated:     \(display(status.updatedAt))")
+        print("config:      \(status.configState) (\(tildePath(Paths.configURL)))")
+        print("microphone:  \(status.microphone)")
+        print("input:       \(status.defaultInput ?? "-")")
+        print("output:      \(status.defaultOutput ?? "-")")
 
         if !status.rules.isEmpty {
             print("rules:")
@@ -70,6 +78,27 @@ enum CLI {
         }
 
         return running ? 0 : 1
+    }
+
+    /// What `cleat status` says about the launchd agent.
+    ///
+    /// `notFound` is reported alongside `notRegistered` rather than as a missing-plist diagnosis:
+    /// a dev build with the plist demonstrably in its bundle, run both from DerivedData and from
+    /// /Applications, answers `notFound` before anything has registered it, so the two cannot be
+    /// told apart from here. Either way the answer to the person reading this is the same - nothing
+    /// is keeping the daemon alive, and `cleat restart` is what puts it there. Approval is the one
+    /// state worth naming on its own, because only a person can clear it.
+    private static func supervision() -> String {
+        switch LaunchAgent.service.status {
+        case .enabled:
+            return "launchd agent (registered)"
+        case .notRegistered, .notFound:
+            return "launchd agent (not registered)"
+        case .requiresApproval:
+            return "launchd agent (waiting for approval in System Settings > General > Login Items)"
+        @unknown default:
+            return "launchd agent (unknown state)"
+        }
     }
 
     // MARK: - log
@@ -99,6 +128,72 @@ enum CLI {
         }
         lines.forEach { print($0) }
         return 0
+    }
+
+    // MARK: - restart
+
+    /// Starts the daemon, or replaces the one that is running, through the agent that is supposed
+    /// to keep it alive - so a restart also puts the supervision back if it was never registered.
+    /// This is the way back from a Homebrew upgrade, which quits the old daemon cleanly and so is
+    /// exactly the case `KeepAlive` leaves alone.
+    ///
+    /// `kickstart -k` kills the running copy first; without `-k` launchctl does nothing at all
+    /// when the job is already up.
+    private static func restart() -> Int32 {
+        let service = LaunchAgent.service
+        if !LaunchAgent.isDevelopmentBuild {
+            // Registering against the config's wishes would start a daemon that unregisters its
+            // own job as soon as it has read that config, and launchd would take it away again -
+            // a restart that ends in nothing running, with the log as the only clue.
+            guard !launchAtLoginIsOff() else {
+                return fail("""
+                    restart: "launchAtLogin" is off in \(tildePath(Paths.configURL)); launchd keeps \
+                    Cleat running only through its agent, set it to true
+                    """)
+            }
+            if service.status != .enabled {
+                do {
+                    try service.register()
+                    print("registered \(LaunchAgent.label)")
+                } catch {
+                    return fail("restart: could not register \(LaunchAgent.label) (\(error.localizedDescription))")
+                }
+            }
+        }
+
+        let result = LaunchAgent.launchctl(["kickstart", "-k", LaunchAgent.domainTarget])
+        guard result.status == 0 else {
+            let detail = result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
+            return fail("""
+                restart: launchd has no \(LaunchAgent.label) loaded (\(detail))
+                         \(nextStep(for: service.status))
+                """)
+        }
+
+        print("restarted \(LaunchAgent.domainTarget)")
+        return 0
+    }
+
+    private static func nextStep(for status: SMAppService.Status) -> String {
+        if LaunchAgent.isDevelopmentBuild {
+            return "this is the dev build, which never registers itself - load a plist of your own "
+                + "with launchctl bootstrap"
+        }
+        switch status {
+        case .requiresApproval:
+            return "allow Cleat under System Settings > General > Login Items, then run this again"
+        default:
+            return "set \"launchAtLogin\" to true in \(tildePath(Paths.configURL)) - with it off, "
+                + "nothing keeps Cleat running"
+        }
+    }
+
+    /// Whether the config on disk says the agent is not wanted. Only a config that loads and
+    /// says so blocks a restart: a missing or malformed one leaves the daemon enforcing nothing
+    /// and touching no registration either, so there is nothing for a restart to walk into.
+    private static func launchAtLoginIsOff() -> Bool {
+        guard let config = try? Config.load(from: Paths.configURL) else { return false }
+        return !config.launchAtLogin
     }
 
     // MARK: - reclaim
@@ -242,12 +337,16 @@ enum CLI {
         usage:
           cleat status        what the daemon is holding right now
           cleat log [-n 50]   recent events
+          cleat restart       start the daemon, or replace the running one, through the
+                              launchd agent that keeps it alive
           cleat reclaim [device]
                               ask a Bluetooth headset back from whatever took it, once,
                               and print the answer. Defaults to the config's "reclaim" list
           cleat version
 
-        Running Cleat.app with no arguments starts the daemon.
+        Running Cleat.app with no arguments starts the daemon. launchd starts it at login and
+        starts it again if it is killed; `cleat restart` is how it comes back after a clean quit,
+        which is what a Homebrew upgrade does.
 
         """.utf8))
     }

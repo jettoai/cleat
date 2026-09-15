@@ -53,11 +53,19 @@ login item. Edit it for your devices first, or start from `{}` and add one rule 
 ```sh
 mkdir -p ~/.config/cleat
 cp /Applications/Cleat.app/Contents/Resources/config.example.json ~/.config/cleat/config.json
-open -a Cleat
+cleat restart
 ```
 
-Cleat has no window. It registers itself as a login item (unless `launchAtLogin` is `false`) and
-runs from then on.
+Cleat has no window. `cleat restart` registers the launchd agent that ships inside the bundle and
+starts the daemon through it; from then on launchd starts Cleat at login and starts it again if it
+is ever killed or crashes. A clean quit is left alone on purpose - that is what `brew upgrade`
+does to the old copy, and the cask starts the new one for you. `cleat status` says which agent
+state you are in. Setting `launchAtLogin` to `false` unregisters the agent, and Cleat exits with
+it.
+
+Installing by hand instead: open the app once from Finder, which is both the first microphone
+prompt and the moment it registers its agent. A copy started by hand while the agent is already
+running steps aside for the supervised one, so there is never a second daemon.
 
 ## Config
 
@@ -89,7 +97,7 @@ runs from then on.
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
 | `reclaim` | array of strings | `[]` | Bluetooth headsets to ask back when another device holds them, by name or address |
-| `launchAtLogin` | boolean | `true` | Register with SMAppService as a login item |
+| `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
 
 **Input gain.** `"*"` sets the target for every input device present, and a named entry overrides
 it for that device: `{"*": 100, "Brio 100": 75}` holds everything at 100 percent except the Brio,
@@ -161,9 +169,14 @@ The app bundle is the CLI. The Homebrew cask links it as `cleat`.
 ```sh
 cleat status      # what it is holding right now, and why
 cleat log -n 50   # recent events
+cleat restart     # start the daemon, or replace the running one, through its launchd agent
 cleat reclaim     # ask for the headsets under "reclaim", once, and print the answer
 cleat version
 ```
+
+`cleat restart` is the one to reach for when Cleat is not running: it registers the agent if that
+has not happened yet, then has launchd replace the process. Nothing else has to be started by
+hand.
 
 `cleat status` reads `~/Library/Application Support/Cleat/status.json`; `cleat log` reads
 `~/Library/Logs/Cleat/cleat.log`. Only actions that changed something are logged, so a quiet log
@@ -173,11 +186,13 @@ means a quiet day, not a broken daemon - `status` is what tells you it is alive.
 
 Only `liveness` needs it. macOS asks the first time Cleat runs; if you decline, every other rule
 keeps working and `cleat status` shows `microphone: denied`. To change your mind: System Settings
-> Privacy & Security > Microphone, then restart Cleat - it reads the permission at launch and does
-not watch that switch.
+> Privacy & Security > Microphone, then `cleat restart` - Cleat reads the permission at launch and
+does not watch that switch.
 
 This is also why Cleat is an .app rather than a bare binary on a LaunchAgent - a command-line tool
-started by launchd is often never asked, and the request fails silently instead.
+started by launchd is often never asked, and the request fails silently instead. The agent that
+supervises the daemon starts the app bundle's own binary (`BundleProgram`), so the process launchd
+brings back is the same app the microphone was granted to, not a loose executable.
 
 ## Build from source
 
@@ -196,8 +211,9 @@ xcodebuild test  -project Cleat.xcodeproj -scheme Cleat -destination 'platform=m
 brew uninstall --cask --zap cleat
 ```
 
-Or, for a manual install: quit Cleat, delete `/Applications/Cleat.app`, and remove
-`~/Library/Application Support/Cleat`, `~/Library/Logs/Cleat` and `~/.config/cleat`.
+Or, for a manual install: unload the agent with `launchctl bootout gui/$UID/ai.jetto.cleat`, delete
+`/Applications/Cleat.app`, and remove `~/Library/Application Support/Cleat`, `~/Library/Logs/Cleat`
+and `~/.config/cleat`.
 
 ## License
 
