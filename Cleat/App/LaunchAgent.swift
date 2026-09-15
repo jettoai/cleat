@@ -20,9 +20,6 @@ enum LaunchAgent {
 
     static var service: SMAppService { SMAppService.agent(plistName: plistName) }
 
-    /// Whether this bundle's agent is registered with SMAppService at all.
-    static var isRegistered: Bool { isRegistered(service.status) }
-
     /// What "registered" means for anything registered through SMAppService - this bundle's agent,
     /// and the login item versions up to 0.3.2 left behind. `.requiresApproval` is registered: the
     /// registration exists and only a person clearing it in Login Items turns it on. Reading that
@@ -101,5 +98,11 @@ enum LaunchAgent {
             process.terminationStatus,
             String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         )
+    }
+
+    /// What to say about a `launchctl` call that did not work: whatever it printed, or its exit
+    /// status when it printed nothing at all.
+    static func failureDetail(_ result: (status: Int32, output: String)) -> String {
+        result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
     }
 }

@@ -21,11 +21,12 @@ extension Engine {
         retireLoginItem()
 
         let service = LaunchAgent.service
+        let status = service.status
         let wanted = config.launchAtLogin
         // Wanting it means wanting it running, which only `.enabled` is; not wanting it means
         // wanting no registration left behind, which `.requiresApproval` still is
         // (`LaunchAgent.isRegistered`).
-        let needsChange = wanted ? service.status != .enabled : LaunchAgent.isRegistered
+        let needsChange = wanted ? status != .enabled : LaunchAgent.isRegistered(status)
         guard needsChange else { return }
 
         do {
@@ -62,8 +63,7 @@ extension Engine {
 
         let result = LaunchAgent.launchctl(["kickstart", LaunchAgent.domainTarget])
         guard result.status == 0 else {
-            let detail = result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
-            note("handing over to the launchd agent failed, staying up (\(detail))")
+            note("handing over to the launchd agent failed, staying up (\(LaunchAgent.failureDetail(result)))")
             return
         }
 

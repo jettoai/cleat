@@ -155,7 +155,7 @@ enum CLI {
             // disagree about what counts as registered: registering again over an approval that
             // is still pending only throws, and what that state needs is the person, not a
             // second registration - `nextStep` below says so.
-            if !LaunchAgent.isRegistered {
+            if !LaunchAgent.isRegistered(service.status) {
                 do {
                     try service.register()
                     print("registered \(LaunchAgent.label)")
@@ -167,9 +167,8 @@ enum CLI {
 
         let result = LaunchAgent.launchctl(["kickstart", "-k", LaunchAgent.domainTarget])
         guard result.status == 0 else {
-            let detail = result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
             return fail("""
-                restart: launchd has no \(LaunchAgent.label) loaded (\(detail))
+                restart: launchd has no \(LaunchAgent.label) loaded (\(LaunchAgent.failureDetail(result)))
                          \(nextStep(for: service.status))
                 """)
         }
