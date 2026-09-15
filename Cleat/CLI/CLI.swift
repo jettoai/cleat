@@ -151,7 +151,11 @@ enum CLI {
                     Cleat running only through its agent, set it to true
                     """)
             }
-            if service.status != .enabled {
+            // Same question the daemon asks (`LaunchAgent.isRegistered`), so the two cannot
+            // disagree about what counts as registered: registering again over an approval that
+            // is still pending only throws, and what that state needs is the person, not a
+            // second registration - `nextStep` below says so.
+            if !LaunchAgent.isRegistered {
                 do {
                     try service.register()
                     print("registered \(LaunchAgent.label)")

@@ -20,6 +20,23 @@ enum LaunchAgent {
 
     static var service: SMAppService { SMAppService.agent(plistName: plistName) }
 
+    /// Whether this bundle's agent is registered with SMAppService at all.
+    static var isRegistered: Bool { isRegistered(service.status) }
+
+    /// What "registered" means for anything registered through SMAppService - this bundle's agent,
+    /// and the login item versions up to 0.3.2 left behind. `.requiresApproval` is registered: the
+    /// registration exists and only a person clearing it in Login Items turns it on. Reading that
+    /// state as "not registered" would leave a `launchAtLogin` switched back off unable to take the
+    /// registration away, would leave the old login item in place, and would have `cleat restart`
+    /// register what is registered already - so every caller asks this one question instead of
+    /// comparing against `.enabled` itself.
+    static func isRegistered(_ status: SMAppService.Status) -> Bool {
+        switch status {
+        case .enabled, .requiresApproval: return true
+        default: return false
+        }
+    }
+
     /// The launchd domain target for `launchctl`: the agent lives in the logged-in user's GUI
     /// session, which is the only place an app that may need to show a dialog belongs.
     static let domainTarget = "gui/\(getuid())/\(label)"
