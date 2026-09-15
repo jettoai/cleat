@@ -14,30 +14,28 @@ enum LaunchAgent {
     /// The launchd label, the plist's file name inside the bundle, and the bundle identifier are
     /// all this one string. The fallback is never reached in a built bundle; it is here so this is
     /// not an optional every caller has to unwrap.
-    static var label: String { Bundle.main.bundleIdentifier ?? "ai.jetto.cleat" }
+    static let label = Bundle.main.bundleIdentifier ?? "ai.jetto.cleat"
 
-    static var plistName: String { label + ".plist" }
+    static let plistName = label + ".plist"
 
     static var service: SMAppService { SMAppService.agent(plistName: plistName) }
 
     /// The launchd domain target for `launchctl`: the agent lives in the logged-in user's GUI
     /// session, which is the only place an app that may need to show a dialog belongs.
-    static var domainTarget: String { "gui/\(getuid())/\(label)" }
+    static let domainTarget = "gui/\(getuid())/\(label)"
 
     /// The dev build shares no bundle identifier with the release build, so registering it would
     /// leave a second Cleat starting at login on the developer's machine. It is driven by hand
     /// (`launchctl bootstrap` with a plist of one's own) when the supervision itself is what is
     /// being tested.
-    static var isDevelopmentBuild: Bool { Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true }
+    static let isDevelopmentBuild = label.hasSuffix(".dev")
 
     /// Whether launchd started this process rather than LaunchServices.
     ///
     /// Measured on the dev build rather than assumed: launchd names the job's service after the
     /// label (`XPC_SERVICE_NAME=ai.jetto.cleat.dev`), while LaunchServices makes a name up for
     /// every launch (`application.ai.jetto.cleat.dev.375547097.475943345`).
-    static var wasStartedByLaunchd: Bool {
-        ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == label
-    }
+    static let wasStartedByLaunchd = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"] == label
 
     /// What launchd has for the agent right now: whether the job is loaded at all, and the pid it
     /// is running as if it is up.
@@ -55,10 +53,11 @@ enum LaunchAgent {
     /// `launchctl print` puts the job's own `pid = N` above the per-endpoint entries, so the first
     /// one is the job's. A job that is loaded but not running prints none at all.
     private static func firstPID(in output: String) -> pid_t? {
+        let prefix = "pid = "
         for line in output.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("pid = ") else { continue }
-            return pid_t(trimmed.dropFirst("pid = ".count).trimmingCharacters(in: .whitespaces))
+            guard trimmed.hasPrefix(prefix) else { continue }
+            return pid_t(trimmed.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces))
         }
         return nil
     }

@@ -32,11 +32,6 @@ extension Engine {
         }
     }
 
-    /// Versions up to 0.3.2 registered the app itself as a login item. An upgrade inherits that
-    /// registration, and leaving it in place would start a second copy at login, so it goes first -
-    /// whether or not the agent is wanted, since the answer to "do not start at login" has to
-    /// cover the registration the previous version made. Once it is unregistered its status is no
-    /// longer `.enabled`, so this runs once and then costs a status read per config reload.
     /// A daemon that LaunchServices started - Finder, `open`, the cask's postflight - steps aside
     /// for the one launchd supervises rather than running beside it. launchd spawns its copy
     /// directly, so LaunchServices' "this app is already running" never sees it, and two daemons
@@ -57,6 +52,11 @@ extension Engine {
         Darwin.exit(0)
     }
 
+    /// Versions up to 0.3.2 registered the app itself as a login item. An upgrade inherits that
+    /// registration, and leaving it in place would start a second copy at login, so it goes first -
+    /// whether or not the agent is wanted, since the answer to "do not start at login" has to
+    /// cover the registration the previous version made. Once it is unregistered its status is no
+    /// longer `.enabled`, so this runs once and then costs a status read per config reload.
     private func retireLoginItem() {
         let loginItem = SMAppService.mainApp
         guard loginItem.status == .enabled else { return }
