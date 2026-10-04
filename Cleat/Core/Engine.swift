@@ -48,9 +48,11 @@ final class Engine: @unchecked Sendable {
     /// it stands in for the request being unanswered as well: a reply that never arrives costs one
     /// `reclaimInterval` rather than every request for the rest of the session.
     var reclaimNextAttempt: [String: Date] = [:]
-    /// Headsets whose "the phone has it" line is already in the log. Cleared when the headset
-    /// comes back, so the next spell reports for itself.
-    var reclaimHeldLogged: Set<String> = []
+    /// The last "not routed" line written per headset. A different reason is a new line; the same
+    /// one is not. Cleared when the headset comes back, so the next spell reports for itself.
+    var reclaimHeldLogged: [String: String] = [:]
+    /// When the current run of short retries (buds out of ear, screen locked) began per headset.
+    var reclaimRetryWindow: [String: Date] = [:]
     /// Whether the "no routing service" line has been written. Once is enough.
     var reclaimUnavailableLogged = false
 

@@ -26,6 +26,17 @@ extension Engine {
     /// not interrupted every half minute, short enough that hanging up is noticed.
     static let reclaimBackoff: TimeInterval = 60
 
+    /// A refusal that is about to stop being true (the buds go back in, the screen unlocks) is
+    /// retried this soon, for at most `reclaimRetrySpan` from the first one. The retry has to
+    /// schedule its own beat: putting the buds in is not a CoreAudio event, so nothing else would.
+    static let reclaimRetryDelay: TimeInterval = 8
+    static let reclaimRetrySpan: TimeInterval = 180
+
+    static func isShortLivedRefusal(_ detail: String) -> Bool {
+        let detail = detail.lowercased()
+        return detail.contains("out of ear") || detail.contains("screen locked")
+    }
+
     /// The requests this pass should send: what the rule asks for once the headsets the throttle
     /// and the backoffs are holding down have been taken off its list.
     func reclaimRequests(_ snapshot: DeviceSnapshot) -> [Action] {
@@ -44,7 +55,11 @@ extension Engine {
         // subprocess and this answer costs nothing. Beats are cheap to come by - a liveness flip
         // on a microphone in use is one, several times a minute - and every beat that reaches the
         // rule while the Mac is silent would have paid for a list it then ignores.
-        guard snapshot.outputRunning else { return [] }
+        guard snapshot.outputRunning else {
+            // The Mac stopped playing: the next refusal starts a fresh run of short retries.
+            reclaimRetryWindow.removeAll()
+            return []
+        }
 
         return ReclaimRule.reconcile(
             snapshot, bluetooth.pairedHeadsets(), config, excluding: heldDownHeadsets()
@@ -83,7 +98,8 @@ extension Engine {
     private func routeAnswered(name: String, address: String, response: RouteResponse) {
         switch response.outcome {
         case .routed:
-            reclaimHeldLogged.remove(address)
+            reclaimHeldLogged[address] = nil
+            reclaimRetryWindow[address] = nil
             note("reclaim: \(name) <- remote device (hijack accepted)")
             // The audio device appears a moment after the answer. These are the same beats a
             // device change would schedule, and they are what lets the takeover rule see the
@@ -92,11 +108,15 @@ extension Engine {
 
         case .alreadyRouted:
             // It was here all along. Nothing changed, so nothing is logged.
-            reclaimHeldLogged.remove(address)
+            reclaimHeldLogged[address] = nil
+            reclaimRetryWindow[address] = nil
 
         case .heldByRemote(let detail):
             reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimBackoff)
-            noteHeld("reclaim: \(name) held by remote device (\(detail))", address: address)
+            // A call outranks the 201 this Mac asks with, on purpose: see `reclaimScore`.
+            let why = detail.contains("Remote Category 501")
+                ? ": the phone is on a call, Cleat yields by design" : ""
+            noteHeld("reclaim: \(name) held by remote device (\(detail))\(why)", address: address)
 
         case .busy:
             // A previous hijack of ours is still running. Not news, and not a reason to wait: the
@@ -104,15 +124,29 @@ extension Engine {
             reclaimNextAttempt[address] = nil
 
         case .refused(let detail):
-            reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimBackoff)
+            if Engine.isShortLivedRefusal(detail), retryWindowOpen(address) {
+                reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimRetryDelay)
+                scheduleReconcile(after: Engine.reclaimRetryDelay)
+            } else {
+                reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimBackoff)
+            }
             noteHeld("reclaim: \(name) refused (\(detail))", address: address)
         }
     }
 
-    /// One line per spell, not one per attempt: a headset a phone keeps all afternoon is worth
-    /// saying once, and the set is cleared the moment it comes back.
+    /// Opens the window on the first short-lived refusal and says whether it is still open. A
+    /// spent window stays spent until the headset comes back or the Mac stops playing.
+    private func retryWindowOpen(_ address: String) -> Bool {
+        let start = reclaimRetryWindow[address] ?? now()
+        reclaimRetryWindow[address] = start
+        return now() < start.addingTimeInterval(Engine.reclaimRetrySpan)
+    }
+
+    /// One line per reason, not one per attempt: a headset a phone keeps all afternoon is worth
+    /// saying once, a new reason is worth saying again, and it all resets when the headset is back.
     private func noteHeld(_ message: String, address: String) {
-        guard reclaimHeldLogged.insert(address).inserted else { return }
+        guard reclaimHeldLogged[address] != message else { return }
+        reclaimHeldLogged[address] = message
         note(message)
     }
 

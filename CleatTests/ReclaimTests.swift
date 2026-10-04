@@ -509,6 +509,98 @@ final class ReclaimTests: XCTestCase {
         XCTAssertEqual(world.status()?.rules["reclaim"], "on (AirPods Max, 70:F9:4A:B6:0C:C9)")
     }
 
+    private static let outOfEar = RouteResponse(action: 0, reason: "Buds out of ear")
+    private static let onACall = RouteResponse(
+        action: 0, reason: "Rejected, Remote Category 501 > Local Category 201, phone call"
+    )
+
+    /// A new reason is a new line; the same reason again is not. The first refusal used to mute
+    /// every later one until the headset came back, so an evening of refusals left no trace.
+    func testChangedReasonIsLoggedAgain() throws {
+        let world = try World(config: config)
+        world.routing.answer = Self.outOfEar
+
+        world.start()
+        world.routing.answer = Self.onACall
+        world.advance(Engine.reclaimRetryDelay + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+        XCTAssertEqual(world.lines { $0.contains("refused (Buds out of ear)") }, 1)
+        XCTAssertEqual(world.lines { $0.contains("Remote Category 501") }, 1)
+
+        world.advance(Engine.reclaimBackoff + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 3)
+        XCTAssertEqual(world.lines { $0.contains("reclaim:") }, 2)
+    }
+
+    /// Buds out of ear is over the moment they go back in, and that is not a CoreAudio event:
+    /// the retry schedules its own beat, every few seconds, for a few minutes and no longer.
+    func testOutOfEarRetriesSoonForAWhileThenBacksOff() throws {
+        let world = try World(config: config)
+        world.routing.answer = Self.outOfEar
+
+        world.start()
+        XCTAssertNotNil(world.engine.queue.sync { world.engine.pendingReconciles[Engine.reclaimRetryDelay] })
+
+        world.advance(Engine.reclaimRetryDelay - 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 1)
+        world.advance(1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+
+        // Past the window, the same refusal is an ordinary one: a full backoff and no beat of its own.
+        world.advance(Engine.reclaimRetrySpan)
+        world.engine.queue.sync {
+            world.engine.pendingReconciles[Engine.reclaimRetryDelay]?.cancel()
+            world.engine.pendingReconciles[Engine.reclaimRetryDelay] = nil
+        }
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 3)
+        XCTAssertNil(world.engine.queue.sync { world.engine.pendingReconciles[Engine.reclaimRetryDelay] })
+        world.advance(Engine.reclaimRetryDelay + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 3)
+        world.advance(Engine.reclaimBackoff)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 4)
+        XCTAssertEqual(world.lines { $0.contains("out of ear") }, 1)
+    }
+
+    /// The Mac going quiet ends the run; the next refusal after it starts a fresh window.
+    func testStoppingPlaybackReopensTheRetryWindow() throws {
+        let world = try World(config: config)
+        world.routing.answer = Self.outOfEar
+
+        world.start()
+        world.advance(100)
+        world.system.snapshotValue.outputRunning = false
+        world.reconcile()
+        world.system.snapshotValue.outputRunning = true
+        world.advance(100)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+
+        world.advance(Engine.reclaimRetryDelay + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 3)
+    }
+
+    /// A call outranks this Mac by design, and the log says so rather than leaving it to guess.
+    func testCallHoldSaysCleatYieldsByDesign() throws {
+        let world = try World(config: config)
+        world.routing.answer = Self.onACall
+
+        world.start()
+        XCTAssertEqual(
+            world.lines { $0.contains("the phone is on a call, Cleat yields by design") }, 1
+        )
+        world.advance(Engine.reclaimRetryDelay + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 1)
+    }
+
     // MARK: - Harness
 
     /// An engine with every outside edge replaced: the audio system, the routing daemon, the
