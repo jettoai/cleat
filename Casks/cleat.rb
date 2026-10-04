@@ -1,8 +1,8 @@
 # Template for the cask that ships in jettoai/homebrew-tap. `version` and `sha256` come from
 # scripts/build-release.sh, which prints both after notarizing.
 cask "cleat" do
-  version "0.3.4"
-  sha256 "48db6382ccbe0c6bfcc47a8ee7c776436331897841184a0c3863afb21f5ab044"
+  version "0.3.5"
+  sha256 "5ab322c1bc62b166b8797ada868a6acc82021d316b4e3d660982f70368014b37"
 
   url "https://github.com/jettoai/cleat/releases/download/v#{version}/Cleat-#{version}.zip"
   name "Cleat"
