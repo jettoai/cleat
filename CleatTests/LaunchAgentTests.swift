@@ -8,7 +8,7 @@ final class LaunchAgentTests: XCTestCase {
         let statuses: [SMAppService.Status] = [.enabled, .notRegistered, .notFound, .requiresApproval]
         for status in statuses {
             for loaded in [true, false] {
-                let onlyTrueCell = status.rawValue == SMAppService.Status.enabled.rawValue && loaded == false
+                let onlyTrueCell = status == .enabled && !loaded
                 XCTAssertEqual(
                     LaunchAgent.needsReregistration(status: status, jobLoaded: loaded),
                     onlyTrueCell,

@@ -41,9 +41,10 @@ enum LaunchAgent {
     /// Everything that trusted that - the daemon's sync, `cleat restart`, `cleat status` - then
     /// left a daemon running with nothing supervising it. Only unregistering and registering again
     /// brings the job back. `.requiresApproval` is not this case: what it needs is a person, and
-    /// registering over it only throws.
-    static func needsReregistration(status: SMAppService.Status, jobLoaded: Bool) -> Bool {
-        status == .enabled && !jobLoaded
+    /// registering over it only throws. `jobLoaded` is only asked for an `.enabled` registration,
+    /// so callers pay for the `launchctl` subprocess in no other state.
+    static func needsReregistration(status: SMAppService.Status, jobLoaded: @autoclosure () -> Bool) -> Bool {
+        status == .enabled && !jobLoaded()
     }
 
     /// The launchd domain target for `launchctl`: the agent lives in the logged-in user's GUI

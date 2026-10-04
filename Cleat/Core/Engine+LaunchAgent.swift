@@ -23,10 +23,7 @@ extension Engine {
         let service = LaunchAgent.service
         let status = service.status
         let wanted = config.launchAtLogin
-        // launchctl is only asked when the registration claims to be enabled, so a config reload
-        // does not pay for a subprocess in any other state.
-        if wanted, status == .enabled,
-           LaunchAgent.needsReregistration(status: status, jobLoaded: LaunchAgent.loadedJob().isLoaded) {
+        if wanted, LaunchAgent.needsReregistration(status: status, jobLoaded: LaunchAgent.loadedJob().isLoaded) {
             do {
                 try service.unregister()
                 try service.register()
