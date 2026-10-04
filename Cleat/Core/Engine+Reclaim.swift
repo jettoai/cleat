@@ -32,7 +32,7 @@ extension Engine {
     static let reclaimRetryDelay: TimeInterval = 8
     static let reclaimRetrySpan: TimeInterval = 180
 
-    static func isShortLivedRefusal(_ detail: String) -> Bool {
+    private static func isShortLivedRefusal(_ detail: String) -> Bool {
         let detail = detail.lowercased()
         return detail.contains("out of ear") || detail.contains("screen locked")
     }
@@ -72,9 +72,7 @@ extension Engine {
     private func forgetHeadsetsThatCameBack(_ snapshot: DeviceSnapshot) {
         for (address, name) in reclaimNames {
             let headset = BluetoothHeadset(name: name, address: address, isConnected: true)
-            guard ReclaimRule.isAudioDevice(headset, in: snapshot) else { continue }
-            reclaimHeldLogged[address] = nil
-            reclaimRetryWindow[address] = nil
+            if ReclaimRule.isAudioDevice(headset, in: snapshot) { endSpell(address) }
         }
     }
 
@@ -111,8 +109,7 @@ extension Engine {
     private func routeAnswered(name: String, address: String, response: RouteResponse) {
         switch response.outcome {
         case .routed:
-            reclaimHeldLogged[address] = nil
-            reclaimRetryWindow[address] = nil
+            endSpell(address)
             note("reclaim: \(name) <- remote device (hijack accepted)")
             // The audio device appears a moment after the answer. These are the same beats a
             // device change would schedule, and they are what lets the takeover rule see the
@@ -121,8 +118,7 @@ extension Engine {
 
         case .alreadyRouted:
             // It was here all along. Nothing changed, so nothing is logged.
-            reclaimHeldLogged[address] = nil
-            reclaimRetryWindow[address] = nil
+            endSpell(address)
 
         case .heldByRemote(let detail):
             reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimBackoff)
@@ -145,6 +141,12 @@ extension Engine {
             }
             noteHeld("reclaim: \(name) refused (\(detail))", address: address)
         }
+    }
+
+    /// The headset is back: the next refusal is logged and retried as a new one.
+    private func endSpell(_ address: String) {
+        reclaimHeldLogged[address] = nil
+        reclaimRetryWindow[address] = nil
     }
 
     /// Opens the window on the first short-lived refusal and says whether it is still open. A
