@@ -34,6 +34,18 @@ enum LaunchAgent {
         }
     }
 
+    /// Whether a registration has to be made again because launchd lost the job behind it.
+    ///
+    /// Seen on a Homebrew upgrade (0.3.5 to 0.3.6): the old cask's `uninstall launchctl` removed
+    /// the job, but the background-task registration survived, so `status` still said `.enabled`.
+    /// Everything that trusted that - the daemon's sync, `cleat restart`, `cleat status` - then
+    /// left a daemon running with nothing supervising it. Only unregistering and registering again
+    /// brings the job back. `.requiresApproval` is not this case: what it needs is a person, and
+    /// registering over it only throws.
+    static func needsReregistration(status: SMAppService.Status, jobLoaded: Bool) -> Bool {
+        status == .enabled && !jobLoaded
+    }
+
     /// The launchd domain target for `launchctl`: the agent lives in the logged-in user's GUI
     /// session, which is the only place an app that may need to show a dialog belongs.
     static let domainTarget = "gui/\(getuid())/\(label)"

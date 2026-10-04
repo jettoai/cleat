@@ -93,7 +93,9 @@ enum CLI {
     private static func supervision() -> String {
         switch LaunchAgent.service.status {
         case .enabled:
-            return "launchd agent (registered)"
+            return LaunchAgent.loadedJob().isLoaded
+                ? "launchd agent (registered)"
+                : "launchd agent (registered but not loaded - run cleat restart)"
         case .notRegistered, .notFound:
             return "launchd agent (not registered)"
         case .requiresApproval:
@@ -163,6 +165,15 @@ enum CLI {
                     print("registered \(LaunchAgent.label)")
                 } catch {
                     return fail("restart: could not register \(LaunchAgent.label) (\(error.localizedDescription))")
+                }
+            }
+            if LaunchAgent.needsReregistration(status: service.status, jobLoaded: LaunchAgent.loadedJob().isLoaded) {
+                do {
+                    try service.unregister()
+                    try service.register()
+                    print("re-registered \(LaunchAgent.label) (it was registered but launchd had no job)")
+                } catch {
+                    return fail("restart: could not re-register \(LaunchAgent.label) (\(error.localizedDescription))")
                 }
             }
         }
