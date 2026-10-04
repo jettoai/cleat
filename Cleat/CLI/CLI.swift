@@ -55,6 +55,8 @@ enum CLI {
         print("updated:     \(display(status.updatedAt))")
         print("config:      \(status.configState) (\(tildePath(Paths.configURL)))")
         print("microphone:  \(status.microphone)")
+        // "-" for a status file written by a daemon that predates the setting.
+        print("reports:     " + (status.errorReports.map { $0 ? "error reports on" : "error reports off" } ?? "-"))
         print("input:       \(status.defaultInput ?? "-")")
         print("output:      \(status.defaultOutput ?? "-")")
 

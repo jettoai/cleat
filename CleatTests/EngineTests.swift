@@ -700,7 +700,7 @@ final class EngineTests: XCTestCase {
     }
 
     private func makeEngine(
-        config: Config, system: FakeAudioSystem, detectors: DetectorLog
+        config: Config, system: FakeAudioSystem, detectors: DetectorLog, reports: ReportLog = ReportLog()
     ) throws -> Engine {
         try JSONEncoder().encode(config).write(to: configURL)
         let engine = Engine(
@@ -710,10 +710,61 @@ final class EngineTests: XCTestCase {
             statusURL: statusURL,
             makeDetector: { device, _, zeroSeconds, _, _ in
                 detectors.make(device: device, zeroSeconds: zeroSeconds)
-            }
+            },
+            errorReportsChanged: { reports.append($0) }
         )
         self.engine = engine
         return engine
+    }
+
+    // MARK: - Error reports
+
+    func testErrorReportsOffNeverReachesTheReporter() throws {
+        let reports = ReportLog()
+        let engine = try makeEngine(
+            config: Config(launchAtLogin: false), system: FakeAudioSystem(snapshot: DeviceSnapshot()),
+            detectors: DetectorLog(startResults: []), reports: reports
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        XCTAssertEqual(reports.values, [])
+        XCTAssertEqual(status()?.errorReports, false)
+        XCTAssertFalse(logLines().contains { $0.contains("errorReports:") })
+    }
+
+    func testErrorReportsOnAtStartReachTheReporterOnce() throws {
+        let reports = ReportLog()
+        let engine = try makeEngine(
+            config: Config(launchAtLogin: false, errorReports: true),
+            system: FakeAudioSystem(snapshot: DeviceSnapshot()), detectors: DetectorLog(startResults: []), reports: reports
+        )
+
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        XCTAssertEqual(reports.values, [true])
+        XCTAssertEqual(status()?.errorReports, true)
+        XCTAssertTrue(logLines().contains { $0.hasSuffix("errorReports: on") })
+    }
+
+    func testErrorReportsFollowTheConfigBothWays() throws {
+        let reports = ReportLog()
+        let engine = try makeEngine(
+            config: Config(launchAtLogin: false, errorReports: true),
+            system: FakeAudioSystem(snapshot: DeviceSnapshot()), detectors: DetectorLog(startResults: []), reports: reports
+        )
+        engine.start(microphone: .granted)
+        drain(engine)
+
+        engine.queue.sync {
+            engine.config.errorReports = false
+            engine.syncErrorReports()
+            engine.syncErrorReports()
+        }
+
+        XCTAssertEqual(reports.values, [true, false])
     }
 
     /// Waits for everything already handed to the engine queue, which is where all of its work
@@ -736,6 +787,14 @@ final class EngineTests: XCTestCase {
 }
 
 // MARK: - Doubles
+
+/// Every value the engine passed to its error-reporting callback, in order.
+final class ReportLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Bool] = []
+    func append(_ value: Bool) { lock.lock(); storage.append(value); lock.unlock() }
+    var values: [Bool] { lock.lock(); defer { lock.unlock() }; return storage }
+}
 
 /// The audio system as a value. Writes land back in the snapshot, so a second reconcile finds the
 /// state already held - the same reason the real engine converges instead of writing every beat.

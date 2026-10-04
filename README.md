@@ -82,7 +82,8 @@ running steps aside for the supervised one, so there is never a second daemon.
   "inputVolume": { "*": 100, "Wireless microphone": 88, "Brio 100": 75 },
   "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
   "reclaim": ["AirPods Max"],
-  "launchAtLogin": true
+  "launchAtLogin": true,
+  "errorReports": false
 }
 ```
 
@@ -98,6 +99,7 @@ running steps aside for the supervised one, so there is never a second daemon.
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
 | `reclaim` | array of strings | `[]` | Bluetooth headsets to ask back when another device holds them, by name or address |
 | `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
+| `errorReports` | boolean | `false` | Send crash and error reports to Sentry. See [Privacy](#privacy) |
 
 **Input gain.** `"*"` sets the target for every input device present, and a named entry overrides
 it for that device: `{"*": 100, "Brio 100": 75}` holds everything at 100 percent except the Brio,
@@ -193,6 +195,20 @@ This is also why Cleat is an .app rather than a bare binary on a LaunchAgent - a
 started by launchd is often never asked, and the request fails silently instead. The agent that
 supervises the daemon starts the app bundle's own binary (`BundleProgram`), so the process launchd
 brings back is the same app the microphone was granted to, not a loose executable.
+
+## Privacy
+
+Cleat sends nothing off your Mac unless you ask it to. The one exception is opt-in: set
+`"errorReports": true` in the config and the daemon sends crash and error reports to Sentry, so
+crashes reach the author without anyone filing an issue. A report carries the stack trace, the
+Cleat and macOS versions, the Mac model, language and time zone, and the rough region Sentry
+infers from the connection. It never carries your IP address, your config, or the contents of any
+file, and your home folder in file paths is replaced with `~`. There is no usage tracking, no
+session tracking and no screen recording.
+
+Set it back to `false`, or delete the line, and reporting stops as soon as the config is re-read;
+no restart needed. `cleat status` shows which way it is set. The `cleat` commands never send
+anything.
 
 ## Build from source
 

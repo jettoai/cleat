@@ -7,6 +7,8 @@
 #
 # Prereqs (one-time):
 #   op signin        # 1Password session for the ASC notary key (op://dev/global-shared/ASC_*)
+#   brew install getsentry/tools/sentry-cli
+#   ~/.config/op-env/sentry.env with SENTRY_AUTH_TOKEN as an op:// reference (dSYM upload)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -35,6 +37,13 @@ asc_read ASC_NOTARY_KEY_P8 > "$NOTARY_KEY_FILE"
 NOTARY_KEY_ID=$(asc_read ASC_NOTARY_KEY_ID) || exit 1
 NOTARY_ISSUER_ID=$(asc_read ASC_NOTARY_ISSUER_ID) || exit 1
 
+echo "==> preflight: sentry-cli + Sentry auth env (dSYM upload)"
+SENTRY_ENV="$HOME/.config/op-env/sentry.env"
+command -v sentry-cli > /dev/null \
+  || { echo "sentry-cli not found - brew install getsentry/tools/sentry-cli" >&2; exit 1; }
+[ -f "$SENTRY_ENV" ] \
+  || { echo "Sentry env file missing ($SENTRY_ENV) - needs SENTRY_AUTH_TOKEN as an op:// reference" >&2; exit 1; }
+
 echo "==> xcodegen"
 xcodegen generate
 
@@ -49,6 +58,11 @@ xcodebuild archive \
   CODE_SIGN_IDENTITY="Developer ID Application" CODE_SIGN_STYLE=Manual \
   DEVELOPMENT_TEAM="$TEAM_ID" \
   -quiet
+
+echo "==> upload dSYMs to Sentry"
+# The token is injected by op run from op:// references; it never appears in this script or its output.
+op run --env-file="$SENTRY_ENV" -- \
+  sentry-cli debug-files upload --org taiwanbigdata --project cleat "$ARCHIVE/dSYMs"
 
 echo "==> export"
 xcodebuild -exportArchive -archivePath "$ARCHIVE" \

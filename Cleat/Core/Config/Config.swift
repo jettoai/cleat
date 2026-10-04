@@ -55,6 +55,9 @@ struct Config: Codable, Equatable, Sendable {
     var reclaim: [String]
     /// Whether the app registers itself with SMAppService as a login item.
     var launchAtLogin: Bool
+    /// Whether the daemon sends crash and error reports (App/ErrorReporting.swift). Off unless
+    /// asked for: a config that says nothing sends nothing.
+    var errorReports: Bool
 
     /// What Cleat enforces when there is no config file at all: nothing.
     static let disabled = Config()
@@ -69,7 +72,8 @@ struct Config: Codable, Equatable, Sendable {
         inputVolume: [String: Double] = [:],
         liveness: [String: LivenessConfig] = [:],
         reclaim: [String] = [],
-        launchAtLogin: Bool = true
+        launchAtLogin: Bool = true,
+        errorReports: Bool = false
     ) {
         self.input = input
         self.blockedInput = blockedInput
@@ -81,6 +85,7 @@ struct Config: Codable, Equatable, Sendable {
         self.liveness = liveness
         self.reclaim = reclaim
         self.launchAtLogin = launchAtLogin
+        self.errorReports = errorReports
     }
 
     init(from decoder: Decoder) throws {
@@ -95,6 +100,7 @@ struct Config: Codable, Equatable, Sendable {
         liveness = try container.decodeIfPresent([String: LivenessConfig].self, forKey: .liveness) ?? [:]
         reclaim = try container.decodeIfPresent([String].self, forKey: .reclaim) ?? []
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
+        errorReports = try container.decodeIfPresent(Bool.self, forKey: .errorReports) ?? false
     }
 
     /// Range checks the decoder cannot express. Called by `load`, so an out-of-range file is

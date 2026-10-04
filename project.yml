@@ -7,6 +7,14 @@ options:
   generateEmptyDirectories: true
   developmentLanguage: en
 
+packages:
+  # Opt-in crash and error reporting (Cleat/App/ErrorReporting.swift). Off by default: the SDK is
+  # never started unless config.json says "errorReports": true. Pinned exactly because the
+  # generated xcodeproj (and its Package.resolved) is gitignored.
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    exactVersion: 9.29.1
+
 schemes:
   Cleat:
     build:
@@ -39,6 +47,8 @@ targets:
       # to cp it out of Contents/Resources.
       - path: config.example.json
         buildPhase: resources
+    dependencies:
+      - package: Sentry
     settings:
       base:
         INFOPLIST_FILE: Cleat/App/Info.plist

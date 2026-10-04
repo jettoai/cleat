@@ -11,6 +11,10 @@ struct Status: Codable, Equatable {
     var configState: String
     /// `authorized`, `denied`, `restricted`, or `not determined`.
     var microphone: String
+    /// Whether crash and error reports are on. Nil in a file written by a daemon older than the
+    /// setting, which is why it is optional: a required key would make the CLI read such a file
+    /// as no daemon at all.
+    var errorReports: Bool?
     var defaultInput: String?
     var defaultOutput: String?
     /// Rule name to a one-line verdict, e.g. `inputPin` -> `on, holding Wireless microphone`.
@@ -24,6 +28,7 @@ struct Status: Codable, Equatable {
         updatedAt: Date = Date(),
         configState: String = "missing",
         microphone: String = "not determined",
+        errorReports: Bool? = nil,
         defaultInput: String? = nil,
         defaultOutput: String? = nil,
         rules: [String: String] = [:],
@@ -34,6 +39,7 @@ struct Status: Codable, Equatable {
         self.updatedAt = updatedAt
         self.configState = configState
         self.microphone = microphone
+        self.errorReports = errorReports
         self.defaultInput = defaultInput
         self.defaultOutput = defaultOutput
         self.rules = rules

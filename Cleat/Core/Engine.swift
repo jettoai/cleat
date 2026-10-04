@@ -41,6 +41,8 @@ final class Engine: @unchecked Sendable {
     var pendingReconciles: [TimeInterval: DispatchWorkItem] = [:]
     private var recentEvents: [String] = []
     private var watcher: ConfigWatcher?
+    /// The value last passed to `errorReportsChanged`. Starts off, the same as the SDK.
+    private var errorReportsApplied = false
 
     // Reclaim bookkeeping, all keyed by Bluetooth address. It lives here rather than in the rule
     // because it is memory of what was asked and when, which a pure function must not have.
@@ -65,6 +67,9 @@ final class Engine: @unchecked Sendable {
     let bluetooth: any BluetoothInventory
     /// Injectable so the throttle and the backoff can be tested without waiting a minute.
     let now: () -> Date
+    /// Tells the daemon's error reporting that `errorReports` changed. Called on `queue`, with the
+    /// new value only, so a config that never asks for reports never reaches it.
+    private let errorReportsChanged: @Sendable (Bool) -> Void
 
     /// The detector the daemon uses. Injectable so the engine's detector bookkeeping can be tested
     /// without opening a real input.
@@ -88,7 +93,8 @@ final class Engine: @unchecked Sendable {
         makeDetector: @escaping LivenessDetectorFactory = Engine.liveDetector,
         routing: any RouteRequesting = SmartRoutingClient(),
         bluetooth: any BluetoothInventory = SystemProfilerPairings(),
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        errorReportsChanged: @escaping @Sendable (Bool) -> Void = { _ in }
     ) {
         self.system = system
         self.log = log
@@ -98,6 +104,7 @@ final class Engine: @unchecked Sendable {
         self.routing = routing
         self.bluetooth = bluetooth
         self.now = now
+        self.errorReportsChanged = errorReportsChanged
     }
 
     // MARK: - Lifecycle
@@ -109,6 +116,7 @@ final class Engine: @unchecked Sendable {
             note("engine started (config: \(configState), microphone: \(permission.label))")
             syncLaunchAtLogin()
             handOverToLaunchAgentIfNeeded()
+            syncErrorReports()
             attachSystemListeners()
             rebindDevices()
 
@@ -171,8 +179,19 @@ final class Engine: @unchecked Sendable {
 
         syncLaunchAtLogin()
         handOverToLaunchAgentIfNeeded()
+        syncErrorReports()
         rebindDevices()
         reconcile()
+    }
+
+    /// Passes `errorReports` on when it changes. A file that fails to load keeps the previous
+    /// config and so the previous answer; a missing file is the disabled config, which is off.
+    func syncErrorReports() {
+        let wanted = config.errorReports
+        guard wanted != errorReportsApplied else { return }
+        errorReportsApplied = wanted
+        errorReportsChanged(wanted)
+        note("errorReports: \(wanted ? "on" : "off")")
     }
 
     // MARK: - Reconcile
@@ -315,6 +334,7 @@ final class Engine: @unchecked Sendable {
         StatusStore.write(Status(
             configState: configState,
             microphone: microphone.label,
+            errorReports: config.errorReports,
             defaultInput: snapshot.defaultInput.flatMap { snapshot.device(id: $0)?.name },
             defaultOutput: snapshot.defaultOutput.flatMap { snapshot.device(id: $0)?.name },
             rules: ruleSummaries(snapshot),

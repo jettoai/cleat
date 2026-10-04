@@ -5,7 +5,11 @@ import Foundation
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let shared = AppDelegate()
 
-    private let engine = Engine()
+    // Error reporting starts and stops on the main thread (ErrorReporting); the engine calls this
+    // on its own queue, and main.async keeps an on followed by an off in that order.
+    private let engine = Engine(errorReportsChanged: { on in
+        DispatchQueue.main.async { MainActor.assumeIsolated { ErrorReporting.apply(on) } }
+    })
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Unit tests are hosted in this app. Starting the engine there would register CoreAudio

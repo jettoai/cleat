@@ -7,6 +7,13 @@ final class ConfigTests: XCTestCase {
         try JSONDecoder().decode(Config.self, from: Data(json.utf8))
     }
 
+    func testErrorReportsAreOffUnlessAsked() throws {
+        XCTAssertFalse(try decode("{}").errorReports)
+        XCTAssertTrue(try decode(#"{"errorReports": true}"#).errorReports)
+        XCTAssertFalse(try decode(#"{"errorReports": false}"#).errorReports)
+        XCTAssertThrowsError(try decode(#"{"errorReports": "yes"}"#))
+    }
+
     func testFullConfigDecodes() throws {
         let config = try decode("""
         {
