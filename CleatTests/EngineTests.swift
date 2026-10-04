@@ -788,12 +788,11 @@ final class EngineTests: XCTestCase {
 
 // MARK: - Doubles
 
-/// Every value the engine passed to its error-reporting callback, in order.
+/// Every value the engine passed to its error-reporting callback, in order. Written on the engine
+/// queue and read after `drain`, like `DetectorLog`, so it needs no lock.
 final class ReportLog: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage: [Bool] = []
-    func append(_ value: Bool) { lock.lock(); storage.append(value); lock.unlock() }
-    var values: [Bool] { lock.lock(); defer { lock.unlock() }; return storage }
+    private(set) var values: [Bool] = []
+    func append(_ value: Bool) { values.append(value) }
 }
 
 /// The audio system as a value. Writes land back in the snapshot, so a second reconcile finds the
