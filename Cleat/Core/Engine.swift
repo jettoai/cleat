@@ -53,6 +53,8 @@ final class Engine: @unchecked Sendable {
     var reclaimHeldLogged: [String: String] = [:]
     /// When the current run of short retries (buds out of ear, screen locked) began per headset.
     var reclaimRetryWindow: [String: Date] = [:]
+    /// The name each headset was asked for under, so a beat can tell it has turned up in CoreAudio.
+    var reclaimNames: [String: String] = [:]
     /// Whether the "no routing service" line has been written. Once is enough.
     var reclaimUnavailableLogged = false
 

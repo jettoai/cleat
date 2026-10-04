@@ -75,7 +75,7 @@ enum ReclaimRule {
     /// Whether this headset is already an output device the Mac can see. Matched on the Bluetooth
     /// name, which is the name CoreAudio gives the device - not on the config entry, which may be
     /// an address that no audio device carries.
-    private static func isAudioDevice(_ headset: BluetoothHeadset, in snapshot: DeviceSnapshot) -> Bool {
+    static func isAudioDevice(_ headset: BluetoothHeadset, in snapshot: DeviceSnapshot) -> Bool {
         snapshot.devices.contains { device in
             device.hasOutput && DeviceName.matches(entry: headset.name, name: device.name, uid: device.uid)
         }

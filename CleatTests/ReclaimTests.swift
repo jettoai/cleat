@@ -587,6 +587,42 @@ final class ReclaimTests: XCTestCase {
         XCTAssertEqual(world.routing.addresses.count, 3)
     }
 
+    /// macOS moving the headset back by itself sends no `routed` answer; the headset turning up in
+    /// CoreAudio has to end the spell anyway, or the evening's refusal reads as the morning's.
+    func testHeadsetComingBackOnItsOwnEndsTheSpell() throws {
+        let world = try World(config: config)
+        world.routing.answer = Self.outOfEar
+
+        world.start()
+        world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+        world.reconcile()
+        world.system.snapshotValue.devices = [Fixture.macStudioSpeakers]
+        world.advance(Engine.reclaimRetryDelay + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+        XCTAssertEqual(world.lines { $0.contains("refused (Buds out of ear)") }, 2)
+    }
+
+    /// The same, hours apart and with the Mac playing throughout: the old retry window is spent,
+    /// and the headset having been back is what opens a new one.
+    func testHeadsetComingBackOnItsOwnReopensTheRetryWindow() throws {
+        let world = try World(config: config)
+        world.routing.answer = Self.outOfEar
+
+        world.start()
+        world.advance(10)
+        world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+        world.reconcile()
+        world.advance(Engine.reclaimRetrySpan + 20)
+        world.system.snapshotValue.devices = [Fixture.macStudioSpeakers]
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+
+        world.advance(Engine.reclaimRetryDelay + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 3)
+    }
+
     /// A call outranks this Mac by design, and the log says so rather than leaving it to guess.
     func testCallHoldSaysCleatYieldsByDesign() throws {
         let world = try World(config: config)

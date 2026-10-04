@@ -41,6 +41,7 @@ extension Engine {
     /// and the backoffs are holding down have been taken off its list.
     func reclaimRequests(_ snapshot: DeviceSnapshot) -> [Action] {
         guard !config.reclaim.isEmpty else { return [] }
+        forgetHeadsetsThatCameBack(snapshot)
         guard routing.isAvailable else {
             // Fail closed and say so once. A macOS that has moved or renamed the routing class is
             // not an error to retry; it is this rule being off.
@@ -66,6 +67,17 @@ extension Engine {
         )
     }
 
+    /// A headset macOS moved back by itself never gets a `routed` answer, so its appearing in
+    /// CoreAudio is what ends the spell: the next refusal is logged and retried as a new one.
+    private func forgetHeadsetsThatCameBack(_ snapshot: DeviceSnapshot) {
+        for (address, name) in reclaimNames {
+            let headset = BluetoothHeadset(name: name, address: address, isConnected: true)
+            guard ReclaimRule.isAudioDevice(headset, in: snapshot) else { continue }
+            reclaimHeldLogged[address] = nil
+            reclaimRetryWindow[address] = nil
+        }
+    }
+
     /// The headsets this pass must not ask for: one asked for less than an interval ago, and one a
     /// backoff is holding down. The rule is told about them before it picks rather than being
     /// filtered after, so a headset that cannot be asked for now steps aside for the next one on
@@ -83,6 +95,7 @@ extension Engine {
     /// reply that never arrives still cannot turn into a request per beat.
     func requestRoute(name: String, address: String, reason: String) {
         reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimInterval)
+        reclaimNames[address] = name
 
         routing.request(
             address: address, score: Engine.reclaimScore, reason: reason, queue: queue
