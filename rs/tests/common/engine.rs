@@ -24,6 +24,8 @@ pub struct FakeAudioState {
     pub writes: RefCell<Vec<String>>,
     /// False is a device that has just appeared: `setDefaultOutput` succeeds and does not stick.
     pub output_writes_stick: Cell<bool>,
+    /// `owns_bluetooth_audio` per device id; absent is an unreadable property.
+    pub owns: RefCell<std::collections::HashMap<u32, bool>>,
 }
 
 pub struct FakeAudio(pub Rc<FakeAudioState>);
@@ -68,6 +70,9 @@ impl AudioSystem for FakeAudio {
         None
     }
     fn remove_listener(&self, _token: ListenerToken) {}
+    fn owns_bluetooth_audio(&self, device: u32) -> Option<bool> {
+        self.0.owns.borrow().get(&device).copied()
+    }
 }
 
 #[derive(Clone, Default)]
@@ -301,6 +306,7 @@ impl Harness {
             snapshot: RefCell::new(snapshot),
             writes: RefCell::default(),
             output_writes_stick: Cell::new(true),
+            owns: RefCell::default(),
         });
         let clock = FakeClock::default();
         let agent = FakeAgentState::new(opts.agent_status);

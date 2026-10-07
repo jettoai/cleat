@@ -34,4 +34,10 @@ pub trait AudioSystem {
     /// Fills in the presence readings a snapshot leaves out because they cost more (assertions,
     /// the front app). Called only when reclaim is about to judge whether anyone is at the Mac.
     fn complete_presence(&self, _facts: &mut PresenceFacts) {}
+    /// Whether this Mac holds the Bluetooth audio connection of `device`. `None` when the device
+    /// has no such property or the HAL will not answer. Read only when an output change away from
+    /// a listed headset looks manual.
+    fn owns_bluetooth_audio(&self, _device: u32) -> Option<bool> {
+        None
+    }
 }

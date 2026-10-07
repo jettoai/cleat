@@ -58,6 +58,8 @@ pub struct ReclaimBook {
     returns: HashMap<String, Return>,
     /// When a listed headset, not the output, was first seen while the Mac played (B-1173).
     macos_return: HashMap<String, Duration>,
+    /// The headset ownership reading failed once; said once per run.
+    ownership_unreadable_logged: bool,
 }
 
 fn short_lived(detail: &str) -> bool {
@@ -161,8 +163,24 @@ impl Engine {
         });
         // No reading is the old behaviour: a switch away from a headset in use stood.
         let by_hand = snap.presence.input_idle.is_none_or(|s| s < MANUAL_CHOICE_WINDOW_S);
-        if by_hand && !by_cleat {
-            self.reclaim.user_chose.insert(address);
+        if !by_hand || by_cleat {
+            return;
+        }
+        // macOS moves the output off a headset another device has taken as soon as the Mac plays,
+        // which is right after a key press (B-1173, 20:52:40): the keyboard alone cannot tell that
+        // from a hand-picked output. The Mac no longer holding the headset can.
+        match self.system.owns_bluetooth_audio(left.id) {
+            Some(false) => {}
+            Some(true) => {
+                self.reclaim.user_chose.insert(address);
+            }
+            None => {
+                if !self.reclaim.ownership_unreadable_logged {
+                    self.reclaim.ownership_unreadable_logged = true;
+                    self.note("reclaim: headset ownership unreadable, a switch at the keyboard counts as the user's");
+                }
+                self.reclaim.user_chose.insert(address);
+            }
         }
     }
 

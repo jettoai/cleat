@@ -131,6 +131,12 @@ pub fn prepare_liveness_input(id: u32) -> usize {
 /// only exports behind its deprecated-API feature.
 const STREAM_FORMAT: u32 = u32::from_be_bytes(*b"sfmt");
 
+/// `kBluetoothAudioDevicePropertyOwnsAudioConnection`, a UInt32 the Bluetooth HAL plug-in keeps on
+/// a Bluetooth output device: 1 while this Mac holds the headset, 0 once another device (an iPhone)
+/// took it. Not in any public header; read off BTAudioHALPlugin's property dispatch on 2026-10-07
+/// (macOS 27, `cmp 0x626f6163` ahead of "Ownership Set as %d"). Other devices answer 'who?'.
+const BT_OWNS_AUDIO_CONNECTION: u32 = u32::from_be_bytes(*b"boac");
+
 impl AudioSystem for CoreAudioSystem {
     fn snapshot(&self, config: &Config) -> DeviceSnapshot {
         let devices: Vec<AudioDevice> = property::device_ids().into_iter().filter_map(Self::describe).collect();
@@ -174,6 +180,10 @@ impl AudioSystem for CoreAudioSystem {
         let full = presence::read_assertions_and_front();
         facts.display_assertions = full.display_assertions;
         facts.front_pid = full.front_pid;
+    }
+
+    fn owns_bluetooth_audio(&self, device: u32) -> Option<bool> {
+        property::get::<u32>(device, global(BT_OWNS_AUDIO_CONNECTION)).map(|v| v != 0)
     }
 
     fn set_default_input(&self, id: u32) -> i32 {
