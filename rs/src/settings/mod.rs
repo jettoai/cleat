@@ -91,6 +91,9 @@ fn open_window() {
         application.activateIgnoringOtherApps(true);
         window.makeKeyAndOrderFront(None);
     }
+    // Swift opens with the window itself focused (grey selection); AppKit would hand the list,
+    // the first key view, focus at once. A click on the list still takes it, for ↑/↓.
+    window.makeFirstResponder(None);
     let block = RcBlock::new(|_t: std::ptr::NonNull<NSTimer>| app().tick());
     // SAFETY: as above, main run loop only.
     let timer = unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(1.0, true, &block) };
