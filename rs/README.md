@@ -21,5 +21,13 @@ The CLI (`status`, `log`, `restart`, `version`, `help`) prints what the Swift `c
 supervision, bootstrap a plist of your own (Label `ai.jetto.cleat.rs`, Program the bundle's
 binary, `KeepAlive` `SuccessfulExit` false) and `launchctl bootout` it afterwards.
 
-Launch it with a clean environment (`env -i HOME="$HOME" PATH=/usr/bin:/bin open -g …`): `open`
-passes the caller's environment to the app.
+Opening the app from Finder, Spotlight or Raycast while that launchd job exists opens the
+settings window instead of a second daemon (the Dock shows the icon while it is open). With no
+job, it starts the daemon. Launch that way with a clean environment
+(`env -i HOME="$HOME" PATH=/usr/bin:/bin open -g …`): `open` passes the caller's environment to
+the app.
+
+`bash scripts/install.sh` copies `target/Cleat-rs.app` to `/Applications/Cleat-rs.app` (beside the
+Swift `Cleat.app`), where Raycast finds it, points the existing `~/Library/LaunchAgents/ai.jetto.cleat.rs.plist` at that
+copy and restarts the daemon. The bundle is ad-hoc signed, so a rebuilt one may ask for the
+microphone again.

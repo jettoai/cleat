@@ -1,6 +1,7 @@
 //! One binary, two jobs (Swift `main.swift`). A bare launch, or one with flag-shaped arguments only
-//! (LaunchServices passes `-psn_...`), is the daemon; a first argument that is a word is a CLI
-//! subcommand. `run --observe [--trace]` is the observe-only daemon, kept from stage 1.
+//! (LaunchServices passes `-psn_...`), is the daemon, unless a person opened the app while the
+//! launchd daemon exists: that opens the settings window (`opened_by_hand`). A first argument that
+//! is a word is a CLI subcommand. `run --observe [--trace]` is the observe-only daemon.
 
 use std::process::ExitCode;
 use std::sync::mpsc;
@@ -11,7 +12,7 @@ use cleat_rs::cli;
 use cleat_rs::config::paths;
 use cleat_rs::engine::{self, Engine, EngineDeps, Mode};
 use cleat_rs::identity::{self, Identity};
-use cleat_rs::launch::{LaunchctlJob, SmApp};
+use cleat_rs::launch::{LaunchctlJob, Launchd, SmApp};
 use cleat_rs::liveness::live_detectors;
 use cleat_rs::model::MicrophonePermission;
 use cleat_rs::outvol::writer_log::LogStream;
@@ -31,8 +32,25 @@ fn main() -> ExitCode {
         Some(first) if !first.starts_with('-') || CLI_FLAGS.contains(&first) => {
             ExitCode::from(cli::run(&args).clamp(0, 255) as u8)
         }
+        _ if !trace && opened_by_hand() => ExitCode::from(cleat_rs::settings::run(&[]).clamp(0, 255) as u8),
         _ => daemon(Mode::Enforce, trace),
     }
+}
+
+/// A bare launch from Finder, Raycast or the Dock (LaunchServices, not our launchd job) while the
+/// launchd job exists opens the settings window: the daemon is launchd's, and a second one would
+/// fight it over the same devices. A job that is loaded but down is kicked first, as the daemon's
+/// own hand-over used to. With no job there is no other daemon, so this launch is the daemon.
+fn opened_by_hand() -> bool {
+    let job = LaunchctlJob { label: Identity::current().label() };
+    if job.started_by_launchd() {
+        return false;
+    }
+    let (loaded, pid) = job.loaded_job();
+    if loaded && pid.is_none() {
+        let _ = job.kickstart();
+    }
+    loaded
 }
 
 fn daemon(mode: Mode, trace: bool) -> ExitCode {
