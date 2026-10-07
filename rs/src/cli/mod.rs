@@ -1,4 +1,4 @@
-//! `cleat status`, `cleat log`, `cleat restart`, `cleat reclaim`, `cleat version`: Swift `CLI.swift`, output and
+//! `cleat status`, `cleat log`, `cleat restart`, `cleat reclaim`, `cleat settings`, `cleat version`: Swift `CLI.swift`, output and
 //! exit codes word for word. The CLI never talks to the daemon; it reads the files it writes.
 
 mod reclaim;
@@ -23,6 +23,7 @@ usage:
   cleat reclaim [device]
                       ask a Bluetooth headset back from whatever took it, once,
                       and print the answer. Defaults to the config's \"reclaim\" list
+  cleat settings      open the settings window (edits the config file)
   cleat version
 
 Running Cleat.app with no arguments starts the daemon. launchd starts it at login and
@@ -38,6 +39,7 @@ pub fn run(args: &[String]) -> i32 {
         "log" => log(&args[1..]),
         "restart" => restart::restart(),
         "reclaim" => reclaim::reclaim(&args[1..]),
+        "settings" => crate::settings::run(&args[1..]),
         "version" | "--version" => {
             println!("{}", Identity::current().version());
             0

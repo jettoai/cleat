@@ -14,4 +14,5 @@ pub mod outvol;
 pub mod reclaim;
 pub mod report;
 pub mod rules;
+pub mod settings;
 pub mod state;

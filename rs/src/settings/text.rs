@@ -1,0 +1,166 @@
+//! Every word the settings window shows, and the pure formatting behind them (Swift
+//! `SettingsView.swift:22-48`, `LevelRows.swift`, `DaemonVitals.swift:70-168`, `SettingsIcon.swift`).
+
+use objc2_core_audio::{
+    kAudioDeviceTransportTypeAirPlay, kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE,
+    kAudioDeviceTransportTypeBuiltIn, kAudioDeviceTransportTypeDisplayPort, kAudioDeviceTransportTypeHDMI,
+};
+
+use super::draft::Side;
+use super::vitals::{DaemonVitals, VitalsState};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Page {
+    Output,
+    Input,
+    Headphones,
+}
+
+impl Page {
+    pub const ALL: [Page; 3] = [Page::Output, Page::Input, Page::Headphones];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Page::Output => "輸出",
+            Page::Input => "輸入",
+            Page::Headphones => "耳機",
+        }
+    }
+
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Page::Output => "speaker.wave.2",
+            Page::Input => "mic",
+            Page::Headphones => "beats.headphones",
+        }
+    }
+
+    pub fn subtitle(self) -> &'static str {
+        match self {
+            Page::Output => "Cleat 讓聲音一直從你排第一的裝置出來",
+            Page::Input => "Cleat 讓你排第一的麥克風一直是預設輸入，音量停在你設定的值",
+            Page::Headphones => "藍牙耳機被手機或 iPad 拿走時，Cleat 把它要回來",
+        }
+    }
+}
+
+pub fn noun(side: Side) -> &'static str {
+    match side {
+        Side::Input => "輸入",
+        Side::Output => "輸出",
+    }
+}
+
+pub fn device_list_footer(side: Side) -> &'static str {
+    match side {
+        Side::Input => "清單中第一個已連線的麥克風會成為預設輸入。勾「不使用」的裝置，Cleat 永遠不會切過去。",
+        Side::Output => "有聲音要播時，Cleat 會切到清單中第一個已連線的裝置。勾「不使用」的裝置，Cleat 永遠不會切過去。",
+    }
+}
+
+pub const OUTPUT_LEVELS_FOOTER: &str = "輸出音量：名單上的程式改了音量，Cleat 會拉回原本的值；你自己調的不會被拉回。左右平衡：打開「固定」後，被別的 app 或藍牙重連改掉時 Cleat 會改回來。";
+pub const VOLUMES_FOOTER: &str = "單獨設定的麥克風優先於預設音量。";
+pub const OTHERS_NOTE: &str = "系統沒說是什麼的藍牙裝置。喇叭或耳機不在上面時，到這裡勾；手機、電腦不用勾。";
+pub const BLOCK_HELP: &str = "勾了之後，Cleat 永遠不會切到這個裝置";
+pub const CPU_HELP: &str = "Cleat 常駐程式占一顆核心的百分比，跟活動監視器同一個算法；取最近 60 秒的平均，剛打開視窗時是打開以來的平均";
+pub const MEMORY_HELP: &str = "與活動監視器「記憶體」欄同一個值";
+
+/// 0.5 is "置中"; otherwise the side and |v - 0.5| x 200 percent.
+pub fn balance_describe(value: f64) -> String {
+    let percent = ((value - 0.5).abs() * 200.0).round() as i64;
+    if percent == 0 {
+        return "置中".into();
+    }
+    format!("{}{percent}%", if value < 0.5 { "偏左 " } else { "偏右 " })
+}
+
+/// "現在：AirPods Max 62%", or why there is no reading.
+pub fn now_text(device: Option<&str>, reading: Option<&str>, noun: &str) -> String {
+    match (device, reading) {
+        (None, _) => format!("現在：沒有預設{noun}裝置"),
+        (Some(d), None) => format!("現在：{d} 讀不到這個值"),
+        (Some(d), Some(r)) => format!("現在：{d} {r}"),
+    }
+}
+
+pub fn percent_text(v: f64) -> String {
+    format!("{}%", v.round() as i64)
+}
+
+pub fn cpu_text(percent: f64) -> String {
+    if percent < 0.1 {
+        format!("{percent:.2}%")
+    } else if percent < 10.0 {
+        format!("{percent:.1}%")
+    } else {
+        format!("{percent:.0}%")
+    }
+}
+
+pub fn memory_text(bytes: u64) -> String {
+    format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+}
+
+pub fn vitals_headline(state: VitalsState) -> &'static str {
+    match state {
+        VitalsState::Running => "Cleat 執行中",
+        VitalsState::NotRunning => "Cleat 未執行",
+        VitalsState::Unreadable => "讀不到 Cleat 的用量",
+    }
+}
+
+pub fn vitals_cpu(v: &DaemonVitals) -> String {
+    match v.cpu_percent {
+        Some(c) => cpu_text(c),
+        None if v.state == VitalsState::Running && v.cpu_measuring => "量測中".into(),
+        None => "—".into(),
+    }
+}
+
+pub fn vitals_cpu_note(v: &DaemonVitals) -> String {
+    v.cpu_window_seconds.map_or_else(|| "一顆核心的百分比".into(), |s| format!("最近 {s} 秒平均"))
+}
+
+pub fn vitals_memory(v: &DaemonVitals) -> String {
+    v.footprint_bytes.map_or_else(|| "—".into(), memory_text)
+}
+
+/// The Rust daemon publishes no `performance` block, so this is Swift's `performance == nil` branch.
+pub fn reaction_help(v: &DaemonVitals) -> &'static str {
+    if v.state != VitalsState::Running {
+        "Cleat 沒在執行"
+    } else {
+        "這個版本的 Cleat 還不會量拉回速度"
+    }
+}
+
+/// Which SF Symbol stands for a device, from its name and bus. The caller checks the symbol exists.
+pub fn device_symbol(name: &str, transport: Option<u32>, side: Side) -> &'static str {
+    let lower = name.to_lowercase();
+    let is = |t: u32| transport == Some(t);
+    let any = |words: &[&str]| words.iter().any(|w| lower.contains(w));
+    if is(kAudioDeviceTransportTypeBluetooth)
+        || is(kAudioDeviceTransportTypeBluetoothLE)
+        || any(&["airpods", "headphone", "耳機", "buds"])
+    {
+        "beats.headphones"
+    } else if is(kAudioDeviceTransportTypeHDMI) || is(kAudioDeviceTransportTypeDisplayPort) || any(&["display", "顯示器"]) {
+        "display"
+    } else if is(kAudioDeviceTransportTypeAirPlay) {
+        "hifispeaker"
+    } else if side == Side::Output && is(kAudioDeviceTransportTypeBuiltIn) {
+        if lower.contains("macbook") {
+            "laptopcomputer"
+        } else if lower.contains("studio") {
+            "macstudio"
+        } else {
+            "display"
+        }
+    } else if any(&["brio", "webcam", "camera"]) {
+        "web.camera"
+    } else if side == Side::Input {
+        "mic"
+    } else {
+        "hifispeaker"
+    }
+}

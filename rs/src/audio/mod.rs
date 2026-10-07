@@ -2,10 +2,10 @@
 
 mod core_audio;
 mod listeners;
-mod property;
+pub(crate) mod property;
 
 pub use core_audio::{prepare_liveness_input, CoreAudioSystem};
-pub use listeners::{ListenerKind, ListenerToken};
+pub use listeners::{ListenerKind, ListenerToken, VIRTUAL_MAIN_BALANCE};
 
 use crate::config::Config;
 use crate::model::presence::PresenceFacts;

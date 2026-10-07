@@ -72,7 +72,7 @@ impl CoreAudioSystem {
         Self { contexts: Contexts::new(tx) }
     }
 
-    fn describe(id: u32) -> Option<AudioDevice> {
+    pub(crate) fn describe(id: u32) -> Option<AudioDevice> {
         let name = property::get_string(id, global(kAudioObjectPropertyName))?;
         let uid = property::get_string(id, global(kAudioDevicePropertyDeviceUID))?;
         Some(AudioDevice::with_transport(
