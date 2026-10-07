@@ -72,8 +72,10 @@ struct OutputVolumeLedger: Sendable {
     private(set) var lastRevert: Revert?
     private(set) var unattributedInARow = 0
     private(set) var unrecognised: String?
-    /// The default output's channels at the last reading, and how they moved recently.
+    /// The default output's channels at the last reading, which device they were read from, and
+    /// how they moved recently.
     private(set) var observed: [Float] = []
+    private(set) var observedUID: String?
     private(set) var outputChanges: [OutputChange] = []
 
     /// Takes one writer line. Returns when the streak it opened should be judged, or nil when it
@@ -131,9 +133,13 @@ struct OutputVolumeLedger: Sendable {
     }
 
     /// One reading of the default output's channels. A channel that differs from the last reading
-    /// is an output change; a different channel count (another device) only starts over.
-    mutating func observe(_ values: [Float], at: Date) {
-        if values.count == observed.count {
+    /// is an output change. Another device only starts over: its value next to the old device's is
+    /// a switch, not a write, and the old device's changes say nothing about this one.
+    mutating func observe(_ values: [Float], device uid: String, at: Date) {
+        if uid != observedUID {
+            observedUID = uid
+            outputChanges.removeAll()
+        } else if values.count == observed.count {
             for (old, new) in zip(observed, values) where abs(old - new) > OutputVolumeHoldRule.tolerance {
                 outputChanges.append(OutputChange(at: at, from: old, to: new))
             }

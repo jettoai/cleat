@@ -20,14 +20,14 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
     /// A ledger that has already adopted `level` for the device.
     private func ledger(holding level: Float) -> OutputVolumeLedger {
         var ledger = OutputVolumeLedger()
-        ledger.observe([level, level], at: t0 - 10)
+        ledger.observe([level, level], device: device.uid, at: t0 - 10)
         _ = ledger.judge(device: device, current: [level, level], now: t0 - 10)
         return ledger
     }
 
     /// The volume listener reading both channels at `offset`.
     private func output(_ ledger: inout OutputVolumeLedger, at offset: TimeInterval, _ values: Float...) {
-        ledger.observe(values, at: t0 + offset)
+        ledger.observe(values, device: device.uid, at: t0 + offset)
     }
 
     /// Records a listed write, lands it on both channels and judges at its deadline.
@@ -194,6 +194,21 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
         let judgement = ledger.judge(device: device, current: [0.43, 0.43], now: t0 + 0.3)
         XCTAssertEqual(judgement.verdict, .kept(from: 0.5, to: 0.43, writer: "unknown", note: nil))
         XCTAssertNil(ledger.streak)
+    }
+
+    /// The default output switched from one stereo device at 80% to another at 40%, and within
+    /// 150ms Parallels wrote the microphone 80% -> 40%. The switch is not an output change, so the
+    /// write moved nothing and the new device keeps its 40%.
+    func testSwitchToAnotherDeviceIsNotAnOutputChange() {
+        var ledger = ledger(holding: 0.8)
+        let speakers = Fixture.macSpeakers
+        ledger.observe([0.4, 0.4], device: speakers.uid, at: t0)
+        // The switch's own reconcile takes the speakers' value as theirs.
+        XCTAssertEqual(ledger.judge(device: speakers, current: [0.4, 0.4], now: t0).verdict, .adopt(0.4))
+        _ = ledger.record(write("prl_vm_app", at: 0.05, 0.8, 0.4, control: 261), listed: true, ownPID: 1,
+                          outputUID: speakers.uid, now: t0 + 0.055)
+        XCTAssertEqual(ledger.judge(device: speakers, current: [0.4, 0.4], now: t0 + 0.35).verdict, .none)
+        XCTAssertEqual(ledger.held[speakers.uid], 0.4)
     }
 
     // MARK: - Which lines moved the output

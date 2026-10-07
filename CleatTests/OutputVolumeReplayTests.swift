@@ -76,7 +76,7 @@ final class OutputVolumeReplayTests: XCTestCase {
         var timeline: [(at: Date, held: Float?)] = []
 
         func listener(at: Date) {
-            ledger.observe([262, 263].compactMap { channels[$0] }, at: at)
+            ledger.observe([262, 263].compactMap { channels[$0] }, device: device.uid, at: at)
         }
 
         func runDue(upTo limit: Date?) {

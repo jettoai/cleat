@@ -199,6 +199,28 @@ final class OutputVolumeEngineTests: XCTestCase {
         XCTAssertEqual(system.writes, ["outvol:30:0.5000"])
     }
 
+    /// After the default output moved to the speakers (40%), the AirPods' listener delivers one
+    /// last reading (80%). It is not the speakers' baseline, so a microphone write 80% -> 40%
+    /// that follows does not look like it moved the speakers.
+    func testLateReadingFromThePreviousOutputIsDropped() throws {
+        let (system, engine, source) = try start(holdAgainst: ["Parallels Desktop"])
+        let speakers = Fixture.macSpeakers
+        engine.queue.async {
+            system.snapshotValue.devices.append(speakers)
+            system.snapshotValue.defaultOutput = speakers.id
+            system.snapshotValue.outputVolumes = [0.4, 0.4]
+            engine.reconcile()
+            // The fake reads the same channels for any device, so the AirPods' value is staged.
+            system.snapshotValue.outputVolumes = [0.8, 0.8]
+            engine.outputVolumeChanged(Fixture.airPods.id)
+            system.snapshotValue.outputVolumes = [0.4, 0.4]
+            source.emit(.write(Self.write(Self.parallelsPath, 0.8, 0.4, control: 261)))
+            engine.outputVolumeChanged(speakers.id)
+        }
+        waitOnQueue(engine, seconds: 0.6)
+        XCTAssertEqual(system.writes, [])
+    }
+
     // MARK: - Helpers
 
     private static func write(_ path: String, _ from: Float, _ to: Float,
