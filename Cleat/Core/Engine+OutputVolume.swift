@@ -143,7 +143,7 @@ extension Engine {
         let snapshot = system.snapshot(config: config)
         guard let output = snapshot.defaultOutput, output == device,
               let uid = snapshot.device(id: output)?.uid else { return }
-        outputVolume.ledger.observe(system.outputVolumes(device), device: uid, at: now())
+        outputVolume.ledger.observe(snapshot.outputVolumes, device: uid, at: now())
         outputVolume.ledger.volumeChanged(at: now())
         scheduleReconcile(after: Engine.outputVolumeSettle)
     }
@@ -224,9 +224,16 @@ extension Engine {
 
     /// Local wall-clock time for people: status is read by a person, not parsed.
     private static func clock(_ date: Date, seconds: Bool) -> String {
+        (seconds ? clockWithSeconds : clockMinutes).string(from: date)
+    }
+
+    private static let clockMinutes = clockFormatter("HH:mm")
+    private static let clockWithSeconds = clockFormatter("HH:mm:ss")
+
+    private static func clockFormatter(_ format: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = seconds ? "HH:mm:ss" : "HH:mm"
-        return formatter.string(from: date)
+        formatter.dateFormat = format
+        return formatter
     }
 }

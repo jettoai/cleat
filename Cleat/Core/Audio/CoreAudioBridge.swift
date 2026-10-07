@@ -18,8 +18,6 @@ protocol AudioSystem: AnyObject {
     func setOutputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus
 
     func nominalSampleRate(_ device: AudioDeviceID) -> Double?
-    /// The output volume of each channel (or the main element), as `snapshot` reads it.
-    func outputVolumes(_ device: AudioDeviceID) -> [Float]
 
     func addSystemListener(
         selector: AudioObjectPropertySelector,
@@ -77,7 +75,7 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
 
         // Only the output volume hold reads the output volume.
         let outputVolumes = config.outputVolumeHoldAgainst.isEmpty
-            ? [] : (defaultOutput.map(outputVolumes) ?? [])
+            ? [] : (defaultOutput.map { volumes($0, address: Self.outputVolumeAddress) } ?? [])
 
         return DeviceSnapshot(
             devices: devices,
@@ -144,23 +142,20 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
     /// Main element first; devices that expose no main volume are read as the mean of the two
     /// channels, which is what System Settings shows for them.
     private func inputVolume(_ device: AudioDeviceID) -> Float? {
-        if let value = AudioProperty.value(device, Self.volumeAddress(element: kAudioObjectPropertyElementMain), as: Float32.self) {
-            return value
-        }
-        let channels = [AudioObjectPropertyElement(1), AudioObjectPropertyElement(2)].compactMap {
-            AudioProperty.value(device, Self.volumeAddress(element: $0), as: Float32.self)
-        }
+        let channels = volumes(device, address: Self.volumeAddress)
         guard !channels.isEmpty else { return nil }
         return channels.reduce(0, +) / Float(channels.count)
     }
 
     /// Main element when the device has one, otherwise each channel that answers.
-    func outputVolumes(_ device: AudioDeviceID) -> [Float] {
-        if let main = AudioProperty.value(device, Self.outputVolumeAddress(element: kAudioObjectPropertyElementMain), as: Float32.self) {
+    private func volumes(
+        _ device: AudioDeviceID, address: (AudioObjectPropertyElement) -> AudioObjectPropertyAddress
+    ) -> [Float] {
+        if let main = AudioProperty.value(device, address(kAudioObjectPropertyElementMain), as: Float32.self) {
             return [main]
         }
         return [AudioObjectPropertyElement(1), AudioObjectPropertyElement(2)].compactMap {
-            AudioProperty.value(device, Self.outputVolumeAddress(element: $0), as: Float32.self)
+            AudioProperty.value(device, address($0), as: Float32.self)
         }
     }
 

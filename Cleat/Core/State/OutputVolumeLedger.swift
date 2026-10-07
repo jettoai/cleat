@@ -172,9 +172,8 @@ struct OutputVolumeLedger: Sendable {
     /// echo pushes the listener's settle beat back, and waiting for it would let the user's next
     /// press land first.
     func isSettling(now: Date) -> Bool {
-        if let streak { return now < streak.startedAt + Self.judgeDelay }
-        guard let lastChangeAt else { return false }
-        return lastChangeAt + Self.judgeDelay > now
+        guard let start = streak?.startedAt ?? lastChangeAt else { return false }
+        return now < start + Self.judgeDelay
     }
 
     /// `sourceDown`: the writer source is not delivering, so a pending listed write is not trusted.
