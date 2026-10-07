@@ -39,7 +39,7 @@ fn pinned_row(
     }
     views.push(to_view(&secondary(mtm, now, 10.0)));
     let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
-    let col = padded_column(mtm, 8.0, &refs);
+    let col = padded_column(mtm, 8.0, 12.0, &refs);
     to_view(&col)
 }
 

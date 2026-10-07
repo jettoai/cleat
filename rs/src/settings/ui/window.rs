@@ -137,6 +137,11 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     side_item.setCanCollapse(false);
     split.addSplitViewItem(&side_item);
     let detail = scroll(mtm);
+    // SwiftUI's Form: an overlay scroller that shows only while scrolling.
+    detail.setAutohidesScrollers(true);
+    detail.setScrollerStyle(objc2_app_kit::NSScrollerStyle::Overlay);
+    // The page's own 52 pt top margin already clears the title bar; no inset on top of it.
+    detail.setAutomaticallyAdjustsContentInsets(false);
     let detail_item = NSSplitViewItem::splitViewItemWithViewController(&controller(mtm, &detail));
     split.addSplitViewItem(&detail_item);
     window.setContentViewController(Some(&split));

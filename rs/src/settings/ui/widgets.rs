@@ -258,17 +258,24 @@ pub fn fill(parent: &NSView, child: &NSView, inset: f64) {
     child.trailingAnchor().constraintEqualToAnchor_constant(&parent.trailingAnchor(), -inset).setActive(true);
 }
 
-/// One Form row: content padded 6 x 10, at least 24 tall.
-pub fn row(mtm: MainThreadMarker, views: &[&NSView]) -> Retained<NSStackView> {
+/// One plain Form row: content padded 10 all round, as tall as its content.
+pub fn plain_row(mtm: MainThreadMarker, views: &[&NSView]) -> Retained<NSStackView> {
     let s = stack(mtm, false, 8.0, views);
     s.setEdgeInsets(NSEdgeInsets { top: 10.0, left: 10.0, bottom: 10.0, right: 10.0 });
-    s.heightAnchor().constraintGreaterThanOrEqualToConstant(45.0).setActive(true);
     s
 }
 
-pub fn padded_column(mtm: MainThreadMarker, spacing: f64, views: &[&NSView]) -> Retained<NSStackView> {
+/// Swift `.settingsRow()`: a plain row whose content is at least 24 tall.
+pub fn row(mtm: MainThreadMarker, views: &[&NSView]) -> Retained<NSStackView> {
+    let s = plain_row(mtm, views);
+    s.heightAnchor().constraintGreaterThanOrEqualToConstant(44.0).setActive(true);
+    s
+}
+
+/// A Form row holding a column; `vpad` is the row's 10 plus any `.padding(.vertical)` inside it.
+pub fn padded_column(mtm: MainThreadMarker, spacing: f64, vpad: f64, views: &[&NSView]) -> Retained<NSStackView> {
     let s = stack(mtm, true, spacing, views);
-    s.setEdgeInsets(NSEdgeInsets { top: 12.0, left: 10.0, bottom: 12.0, right: 10.0 });
+    s.setEdgeInsets(NSEdgeInsets { top: vpad, left: 10.0, bottom: vpad, right: 10.0 });
     for v in views {
         fill(&s, v, 10.0);
     }

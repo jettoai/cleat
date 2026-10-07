@@ -8,7 +8,7 @@ use objc2_app_kit::{NSButton, NSColor, NSControlSize, NSControlStateValueOff, NS
 use super::super::draft::{DeviceRow, Side};
 use super::super::text::{self, device_list_footer, noun};
 use super::pages::device_label;
-use super::widgets::{to_view, attributed, icon, ns, plain_button, row, secondary, section, spacer, symbol_exists, tag, width, Ctx};
+use super::widgets::{to_view, attributed, icon, ns, plain_button, plain_row, row, secondary, section, spacer, symbol_exists, tag, width, Ctx};
 use super::{app, App};
 use crate::model::device_name;
 
@@ -87,7 +87,7 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
     let listed = list_of(a, side).listed();
     let mut rows = vec![];
     if listed.is_empty() {
-        let r = row(mtm, &[&secondary(mtm, &format!("尚未設定，Cleat 不會切換{}", noun(side)), 13.0), &spacer(mtm)]);
+        let r = plain_row(mtm, &[&secondary(mtm, &format!("尚未設定，Cleat 不會切換{}", noun(side)), 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
     let count = listed.len();

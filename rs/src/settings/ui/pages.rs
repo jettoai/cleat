@@ -11,7 +11,7 @@ use super::super::store::Phase;
 use super::super::text::{self, Page};
 use super::super::vitals::{DaemonVitals, VitalsState};
 use super::widgets::{to_view, 
-    attributed, body, fill, icon, label, ns, padded_column, row, secondary, section, semibold, spacer, stack,
+    attributed, body, fill, icon, label, ns, padded_column, plain_row, secondary, section, semibold, spacer, stack,
     wrapping, AccentSwitch, Ctx,
 };
 use super::{app, devices, disable_tree, levels, App};
@@ -27,7 +27,8 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     if let Some(banner) = error_banner(a, ctx) {
         add(banner);
     }
-    let content = stack(mtm, true, 28.0, &[]);
+    // Swift grouped Form: 30 pt from one section to the next (measured side by side).
+    let content = stack(mtm, true, 30.0, &[]);
     let put = |v: Retained<NSView>| {
         content.addArrangedSubview(&v);
         fill(&content, &v, 0.0);
@@ -63,7 +64,8 @@ fn pane_header(a: &App, mtm: MainThreadMarker, page: Page) -> Retained<NSView> {
     let words = stack(mtm, true, 2.0, &[&title, &sub]);
     let head = stack(mtm, false, 12.0, &[&icon(mtm, page.symbol(), 40.0, &NSColor::labelColor()), &words]);
     let vitals = vitals_band(mtm, &a.store.borrow().vitals);
-    section(mtm, None, &[to_view(&padded_column(mtm, 8.0, &[&head])), vitals], None)
+    // Swift: `.padding(.vertical, 4)` on the header and on VitalsBand, inside the row's 10.
+    section(mtm, None, &[to_view(&padded_column(mtm, 8.0, 14.0, &[&head])), vitals], None)
 }
 
 fn big_font() -> Retained<NSFont> {
@@ -114,7 +116,7 @@ fn vitals_band(mtm: MainThreadMarker, v: &DaemonVitals) -> Retained<NSView> {
     grid.setAlignment(objc2_app_kit::NSLayoutAttribute::Top);
     cells[0].widthAnchor().constraintEqualToAnchor(&cells[1].widthAnchor()).setActive(true);
     cells[1].widthAnchor().constraintEqualToAnchor(&cells[2].widthAnchor()).setActive(true);
-    let col = padded_column(mtm, 10.0, &[&top, &grid]);
+    let col = padded_column(mtm, 10.0, 14.0, &[&top, &grid]);
     to_view(&col)
 }
 
@@ -131,12 +133,12 @@ fn error_banner(a: &App, ctx: &mut Ctx) -> Option<Retained<NSView>> {
         .or(s.error_message.clone())?;
     let red = NSColor::systemRedColor();
     let line = stack(mtm, false, 6.0, &[&icon(mtm, "exclamationmark.triangle.fill", 16.0, &red), &wrapping(mtm, &message, 13.0, &red)]);
-    let mut rows = vec![to_view(&padded_column(mtm, 0.0, &[&line]))];
+    let mut rows = vec![to_view(&padded_column(mtm, 0.0, 10.0, &[&line]))];
     if s.has_conflict || unreadable.is_some() {
         let act = ctx.act(|_| app().reload());
         // SAFETY: target and selector match `Action::fire:`.
         let b = unsafe { NSButton::buttonWithTitle_target_action(&ns("重新載入"), Some(&act), Some(sel!(fire:)), mtm) };
-        rows.push(to_view(&row(mtm, &[&b, &spacer(mtm)])));
+        rows.push(to_view(&plain_row(mtm, &[&b, &spacer(mtm)])));
     }
     Some(section(mtm, None, &rows, None))
 }
@@ -144,7 +146,10 @@ fn error_banner(a: &App, ctx: &mut Ctx) -> Option<Retained<NSView>> {
 /// Label + switch. `spread`: switch at the trailing edge; otherwise right next to the words.
 pub fn switch_row(mtm: MainThreadMarker, title: &str, on: bool, enabled: bool, f: impl Fn(bool) + 'static) -> Retained<NSView> {
     let sw = AccentSwitch::new(mtm, on, enabled, f);
-    to_view(&row(mtm, &[&body(mtm, title), &spacer(mtm), &sw]))
+    let r = plain_row(mtm, &[&body(mtm, title), &spacer(mtm), &sw]);
+    // Swift's Toggle row measures 38 pt tall side by side; AppKit's content alone gives 36.
+    r.heightAnchor().constraintGreaterThanOrEqualToConstant(38.0).setActive(true);
+    to_view(&r)
 }
 
 /// A device name with "未連線" after it when nothing present matches.
@@ -177,8 +182,8 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
     if !reclaim {
         b.setEnabled(false);
     }
-    let r = row(mtm, &[&b, &spacer(mtm)]);
-    r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 6.0, left: 26.0, bottom: 6.0, right: 10.0 });
+    let r = plain_row(mtm, &[&b, &spacer(mtm)]);
+    r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 26.0, bottom: 10.0, right: 10.0 });
     if !reclaim {
         r.setAlphaValue(0.6);
     }
@@ -200,8 +205,8 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let audio: Vec<&HeadsetOption> = d.headsets.iter().filter(|h| !h.is_other).collect();
     let others: Vec<&HeadsetOption> = d.headsets.iter().filter(|h| h.is_other).collect();
     if audio.is_empty() {
-        let r = row(mtm, &[&secondary(mtm, "沒有找到配對過的藍牙耳機", 13.0), &spacer(mtm)]);
-        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 6.0, left: 26.0, bottom: 6.0, right: 10.0 });
+        let r = plain_row(mtm, &[&secondary(mtm, "沒有找到配對過的藍牙耳機", 13.0), &spacer(mtm)]);
+        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 26.0, bottom: 10.0, right: 10.0 });
         if !reclaim {
             r.setAlphaValue(0.6);
         }
@@ -223,9 +228,11 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         let hit = unsafe { NSButton::buttonWithTitle_target_action(&ns(""), Some(&act), Some(sel!(fire:)), mtm) };
         hit.setBordered(false);
         hit.setTransparent(true);
-        let r = row(mtm, &[&chevron, &words, &spacer(mtm)]);
+        let r = plain_row(mtm, &[&chevron, &words, &spacer(mtm)]);
         r.setAlignment(objc2_app_kit::NSLayoutAttribute::Top);
-        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 6.0, left: 26.0, bottom: 6.0, right: 10.0 });
+        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 26.0, bottom: 10.0, right: 10.0 });
+        // Swift's two-line header row measures 51 pt side by side.
+        r.heightAnchor().constraintGreaterThanOrEqualToConstant(50.5).setActive(true);
         r.addSubview(&hit);
         hit.setTranslatesAutoresizingMaskIntoConstraints(false);
         fill(&r, &hit, 0.0);
@@ -243,7 +250,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         }
     }
     if reclaim && !d.headsets.is_empty() && !d.headsets.iter().any(|h| h.is_selected) {
-        let r = row(mtm, &[&secondary(mtm, "請至少勾選一副耳機，否則不會有動作", 13.0), &spacer(mtm)]);
+        let r = plain_row(mtm, &[&secondary(mtm, "請至少勾選一副耳機，否則不會有動作", 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
     section(mtm, Some("耳機"), &rows, None)
