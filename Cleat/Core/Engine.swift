@@ -67,12 +67,14 @@ final class Engine: @unchecked Sendable {
     var reclaimRetryWindow: [String: Date] = [:]
     /// The name each headset was asked for under, so a beat can tell it has turned up in CoreAudio.
     var reclaimNames: [String: String] = [:]
-    /// Headsets asked for, or already the output, during the current playback. One that is in
-    /// CoreAudio but not the output is not asked for again until the Mac stops and starts playing,
-    /// apart from short retries.
+    /// Headsets the daemon said this Mac already has (routed, or already routed) during the
+    /// current playback. One that is in CoreAudio but not the output is not asked for again until
+    /// the playback ends or it becomes the output.
     var reclaimAskedThisPlayback: Set<String> = []
     /// Whether the "no routing service" line has been written. Once is enough.
     var reclaimUnavailableLogged = false
+    /// The output and the user's hand on it, as reclaim last saw them (Engine+Reclaim.swift).
+    var reclaimWatch = ReclaimWatch()
 
     private let configURL: URL
     private let statusURL: URL
@@ -318,6 +320,7 @@ final class Engine: @unchecked Sendable {
             status = system.setDefaultInput(device)
         case .setDefaultOutput(let device, _):
             status = system.setDefaultOutput(device)
+            reclaimWatch.ownOutputWrite = (device, now())
         case .setBalance(let device, let value, _):
             status = system.setBalance(device, value)
         case .setInputVolume(let device, let value, _):

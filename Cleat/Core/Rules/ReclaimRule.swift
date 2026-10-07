@@ -18,8 +18,9 @@ import Foundation
 /// A headset is asked for whenever it is not the default output, whether or not it is in CoreAudio.
 /// The takeover rule only acts the moment a headset connects, and the output pin list does not name
 /// it, so a headset that is here but not chosen had nobody looking after it. Asking costs nothing
-/// when it is unwanted: the system refuses a headset that is not being worn, and the engine asks for
-/// a headset that is already here only once per playback, so a manual switch away from it stands.
+/// when it is unwanted: the system refuses a headset that is not being worn, and the engine leaves a
+/// headset that is already here alone once the user has moved the output off it by hand, or the
+/// daemon has said the Mac has it, for the rest of that playback.
 enum ReclaimRule {
 
     /// The reason string that travels with the request. It ends up in the system's own routing

@@ -71,6 +71,9 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         // pays for the read.
         let outputRunning = !config.reclaim.isEmpty
             && (defaultOutput.map(isRunningSomewhere) ?? false)
+        // Only the reclaim rule asks whether anyone is at the Mac, and only while it is playing.
+        let inputIdle = outputRunning ? UserActivity.inputIdleSeconds() : nil
+        let displayHeldAwake = outputRunning && UserActivity.displayHeldAwake()
 
         // Only the output volume hold reads the output volume.
         let outputVolumes = config.outputVolumeHoldAgainst.isEmpty
@@ -83,6 +86,8 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
             outputBalance: defaultOutput.flatMap(balance),
             outputVolumes: outputVolumes,
             outputRunning: outputRunning,
+            inputIdle: inputIdle,
+            displayHeldAwake: displayHeldAwake,
             inputVolumes: inputVolumes,
             liveness: [:],  // filled in by the engine, which owns the detectors
             arrived: []     // and so is this: only the engine remembers the previous pass

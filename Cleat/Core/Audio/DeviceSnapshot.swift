@@ -79,6 +79,13 @@ struct DeviceSnapshot: Equatable, Sendable {
     /// and false when there is no default output at all, so a config that does not ask for
     /// reclaim behaves as it did before this field existed.
     var outputRunning: Bool
+    /// Seconds since the last keyboard, mouse or trackpad event (`HIDIdleTime`). Read only while
+    /// `outputRunning` is true, since only the reclaim rule asks; nil when not read or unreadable,
+    /// which the rule takes as someone being there - the behaviour before this field existed.
+    var inputIdle: TimeInterval?
+    /// Whether an app is holding the display awake (`PreventUserIdleDisplaySleep`), which is what a
+    /// video player does while someone watches without touching anything. Read with `inputIdle`.
+    var displayHeldAwake: Bool
     /// Input volume scalars (0.0-1.0) for the devices the config asks about.
     var inputVolumes: [AudioDeviceID: Float]
     /// Silence detection verdict per device UID. A missing key means "not tracked", which the
@@ -96,6 +103,8 @@ struct DeviceSnapshot: Equatable, Sendable {
         outputBalance: Float? = nil,
         outputVolumes: [Float] = [],
         outputRunning: Bool = false,
+        inputIdle: TimeInterval? = nil,
+        displayHeldAwake: Bool = false,
         inputVolumes: [AudioDeviceID: Float] = [:],
         liveness: [String: Liveness] = [:],
         arrived: Set<String> = []
@@ -106,6 +115,8 @@ struct DeviceSnapshot: Equatable, Sendable {
         self.outputBalance = outputBalance
         self.outputVolumes = outputVolumes
         self.outputRunning = outputRunning
+        self.inputIdle = inputIdle
+        self.displayHeldAwake = displayHeldAwake
         self.inputVolumes = inputVolumes
         self.liveness = liveness
         self.arrived = arrived
