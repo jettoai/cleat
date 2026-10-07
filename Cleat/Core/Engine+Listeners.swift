@@ -54,6 +54,7 @@ extension Engine {
         let snapshot = system.snapshot(config: config)
         attachDeviceListeners(snapshot)
         syncLivenessDetectors(snapshot)
+        syncOutputVolumeSource()
     }
 
     private func attachDeviceListeners(_ snapshot: DeviceSnapshot) {
@@ -85,6 +86,20 @@ extension Engine {
                 element: kAudioObjectPropertyElementMain,
                 queue: queue
             ) { [weak self] in self?.scheduleReconcile(after: 0) })
+        }
+
+        // The output volume hold judges a change once it has settled, so a listener per element:
+        // AirPods Max have no main volume element and report each channel instead.
+        if !config.outputVolumeHoldAgainst.isEmpty, let output = snapshot.defaultOutput {
+            for element in [kAudioObjectPropertyElementMain, 1, 2] {
+                deviceTokens.append(system.addDeviceListener(
+                    device: output,
+                    selector: kAudioDevicePropertyVolumeScalar,
+                    scope: kAudioObjectPropertyScopeOutput,
+                    element: AudioObjectPropertyElement(element),
+                    queue: queue
+                ) { [weak self] in self?.outputVolumeChanged() })
+            }
         }
 
         // Every device the volume rule has a target for, which with a `"*"` wildcard is every

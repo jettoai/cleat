@@ -18,7 +18,7 @@ final class Engine: @unchecked Sendable {
     /// volume element reports balance from its two channel volumes, and apps change the volume one
     /// channel at a time (Parallels 238ms apart), so an immediate read sees half a volume change as
     /// a balance shift. Each change restarts the wait. Below `settleBeat` so it never spends an
-    /// arrival.
+    /// arrival. `outputVolumeSettle` (0.3) is kept below this so a volume revert lands first.
     static let balanceSettle: TimeInterval = 0.4
 
     /// How many log lines `cleat status` shows.
@@ -52,6 +52,7 @@ final class Engine: @unchecked Sendable {
     private var watcher: ConfigWatcher?
     /// The value last passed to `errorReportsChanged`. Starts off, the same as the SDK.
     private var errorReportsApplied = false
+    var outputVolume = OutputVolumeHold()
 
     // Reclaim bookkeeping, all keyed by Bluetooth address. It lives here rather than in the rule
     // because it is memory of what was asked and when, which a pure function must not have.
@@ -246,8 +247,9 @@ final class Engine: @unchecked Sendable {
         // the 'dOut' listener brings us straight back here against the new one.
         // Nor while a balance change is still settling: an app may have written one channel and
         // not yet the other. Any pass can land in that window; the settle beat judges it.
+        let holdActions = outputActions.isEmpty ? outputVolumeActions(snapshot) : []
         let balanceSettling = balanceChangedAt.map { .now() < $0 + Engine.balanceSettle } ?? false
-        let balanceActions = outputActions.isEmpty && !balanceSettling
+        let balanceActions = outputActions.isEmpty && holdActions.isEmpty && !balanceSettling
             ? BalanceRule.reconcile(snapshot, config) : []
         let volumeActions = InputVolumeRule.reconcile(snapshot, config)
         // Last, and not a CoreAudio write at all: a headset that is not in the device list cannot
@@ -255,7 +257,7 @@ final class Engine: @unchecked Sendable {
         // devices the four above just decided on.
         let reclaimActions = reclaimRequests(snapshot)
 
-        for action in inputActions + outputActions + balanceActions + volumeActions + reclaimActions {
+        for action in inputActions + outputActions + holdActions + balanceActions + volumeActions + reclaimActions {
             apply(action)
         }
         writeStatus(snapshot)
@@ -320,6 +322,8 @@ final class Engine: @unchecked Sendable {
             status = system.setBalance(device, value)
         case .setInputVolume(let device, let value, _):
             status = system.setInputVolume(device, value)
+        case .setOutputVolume(let device, let value, _):
+            status = system.setOutputVolume(device, value)
 
         case .requestRoute(let name, let address, let reason):
             // The one action that is not a write: it is a question for another daemon, and what
@@ -356,7 +360,8 @@ final class Engine: @unchecked Sendable {
             defaultOutput: snapshot.defaultOutput.flatMap { snapshot.device(id: $0)?.name },
             rules: ruleSummaries(snapshot),
             liveness: livenessSummaries(snapshot),
-            recentEvents: recentEvents
+            recentEvents: recentEvents,
+            outputVolume: outputVolumeStatus()
         ), to: statusURL)
     }
 
@@ -369,6 +374,7 @@ final class Engine: @unchecked Sendable {
         rules["headphones"] = Self.headphonesSummary(config)
 
         rules["reclaim"] = reclaimSummary()
+        rules["outputVolume"] = outputVolumeSummary()
 
         if let balance = config.balance {
             let current = snapshot.outputBalance.map { String(format: "%.2f", $0) } ?? "unreadable"

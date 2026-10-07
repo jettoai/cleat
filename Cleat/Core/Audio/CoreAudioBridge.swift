@@ -15,6 +15,7 @@ protocol AudioSystem: AnyObject {
     func setDefaultOutput(_ device: AudioDeviceID) -> OSStatus
     func setBalance(_ device: AudioDeviceID, _ value: Float) -> OSStatus
     func setInputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus
+    func setOutputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus
 
     func nominalSampleRate(_ device: AudioDeviceID) -> Double?
 
@@ -69,11 +70,16 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         let outputRunning = !config.reclaim.isEmpty
             && (defaultOutput.map(isRunningSomewhere) ?? false)
 
+        // Only the output volume hold reads the output volume.
+        let outputVolumes = config.outputVolumeHoldAgainst.isEmpty
+            ? [] : (defaultOutput.map(outputVolumes) ?? [])
+
         return DeviceSnapshot(
             devices: devices,
             defaultInput: defaultInput,
             defaultOutput: defaultOutput,
             outputBalance: defaultOutput.flatMap(balance),
+            outputVolumes: outputVolumes,
             outputRunning: outputRunning,
             inputVolumes: inputVolumes,
             liveness: [:],  // filled in by the engine, which owns the detectors
@@ -141,6 +147,22 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         return channels.reduce(0, +) / Float(channels.count)
     }
 
+    /// Main element when the device has one, otherwise each channel that answers.
+    private func outputVolumes(_ device: AudioDeviceID) -> [Float] {
+        if let main = AudioProperty.value(device, Self.outputVolumeAddress(element: kAudioObjectPropertyElementMain), as: Float32.self) {
+            return [main]
+        }
+        return [AudioObjectPropertyElement(1), AudioObjectPropertyElement(2)].compactMap {
+            AudioProperty.value(device, Self.outputVolumeAddress(element: $0), as: Float32.self)
+        }
+    }
+
+    private static func outputVolumeAddress(element: AudioObjectPropertyElement) -> AudioObjectPropertyAddress {
+        AudioProperty.address(
+            kAudioDevicePropertyVolumeScalar, scope: kAudioObjectPropertyScopeOutput, element: element
+        )
+    }
+
     private static let balanceAddress = AudioProperty.address(
         kAudioHardwareServiceDeviceProperty_VirtualMainBalance,
         scope: kAudioObjectPropertyScopeOutput
@@ -173,7 +195,19 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
     /// Main element when the device has one, otherwise both channels. Writing channels separately
     /// is what keeps a two-channel USB mic from ending up with one side at the old gain.
     func setInputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus {
-        let main = Self.volumeAddress(element: kAudioObjectPropertyElementMain)
+        setVolume(device, value, address: Self.volumeAddress)
+    }
+
+    /// Same shape as the input side: the main element, or left and right to the same value.
+    func setOutputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus {
+        setVolume(device, value, address: Self.outputVolumeAddress)
+    }
+
+    private func setVolume(
+        _ device: AudioDeviceID, _ value: Float,
+        address: (AudioObjectPropertyElement) -> AudioObjectPropertyAddress
+    ) -> OSStatus {
+        let main = address(kAudioObjectPropertyElementMain)
         if AudioProperty.isSettable(device, main) {
             return AudioProperty.setValue(device, main, Float32(value))
         }
@@ -181,9 +215,9 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         var lastError: OSStatus = kAudioHardwareUnknownPropertyError
         var wroteOne = false
         for channel in [AudioObjectPropertyElement(1), AudioObjectPropertyElement(2)] {
-            let address = Self.volumeAddress(element: channel)
-            guard AudioProperty.isSettable(device, address) else { continue }
-            let status = AudioProperty.setValue(device, address, Float32(value))
+            let channelAddress = address(channel)
+            guard AudioProperty.isSettable(device, channelAddress) else { continue }
+            let status = AudioProperty.setValue(device, channelAddress, Float32(value))
             if status == noErr { wroteOne = true } else { lastError = status }
         }
         return wroteOne ? noErr : lastError

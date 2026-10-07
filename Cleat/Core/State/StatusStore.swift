@@ -22,6 +22,8 @@ struct Status: Codable, Equatable {
     /// Device name to `live` / `silent` / `measuring`.
     var liveness: [String: String]
     var recentEvents: [String]
+    /// The output volume hold, for the settings screen. Nil in a file from an older daemon.
+    var outputVolume: OutputVolumeStatus?
 
     init(
         pid: Int32 = ProcessInfo.processInfo.processIdentifier,
@@ -33,7 +35,8 @@ struct Status: Codable, Equatable {
         defaultOutput: String? = nil,
         rules: [String: String] = [:],
         liveness: [String: String] = [:],
-        recentEvents: [String] = []
+        recentEvents: [String] = [],
+        outputVolume: OutputVolumeStatus? = nil
     ) {
         self.pid = pid
         self.updatedAt = updatedAt
@@ -45,6 +48,7 @@ struct Status: Codable, Equatable {
         self.rules = rules
         self.liveness = liveness
         self.recentEvents = recentEvents
+        self.outputVolume = outputVolume
     }
 }
 

@@ -70,6 +70,10 @@ struct DeviceSnapshot: Equatable, Sendable {
     /// Virtual main balance of the default output, 0.0 (left) - 1.0 (right). `nil` when the device
     /// is not ready or does not support it.
     var outputBalance: Float?
+    /// The default output's volume scalars (0.0-1.0): the main element when the device has one,
+    /// otherwise each channel. Read only when the output volume hold is on; empty means not asked
+    /// or not readable, and the hold does nothing on such a pass.
+    var outputVolumes: [Float]
     /// Whether something is playing through the default output right now
     /// (`kAudioDevicePropertyDeviceIsRunningSomewhere`). Read only when the reclaim rule is on,
     /// and false when there is no default output at all, so a config that does not ask for
@@ -90,6 +94,7 @@ struct DeviceSnapshot: Equatable, Sendable {
         defaultInput: AudioDeviceID? = nil,
         defaultOutput: AudioDeviceID? = nil,
         outputBalance: Float? = nil,
+        outputVolumes: [Float] = [],
         outputRunning: Bool = false,
         inputVolumes: [AudioDeviceID: Float] = [:],
         liveness: [String: Liveness] = [:],
@@ -99,6 +104,7 @@ struct DeviceSnapshot: Equatable, Sendable {
         self.defaultInput = defaultInput
         self.defaultOutput = defaultOutput
         self.outputBalance = outputBalance
+        self.outputVolumes = outputVolumes
         self.outputRunning = outputRunning
         self.inputVolumes = inputVolumes
         self.liveness = liveness

@@ -58,6 +58,10 @@ struct Config: Codable, Equatable, Sendable {
     /// Whether the daemon sends crash and error reports (App/ErrorReporting.swift). Off unless
     /// asked for: a config that says nothing sends nothing.
     var errorReports: Bool
+    /// Writers whose changes to the default output's volume are undone: an executable name (the
+    /// last path component, e.g. `prl_vm_app`) or an app name (`Parallels Desktop` matches anything
+    /// inside a `Parallels Desktop.app` on the writer's path). Empty disables the output volume hold.
+    var outputVolumeHoldAgainst: [String]
 
     /// What Cleat enforces when there is no config file at all: nothing.
     static let disabled = Config()
@@ -73,7 +77,8 @@ struct Config: Codable, Equatable, Sendable {
         liveness: [String: LivenessConfig] = [:],
         reclaim: [String] = [],
         launchAtLogin: Bool = true,
-        errorReports: Bool = false
+        errorReports: Bool = false,
+        outputVolumeHoldAgainst: [String] = []
     ) {
         self.input = input
         self.blockedInput = blockedInput
@@ -86,6 +91,7 @@ struct Config: Codable, Equatable, Sendable {
         self.reclaim = reclaim
         self.launchAtLogin = launchAtLogin
         self.errorReports = errorReports
+        self.outputVolumeHoldAgainst = outputVolumeHoldAgainst
     }
 
     init(from decoder: Decoder) throws {
@@ -101,6 +107,7 @@ struct Config: Codable, Equatable, Sendable {
         reclaim = try container.decodeIfPresent([String].self, forKey: .reclaim) ?? []
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
         errorReports = try container.decodeIfPresent(Bool.self, forKey: .errorReports) ?? false
+        outputVolumeHoldAgainst = try container.decodeIfPresent([String].self, forKey: .outputVolumeHoldAgainst) ?? []
     }
 
     /// Range checks the decoder cannot express. Called by `load`, so an out-of-range file is

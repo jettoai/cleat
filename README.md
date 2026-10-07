@@ -23,6 +23,7 @@ because a headset a phone has taken is not a CoreAudio property to write.
 | 5 | Hold input gain per device | `inputVolume` |
 | 6 | Bluetooth headphones take over the output when they connect | `headphonesTakeOver` |
 | 7 | Ask a Bluetooth headset back when a phone has taken it | `reclaim` |
+| 8 | Undo output volume changes made by listed apps | `outputVolumeHoldAgainst` |
 
 It never takes over a device you picked yourself. If the current default input is not on your
 priority list and not on the blocklist - a mic you chose in System Settings, Zoom's or Teams'
@@ -80,6 +81,7 @@ running steps aside for the supervised one, so there is never a second daemon.
   "headphonesTakeOver": true,
   "balance": 0.5,
   "inputVolume": { "*": 100, "Wireless microphone": 88, "Brio 100": 75 },
+  "outputVolumeHoldAgainst": ["Parallels Desktop"],
   "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
   "reclaim": ["AirPods Max"],
   "launchAtLogin": true,
@@ -97,6 +99,7 @@ running steps aside for the supervised one, so there is never a second daemon.
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
+| `outputVolumeHoldAgainst` | array of strings | `[]` | Apps (e.g. `"Parallels Desktop"`) or executable names (e.g. `"prl_vm_app"`) whose changes to the output volume are undone within half a second. Bluetooth output only. Empty turns the rule off |
 | `reclaim` | array of strings | `[]` | Bluetooth headsets to ask back when another device holds them, by name or address |
 | `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
 | `errorReports` | boolean | `false` | Send crash and error reports to Sentry. See [Privacy](#privacy) |
@@ -107,6 +110,20 @@ which is held at 75. Without a `"*"` entry, a device the config does not name is
 wildcard covers blocked devices too, so an AirPods Max kept out of the input slot by `blockedInput`
 still has its gain held, and devices whose gain cannot be read - some virtual devices - are left
 alone either way.
+
+**Output volume.** Some apps move the Mac's volume on their own: Parallels follows Windows' mixer
+and nudges it down a step at a time. Each entry in `outputVolumeHoldAgainst` is matched against the
+path of the program that wrote the volume: either its executable name, or an app it lives inside
+(`"Parallels Desktop"` matches anything under `Parallels Desktop.app`, helpers included). A write
+by a listed program is put back to what it was; any other change - the keyboard, Control Center,
+the Digital Crown, another app - is yours and becomes the new value to keep. Three things to know:
+
+- Only Bluetooth output is covered. Who wrote the volume is read from coreaudiod's Bluetooth
+  driver log (`log stream`), and other outputs log nothing; when that log cannot be read,
+  `cleat status` says so and nothing is undone.
+- Turning the volume inside Windows is undone too. To change it there, take Parallels off the list
+  or turn off Parallels' "Sync volume with Mac".
+- Three reverts within a minute are allowed; a fourth pauses the rule for ten minutes and logs why.
 
 **Headphones.** When a Bluetooth output device appears, it becomes the output. Choosing another
 device by hand while it stays connected is respected: with `headphonesTakeOver` on, `output` never

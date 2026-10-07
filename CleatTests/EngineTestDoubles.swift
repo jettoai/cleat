@@ -55,6 +55,13 @@ final class FakeAudioSystem: AudioSystem, @unchecked Sendable {
         return noErr
     }
 
+    func setOutputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus {
+        writes.append("outvol:\(device):\(String(format: "%.4f", value))")
+        let channels = max(snapshotValue.outputVolumes.count, 2)
+        snapshotValue.outputVolumes = Array(repeating: value, count: channels)
+        return noErr
+    }
+
     func nominalSampleRate(_ device: AudioDeviceID) -> Double? { sampleRate }
 
     func addSystemListener(
@@ -89,6 +96,30 @@ final class FakeAudioSystem: AudioSystem, @unchecked Sendable {
     func fire(_ selector: AudioObjectPropertySelector) {
         for (registered, block) in deviceListeners where registered == selector { block() }
     }
+}
+
+/// The `log stream` reader as a script: a test hands it events and exits on the engine queue.
+final class FakeVolumeWriterSource: VolumeWriterSource, @unchecked Sendable {
+    var startResult = true
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+    private var onEvent: (@Sendable (VolumeWriterEvent) -> Void)?
+    private var onExit: (@Sendable (Int32) -> Void)?
+
+    func start(queue: DispatchQueue,
+               onEvent: @escaping @Sendable (VolumeWriterEvent) -> Void,
+               onExit: @escaping @Sendable (Int32) -> Void) -> Bool {
+        startCount += 1
+        self.onEvent = onEvent
+        self.onExit = onExit
+        return startResult
+    }
+
+    func stop() { stopCount += 1 }
+
+    /// Call on the engine queue, where the real reader delivers.
+    func emit(_ event: VolumeWriterEvent) { onEvent?(event) }
+    func exit(_ status: Int32) { onExit?(status) }
 }
 
 /// The HAL side of silence detection, as a script. "The device cannot be opened yet" is a value
