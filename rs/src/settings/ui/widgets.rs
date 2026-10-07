@@ -8,7 +8,7 @@ use objc2::runtime::{AnyObject, NSObject};
 use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSBezierPath, NSBox, NSBoxType, NSButton, NSColor, NSEvent, NSFont, NSFontWeightRegular,
-    NSFontWeightSemibold, NSImage, NSImageSymbolConfiguration, NSImageView, NSLayoutAttribute,
+    NSFontWeightSemibold, NSImage, NSImageScaling, NSImageSymbolConfiguration, NSImageView, NSLayoutAttribute,
     NSLayoutConstraintOrientation, NSStackView, NSStackViewDistribution, NSTextField, NSTitlePosition,
     NSUserInterfaceLayoutOrientation, NSView,
 };
@@ -205,9 +205,22 @@ pub fn symbol_exists(name: &str) -> bool {
 /// Swift `SettingsIcon`: a monochrome regular symbol in a `size` square.
 pub fn icon(mtm: MainThreadMarker, name: &str, size_pt: f64, color: &NSColor) -> Retained<NSView> {
     let point = size_pt * if size_pt <= 24.0 { 0.75 } else { 0.7 };
+    icon_view(mtm, name, size_pt, point, color, false)
+}
+
+/// `icon` with the glyph at `point` drawn unshrunk even where it overflows the square, as a
+/// SwiftUI `frame` lets it.
+pub fn overflowing_icon(mtm: MainThreadMarker, name: &str, size_pt: f64, point: f64, color: &NSColor) -> Retained<NSView> {
+    icon_view(mtm, name, size_pt, point, color, true)
+}
+
+fn icon_view(mtm: MainThreadMarker, name: &str, size_pt: f64, point: f64, color: &NSColor, overflow: bool) -> Retained<NSView> {
     let view = NSImageView::new(mtm);
     if let Some(img) = symbol_image(name, point) {
         view.setImage(Some(&img));
+    }
+    if overflow {
+        view.setImageScaling(NSImageScaling::ScaleNone);
     }
     view.setContentTintColor(Some(color));
     size(&view, size_pt, size_pt);

@@ -12,7 +12,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSIndexSet, NSInteger, NSNotification, NSPoint, NSRect, NSSize};
 
 use super::super::text::Page;
-use super::widgets::{to_view, body, icon, ns, stack};
+use super::widgets::{to_view, body, ns, overflowing_icon, stack};
 use super::{app, App};
 
 pub struct SidebarIvars {
@@ -42,7 +42,11 @@ define_class!(
         fn view_for(&self, _table: &NSTableView, _column: Option<&NSTableColumn>, row: NSInteger) -> Option<Retained<NSView>> {
             let mtm = self.ivars().mtm;
             let page = Page::ALL[row as usize];
-            let line = stack(mtm, false, 6.0, &[&icon(mtm, page.symbol(), 24.0, &NSColor::controlAccentColor()), &body(mtm, page.title())]);
+            // Swift `SettingsIcon(symbol:)` in the sidebar `List`: a 20pt square, `.primary` (opaque,
+            // so `textColor` rather than `labelColor`). The List draws the glyph 1.3x its 15pt font,
+            // measured off the Swift window (mic 20pt tall).
+            let glyph = overflowing_icon(mtm, page.symbol(), 20.0, 15.0 * 1.3, &NSColor::textColor());
+            let line = stack(mtm, false, 6.0, &[&glyph, &body(mtm, page.title())]);
             Some(to_view(&line))
         }
 
