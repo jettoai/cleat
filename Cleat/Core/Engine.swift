@@ -14,6 +14,12 @@ final class Engine: @unchecked Sendable {
     /// over from the Hammerspoon version, where they were measured rather than guessed.
     static let settleBeat: TimeInterval = 0.5
     static let retryBeats: [TimeInterval] = [1, 3, 6]
+    /// How long a balance change is left to settle before it is judged. A device with no main
+    /// volume element reports balance from its two channel volumes, and apps change the volume one
+    /// channel at a time (Parallels 238ms apart), so an immediate read sees half a volume change as
+    /// a balance shift. Each change restarts the wait. Below `settleBeat` so it never spends an
+    /// arrival.
+    static let balanceSettle: TimeInterval = 0.4
 
     /// How many log lines `cleat status` shows.
     private static let recentEventLimit = 20
@@ -39,6 +45,9 @@ final class Engine: @unchecked Sendable {
     var systemTokens: [ListenerToken] = []
     var deviceTokens: [ListenerToken] = []
     var pendingReconciles: [TimeInterval: DispatchWorkItem] = [:]
+    /// When the balance listener last fired. On the uptime clock `asyncAfter` uses, so the settle
+    /// beat it schedules is never itself inside the window.
+    var balanceChangedAt: DispatchTime?
     private var recentEvents: [String] = []
     private var watcher: ConfigWatcher?
     /// The value last passed to `errorReportsChanged`. Starts off, the same as the SDK.
@@ -201,7 +210,7 @@ final class Engine: @unchecked Sendable {
     // MARK: - Reconcile
 
     /// `consumingArrivals` is what keeps a device arrival from being spent before the device can
-    /// be selected. A zero-delay beat - the volume and balance listeners ask for one - can land
+    /// be selected. An early beat - the volume and balance listeners ask for one - can land
     /// while a device that has just appeared is still not selectable, and `setDefaultOutput` on
     /// such a device returns success without sticking. Those beats see the arrival and may act on
     /// it, but do not mark it as seen, so the 0.5s settle beat gets the same arrival and the same
@@ -235,7 +244,11 @@ final class Engine: @unchecked Sendable {
         // Balance belongs to a specific device, and this pass may be about to move the default
         // output somewhere else. Writing it now would set the balance of the device being left;
         // the 'dOut' listener brings us straight back here against the new one.
-        let balanceActions = outputActions.isEmpty ? BalanceRule.reconcile(snapshot, config) : []
+        // Nor while a balance change is still settling: an app may have written one channel and
+        // not yet the other. Any pass can land in that window; the settle beat judges it.
+        let balanceSettling = balanceChangedAt.map { .now() < $0 + Engine.balanceSettle } ?? false
+        let balanceActions = outputActions.isEmpty && !balanceSettling
+            ? BalanceRule.reconcile(snapshot, config) : []
         let volumeActions = InputVolumeRule.reconcile(snapshot, config)
         // Last, and not a CoreAudio write at all: a headset that is not in the device list cannot
         // be pinned, taken over or balanced, so this is the one rule with nothing to say about the
@@ -269,7 +282,7 @@ final class Engine: @unchecked Sendable {
     }
 
     /// Whether a scheduled beat is late enough to spend an arrival. The settle beat is defined as
-    /// "the device list has settled", so it and everything after it consume; the zero-delay beats
+    /// "the device list has settled", so it and everything after it consume; the earlier beats
     /// the volume and balance listeners ask for come too early to be the only attempt.
     static func consumesArrivals(after delay: TimeInterval) -> Bool { delay >= settleBeat }
 

@@ -67,7 +67,10 @@ extension Engine {
                 scope: kAudioObjectPropertyScopeOutput,
                 element: kAudioObjectPropertyElementMain,
                 queue: queue
-            ) { [weak self] in self?.scheduleReconcile(after: 0) })
+            ) { [weak self] in
+                self?.balanceChangedAt = .now()
+                self?.scheduleReconcile(after: Engine.balanceSettle)
+            })
         }
 
         // "Is anything playing" is a property of whichever device holds the output, so this
