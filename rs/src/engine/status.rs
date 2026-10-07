@@ -1,5 +1,5 @@
-//! What the daemon publishes after every reconcile, and the only thing `cleat-rs status` reads.
-//! Summaries follow the Swift engine word for word, with stage 1 notes where behaviour differs.
+//! What the daemon publishes after every reconcile, and the only thing `cleat status` reads.
+//! Fields follow Swift `StatusStore.swift`; summaries follow the Swift engine word for word.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -7,12 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use super::{Engine, Mode};
+use super::Engine;
 use crate::config::{Config, INPUT_VOLUME_WILDCARD};
-use crate::model::{AudioDevice, DeviceSnapshot};
+use crate::model::{AudioDevice, DeviceSnapshot, MicrophonePermission};
 use crate::state::clock::iso8601_utc;
-
-pub const MICROPHONE_LABEL: &str = "not requested (stage 1)";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,13 +19,15 @@ pub struct Status {
     pub updated_at: String,
     pub config_state: String,
     pub microphone: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_reports: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_input: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_output: Option<String>,
     pub rules: BTreeMap<String, String>,
     pub liveness: BTreeMap<String, String>,
     pub recent_events: Vec<String>,
-    pub mode: String,
 }
 
 impl Status {
@@ -57,19 +57,15 @@ impl Engine {
     pub(super) fn write_status(&self, snap: &DeviceSnapshot) {
         let status = Status {
             pid: std::process::id() as i32,
-            updated_at: iso8601_utc(SystemTime::now()),
+            updated_at: iso8601_utc(self.clock.wall()),
             config_state: self.config_state.clone(),
-            microphone: MICROPHONE_LABEL.into(),
+            microphone: self.microphone.label().into(),
             error_reports: Some(self.config.error_reports),
             default_input: name_of(snap, snap.default_input),
             default_output: name_of(snap, snap.default_output),
             rules: rule_summaries(&self.config, snap),
-            liveness: liveness_summaries(&self.config, snap),
+            liveness: liveness_summaries(&self.config, snap, &self.microphone),
             recent_events: self.recent_events.clone(),
-            mode: match self.mode {
-                Mode::Observe => "observe".into(),
-                Mode::Enforce => "enforce".into(),
-            },
         };
         status.write(&self.status_path);
     }
@@ -85,7 +81,8 @@ pub fn rule_summaries(config: &Config, snap: &DeviceSnapshot) -> BTreeMap<String
         if config.reclaim.is_empty() {
             "off".into()
         } else {
-            format!("on ({}; stage 1: rule ported, requests not sent)", config.reclaim.join(", "))
+            // No routing service until the reclaim port: Swift's wording for that case.
+            format!("unavailable (no routing service on this macOS) ({})", config.reclaim.join(", "))
         },
     );
     rules.insert(
@@ -168,15 +165,24 @@ pub fn wildcard_volume_summary(config: &Config, snap: &DeviceSnapshot, wildcard:
     }
 }
 
-pub fn liveness_summaries(config: &Config, snap: &DeviceSnapshot) -> BTreeMap<String, String> {
+/// Swift `livenessSummaries`. No detectors run yet, so a granted microphone reads `unavailable`.
+pub fn liveness_summaries(
+    config: &Config,
+    snap: &DeviceSnapshot,
+    microphone: &MicrophonePermission,
+) -> BTreeMap<String, String> {
     config
         .liveness
         .keys()
         .map(|entry| {
-            let v = if snap.device_matching(entry, true).is_some() {
-                "disabled (stage 1: no microphone measurement)"
-            } else {
+            let v = if snap.device_matching(entry, true).is_none() {
                 "absent"
+            } else if *microphone == MicrophonePermission::Pending {
+                "awaiting microphone permission"
+            } else if !microphone.is_granted() {
+                "disabled (no microphone permission)"
+            } else {
+                "unavailable"
             };
             (entry.clone(), v.to_string())
         })

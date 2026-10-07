@@ -1,9 +1,10 @@
 //! The single decision thread. Listener procs and the config watcher only send `Event`s here;
-//! timers (one pending per key, rescheduling replaces) are kept on this thread too.
+//! timers (one pending per key, rescheduling replaces) are kept on this thread too, on the
+//! engine's clock.
 
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use super::Engine;
 use crate::audio::ListenerKind;
@@ -19,7 +20,7 @@ pub enum Timer {
     ConfigReload,
 }
 
-/// Which event scheduled a pass, for the log's latency columns.
+/// Which event scheduled a pass, for the trace's latency columns.
 #[derive(Clone, Copy, Debug)]
 pub struct Origin {
     pub label: &'static str,
@@ -29,22 +30,21 @@ pub struct Origin {
 
 #[derive(Default)]
 pub struct Scheduler {
-    pending: HashMap<Timer, (Instant, Origin)>,
+    pending: HashMap<Timer, (Duration, Origin)>,
 }
 
 impl Scheduler {
-    pub fn schedule(&mut self, timer: Timer, delay_ms: u64, origin: Origin) {
-        let deadline = Instant::now() + std::time::Duration::from_millis(delay_ms);
+    pub fn schedule(&mut self, timer: Timer, deadline: Duration, origin: Origin) {
         self.pending.insert(timer, (deadline, origin));
     }
 
-    pub fn next_deadline(&self) -> Option<Instant> {
+    pub fn next_deadline(&self) -> Option<Duration> {
         self.pending.values().map(|(d, _)| *d).min()
     }
 
     /// Due timers, earliest first.
-    pub fn take_due(&mut self, now: Instant) -> Vec<(Timer, Origin)> {
-        let mut due: Vec<(Instant, Timer, Origin)> =
+    pub fn take_due(&mut self, now: Duration) -> Vec<(Timer, Origin)> {
+        let mut due: Vec<(Duration, Timer, Origin)> =
             self.pending.iter().filter(|(_, (d, _))| *d <= now).map(|(t, (d, o))| (*d, *t, *o)).collect();
         due.sort_by_key(|(d, _, _)| *d);
         for (_, t, _) in &due {
@@ -54,10 +54,24 @@ impl Scheduler {
     }
 }
 
+impl Engine {
+    /// The earliest pending timer, on the engine's clock.
+    pub fn next_deadline(&self) -> Option<Duration> {
+        self.scheduler.next_deadline()
+    }
+
+    /// Fires every timer that is due now.
+    pub fn run_due(&mut self) {
+        for (timer, origin) in self.scheduler.take_due(self.clock.mono()) {
+            self.fire(timer, origin);
+        }
+    }
+}
+
 pub fn run(engine: &mut Engine, rx: &Receiver<Event>) {
     loop {
-        let msg = match engine.scheduler.next_deadline() {
-            Some(d) => rx.recv_timeout(d.saturating_duration_since(Instant::now())),
+        let msg = match engine.next_deadline() {
+            Some(d) => rx.recv_timeout(d.saturating_sub(engine.clock.mono())),
             None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
         match msg {
@@ -65,8 +79,6 @@ pub fn run(engine: &mut Engine, rx: &Receiver<Event>) {
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
-        for (timer, origin) in engine.scheduler.take_due(Instant::now()) {
-            engine.fire(timer, origin);
-        }
+        engine.run_due();
     }
 }

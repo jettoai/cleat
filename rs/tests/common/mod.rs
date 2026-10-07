@@ -1,6 +1,8 @@
 //! Fixtures, word for word from CleatTests/Fixtures.swift.
 #![allow(dead_code)]
 
+pub mod engine;
+
 use std::collections::BTreeMap;
 
 use cleat_rs::config::{Config, LivenessConfig};

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The launchd agent that keeps the Rust daemon alive, rendered into the app bundle at
+  Contents/Library/LaunchAgents/<bundle id>.plist by rs/scripts/bundle.sh. Same template as the
+  Swift build's Cleat/App/LaunchAgents/LaunchAgent.plist.
+-->
+<plist version="1.0">
+<dict>
+    <!-- SMAppService.agent(plistName:) looks the file up by name, and launchd wants the label to
+         match it, so both are the bundle identifier. -->
+    <key>Label</key>
+    <string>@LABEL@</string>
+    <!-- Relative to the bundle, so the microphone grant is attributed to the bundle. -->
+    <key>BundleProgram</key>
+    <string>@PROGRAM@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- Restart on anything that is not a clean exit; a clean quit stays down. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

@@ -1,83 +1,20 @@
-//! Proof that observe mode decides but never reaches a CoreAudio writer, with an enforce-mode
-//! control showing the same fixture does reach the writer.
+//! Proof that observe mode decides but never reaches a writer, the launch agent or the error
+//! reporter, with an enforce-mode control showing the same fixture does reach each of them.
 
 mod common;
 
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use cleat_rs::audio::{AudioSystem, ListenTarget, ListenerToken};
-use cleat_rs::config::Config;
-use cleat_rs::engine::{Engine, Mode};
+use cleat_rs::engine::Mode;
 use cleat_rs::model::DeviceSnapshot;
-use cleat_rs::state::EventLog;
+use common::engine::{release_identity, Harness, Opts};
 use common::*;
 
-#[derive(Default)]
-struct FakeState {
-    snapshot: RefCell<DeviceSnapshot>,
-    writes: RefCell<Vec<String>>,
-}
-
-struct FakeAudio(Rc<FakeState>);
-
-impl AudioSystem for FakeAudio {
-    fn snapshot(&self, _config: &Config) -> DeviceSnapshot {
-        self.0.snapshot.borrow().clone()
-    }
-    fn set_default_input(&self, id: u32) -> i32 {
-        self.0.writes.borrow_mut().push(format!("setDefaultInput({id})"));
-        0
-    }
-    fn set_default_output(&self, id: u32) -> i32 {
-        self.0.writes.borrow_mut().push(format!("setDefaultOutput({id})"));
-        0
-    }
-    fn set_balance(&self, id: u32, value: f32) -> i32 {
-        self.0.writes.borrow_mut().push(format!("setBalance({id}, {value})"));
-        0
-    }
-    fn set_input_volume(&self, id: u32, value: f32) -> i32 {
-        self.0.writes.borrow_mut().push(format!("setInputVolume({id}, {value:.1})"));
-        0
-    }
-    fn add_listener(&self, _target: ListenTarget) -> Option<ListenerToken> {
-        None
-    }
-    fn remove_listener(&self, _token: ListenerToken) {}
-}
-
-static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-fn temp_dir() -> PathBuf {
-    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let dir = std::env::temp_dir().join(format!("cleat-rs-test-{}-{}", std::process::id(), n));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-/// Runs `start()` (which reads the config file and runs the baseline pass) against a fake.
-fn run(mode: Mode, config_json: &str, snapshot: DeviceSnapshot) -> (Vec<String>, String) {
-    let dir = temp_dir();
-    let config = dir.join("config.json");
-    std::fs::write(&config, config_json).unwrap();
-    let state = Rc::new(FakeState { snapshot: RefCell::new(snapshot), ..Default::default() });
-    let log = EventLog::new(dir.join("cleat-rs.log"), dir.join("cleat-rs.log.1"));
-    let mut engine = Engine::new(Box::new(FakeAudio(state.clone())), mode, log, config, dir.join("status.json"));
-    engine.start(None);
-    let text = std::fs::read_to_string(dir.join("cleat-rs.log")).unwrap();
-    let writes = state.writes.borrow().clone();
-    let _ = std::fs::remove_dir_all(&dir);
-    (writes, text)
-}
-
+/// Release identity, `launchAtLogin` on and `errorReports` on, so every side effect is wanted.
 const FOUR_RULES: &str = r#"{
   "input": ["Wireless microphone", "Brio 100"],
   "output": ["Studio Display Speakers"],
   "blockedOutput": ["MacBook Pro Speakers"],
-  "inputVolume": {"*": 100}
+  "inputVolume": {"*": 100},
+  "errorReports": true
 }"#;
 
 fn four_rules_snapshot() -> DeviceSnapshot {
@@ -90,14 +27,32 @@ fn four_rules_snapshot() -> DeviceSnapshot {
     }
 }
 
+fn run(mode: Mode, config: &str, snapshot: DeviceSnapshot) -> Harness {
+    Harness::with_json(config, snapshot, Opts { mode, identity: release_identity(), ..Opts::default() })
+}
+
+fn log(h: &Harness) -> String {
+    h.log_lines().join("\n")
+}
+
 #[test]
 fn observe_decides_but_never_writes() {
-    let (writes, log) = run(Mode::Observe, FOUR_RULES, four_rules_snapshot());
-    assert_eq!(writes.len(), 0, "observe mode reached a writer: {writes:?}");
+    let h = run(Mode::Observe, FOUR_RULES, four_rules_snapshot());
+    assert_eq!(h.writes().len(), 0, "observe mode reached a writer: {:?}", h.writes());
+    let log = log(&h);
     assert!(log.contains("pinInput: Brio 100 -> Wireless microphone (higher priority present) [observe: not applied]"));
     assert!(log.contains("pinOutput: MacBook Pro Speakers -> Studio Display Speakers (blocked) [observe: not applied]"));
     assert!(log.contains("inputVolume: Wireless microphone 50% -> 100% [observe: not applied]"));
     assert!(log.contains("actions=3"));
+    assert!(log.contains("engine started (config: ok, microphone: authorized, mode: observe)"));
+}
+
+#[test]
+fn observe_never_touches_the_launch_agent_or_the_reporter() {
+    let h = run(Mode::Observe, FOUR_RULES, four_rules_snapshot());
+    assert_eq!(h.agent.registers.get() + h.agent.unregisters.get() + h.agent.status_reads.get(), 0);
+    assert_eq!(h.login_item.status_reads.get(), 0);
+    assert!(h.reports.borrow().is_empty());
 }
 
 #[test]
@@ -108,23 +63,28 @@ fn observe_never_writes_balance() {
         output_balance: Some(0.3),
         ..Default::default()
     };
-    let (writes, log) = run(Mode::Observe, r#"{"balance": 0.5}"#, snapshot);
-    assert_eq!(writes.len(), 0, "observe mode reached a writer: {writes:?}");
-    assert!(log.contains("balance: Studio Display Speakers 0.30 -> 0.50 [observe: not applied]"));
+    let h = run(Mode::Observe, r#"{"balance": 0.5}"#, snapshot);
+    assert_eq!(h.writes().len(), 0, "observe mode reached a writer: {:?}", h.writes());
+    assert!(log(&h).contains("balance: Studio Display Speakers 0.30 -> 0.50 [observe: not applied]"));
 }
 
 #[test]
-fn enforce_mode_reaches_the_writer() {
-    let (writes, log) = run(Mode::Enforce, FOUR_RULES, four_rules_snapshot());
-    assert_eq!(writes, vec!["setDefaultInput(10)", "setDefaultOutput(60)", "setInputVolume(10, 1.0)"]);
+fn enforce_mode_reaches_the_writer_the_agent_and_the_reporter() {
+    let h = run(Mode::Enforce, FOUR_RULES, four_rules_snapshot());
+    assert_eq!(h.writes(), vec!["input:10", "output:60", "volume:10:1.00"]);
+    let log = log(&h);
     assert!(!log.contains("[observe: not applied]"));
     assert!(log.contains("pinInput: Brio 100 -> Wireless microphone (higher priority present)"));
+    assert_eq!(h.agent.registers.get(), 1);
+    assert_eq!(*h.reports.borrow(), vec![true]);
+    assert!(log.contains("errorReports: on"));
 }
 
 #[test]
-fn nothing_to_do_still_writes_a_pass_line() {
-    let (writes, log) = run(Mode::Observe, "{}", four_rules_snapshot());
-    assert!(writes.is_empty());
+fn nothing_to_do_still_writes_a_pass_line_in_observe_mode() {
+    let h = run(Mode::Observe, "{}", four_rules_snapshot());
+    assert!(h.writes().is_empty());
+    let log = log(&h);
     assert!(log.contains("pass: trigger=startup"));
     assert!(log.contains("actions=0 (nothing to do)"));
 }

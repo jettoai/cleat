@@ -1,0 +1,40 @@
+2026-10-07 12:56:43 liveness: Wireless microphone -> measuring
+2026-10-07 12:56:44 liveness: Wireless microphone -> live
+2026-10-07 12:57:01 engine started (config: ok, microphone: authorized)
+2026-10-07 12:57:01 errorReports: on
+2026-10-07 12:57:02 liveness: Wireless microphone -> measuring
+2026-10-07 12:57:02 liveness: Wireless microphone -> live
+2026-10-07 12:59:01 devices: list changed
+2026-10-07 12:59:01 devices: list changed
+2026-10-07 12:59:02 reclaim: AirPods Max held by remote device (Remote Category 301 > Local Category 201, audio streaming state 2)
+2026-10-07 13:01:54 reclaim: AirPods Max <- remote device (hijack accepted)
+2026-10-07 13:01:54 devices: list changed
+2026-10-07 13:01:54 devices: list changed
+2026-10-07 13:01:54 pinInput: AirPods Max -> Wireless microphone (blocked)
+2026-10-07 13:15:45 devices: list changed
+2026-10-07 13:15:45 devices: list changed
+2026-10-07 13:15:45 reclaim: AirPods Max refused (Buds out of ear)
+2026-10-07 13:21:42 devices: list changed
+2026-10-07 13:21:42 devices: list changed
+2026-10-07 13:21:42 pinInput: AirPods Max -> Wireless microphone (blocked)
+2026-10-07 13:41:00 devices: list changed
+2026-10-07 13:41:00 devices: list changed
+2026-10-07 13:41:00 reclaim: AirPods Max refused (Buds out of ear)
+2026-10-07 13:41:31 engine started (config: ok, microphone: authorized)
+2026-10-07 13:41:31 outputVolume: reading writers from the system log
+2026-10-07 13:42:01 outputVolume: writer log stopped (exit 15), restarting in 1s
+2026-10-07 13:42:02 outputVolume: reading writers from the system log
+2026-10-07 13:42:43 engine started (config: ok, microphone: authorized)
+2026-10-07 13:42:43 errorReports: on
+2026-10-07 13:42:43 liveness: Wireless microphone -> measuring
+2026-10-07 13:42:43 liveness: Wireless microphone -> live
+2026-10-07 13:42:43 reclaim: AirPods Max refused (Buds out of ear)
+2026-10-07 13:46:43 liveness: Wireless microphone -> silent
+2026-10-07 13:46:43 pinInput: Wireless microphone -> Brio 100 (Wireless microphone silent)
+2026-10-07 13:46:56 engine started (config: ok, microphone: authorized)
+2026-10-07 13:46:56 outputVolume: reading writers from the system log
+2026-10-07 13:47:12 engine started (config: ok, microphone: authorized)
+2026-10-07 13:47:12 outputVolume: reading writers from the system log
+2026-10-07 13:47:25 engine started (config: ok, microphone: authorized)
+2026-10-07 13:47:36 engine started (config: ok, microphone: authorized)
+2026-10-07 13:47:36 outputVolume: reading writers from the system log

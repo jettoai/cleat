@@ -2,6 +2,7 @@ mod action;
 mod device;
 pub mod device_name;
 mod headset;
+mod microphone;
 
 pub use action::Action;
 pub use device::{
@@ -9,3 +10,4 @@ pub use device::{
     TRANSPORT_BUILT_IN, TRANSPORT_DISPLAY_PORT, TRANSPORT_UNKNOWN, TRANSPORT_USB, TRANSPORT_VIRTUAL,
 };
 pub use headset::BluetoothHeadset;
+pub use microphone::MicrophonePermission;

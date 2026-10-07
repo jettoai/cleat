@@ -1,73 +1,114 @@
 //! The one place decisions are made. Every listener and the config watcher deliver `Event`s to the
-//! engine thread, and nothing touches engine state from anywhere else.
+//! engine thread, and nothing touches engine state from anywhere else (Swift `Engine.swift`).
 
+mod launch;
 mod listeners;
 mod run_loop;
 mod status;
 
+pub use listeners::{consumes_arrivals, BALANCE_SETTLE_MS, RETRY_MS, SETTLE_MS};
 pub use run_loop::{run, Event, Origin, Timer};
 pub use status::Status;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use run_loop::Scheduler;
 
 use crate::audio::{AudioSystem, ListenerToken};
 use crate::config::{watcher, Config};
-use crate::model::{Action, DeviceSnapshot, Liveness};
+use crate::identity::Identity;
+use crate::launch::{AgentService, Launchd};
+use crate::model::{Action, DeviceSnapshot, Liveness, MicrophonePermission};
 use crate::rules::{balance, headphones_takeover, input_pin, input_volume, output_pin, reclaim};
-use crate::state::clock::clock_ms;
+use crate::state::clock::{clock_ms, Clock};
 use crate::state::EventLog;
 
 const RECENT_EVENT_LIMIT: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// Decide and log, never write CoreAudio.
+    /// Decide and log, never write: no CoreAudio writes, no launch agent, no error reports.
     Observe,
-    /// Write. Only constructed by tests in stage 1.
+    /// The daemon.
     Enforce,
+}
+
+/// Everything outside the engine, so each face can be replaced in tests.
+pub struct EngineDeps {
+    pub system: Box<dyn AudioSystem>,
+    pub log: EventLog,
+    pub config_path: PathBuf,
+    pub status_path: PathBuf,
+    pub clock: Box<dyn Clock>,
+    pub identity: Identity,
+    /// The bundle's launchd agent.
+    pub agent: Box<dyn AgentService>,
+    /// The app as a login item, which versions up to 0.3.2 registered and this retires.
+    pub login_item: Box<dyn AgentService>,
+    pub launchd: Box<dyn Launchd>,
+    /// Told when `errorReports` changes. A no-op until error reporting is ported.
+    pub error_reports_changed: Box<dyn FnMut(bool)>,
+    /// Where the config watcher sends; None runs without a watcher (tests).
+    pub events: Option<Sender<Event>>,
 }
 
 pub struct Engine {
     pub(crate) system: Box<dyn AudioSystem>,
     mode: Mode,
+    /// Writes the `pass:`, `event:` and `listeners:` diagnostics. Always on in observe mode.
+    trace: bool,
     log: EventLog,
     config_path: PathBuf,
     status_path: PathBuf,
+    clock: Box<dyn Clock>,
+    identity: Identity,
+    agent: Box<dyn AgentService>,
+    login_item: Box<dyn AgentService>,
+    launchd: Box<dyn Launchd>,
+    error_reports_changed: Box<dyn FnMut(bool)>,
+    events: Option<Sender<Event>>,
     pub(crate) config: Config,
     config_state: String,
+    microphone: MicrophonePermission,
+    error_reports_applied: bool,
     previous_device_uids: Option<HashSet<String>>,
     pub(crate) system_tokens: Vec<ListenerToken>,
     pub(crate) device_tokens: Vec<ListenerToken>,
     pub(crate) scheduler: Scheduler,
+    /// When the balance listener last fired, on the scheduler's clock.
+    pub(crate) balance_changed_at: Option<Duration>,
     recent_events: Vec<String>,
     listener_summary: Option<String>,
 }
 
 impl Engine {
-    pub fn new(
-        system: Box<dyn AudioSystem>,
-        mode: Mode,
-        log: EventLog,
-        config_path: PathBuf,
-        status_path: PathBuf,
-    ) -> Self {
+    pub fn new(deps: EngineDeps, mode: Mode, trace: bool) -> Self {
         Self {
-            system,
+            system: deps.system,
             mode,
-            log,
-            config_path,
-            status_path,
+            trace: trace || mode == Mode::Observe,
+            log: deps.log,
+            config_path: deps.config_path,
+            status_path: deps.status_path,
+            clock: deps.clock,
+            identity: deps.identity,
+            agent: deps.agent,
+            login_item: deps.login_item,
+            launchd: deps.launchd,
+            error_reports_changed: deps.error_reports_changed,
+            events: deps.events,
             config: Config::disabled(),
             config_state: "missing".into(),
+            microphone: MicrophonePermission::Pending,
+            error_reports_applied: false,
             previous_device_uids: None,
             system_tokens: vec![],
             device_tokens: vec![],
             scheduler: Scheduler::default(),
+            balance_changed_at: None,
             recent_events: vec![],
             listener_summary: None,
         }
@@ -77,26 +118,36 @@ impl Engine {
         self.mode
     }
 
-    /// Loads the config, attaches listeners, starts the watcher (when given a sender) and runs the
-    /// baseline pass.
-    pub fn start(&mut self, watcher_tx: Option<Sender<Event>>) {
+    /// Order follows Swift `Engine.start`: config, the started line, launch agent and error
+    /// reports (enforce only), listeners, watcher, then the baseline pass.
+    pub fn start(&mut self, microphone: MicrophonePermission) {
+        self.microphone = microphone;
         self.load_config();
-        let mode = match self.mode {
-            Mode::Observe => "observe",
-            Mode::Enforce => "enforce",
-        };
+        let observe = if self.mode == Mode::Observe { ", mode: observe" } else { "" };
         self.note(&format!(
-            "engine started (config: {}, microphone: not requested (stage 1), mode: {mode})",
-            self.config_state
+            "engine started (config: {}, microphone: {}{observe})",
+            self.config_state,
+            self.microphone.label()
         ));
+        self.sync_side_effects();
         self.attach_system_listeners();
         self.rebind_devices();
-        if let Some(tx) = watcher_tx {
+        if let Some(tx) = self.events.clone() {
             if let Err(e) = watcher::spawn(self.config_path.clone(), tx) {
                 self.note(&format!("config: watcher not started ({e})"));
             }
         }
         self.reconcile(true, None);
+    }
+
+    /// Launch agent and error reports. Observe mode touches neither (D6).
+    fn sync_side_effects(&mut self) {
+        if self.mode == Mode::Observe {
+            return;
+        }
+        self.sync_launch_at_login();
+        self.hand_over_to_launch_agent_if_needed();
+        self.sync_error_reports();
     }
 
     /// A malformed or out-of-range file never replaces a good one; a missing file disables
@@ -124,11 +175,23 @@ impl Engine {
             return;
         }
         self.note(&format!("config: reloaded ({})", self.config_state));
+        self.sync_side_effects();
         self.rebind_devices();
         self.reconcile(false, Some(origin));
     }
 
-    /// One pass: snapshot, rules, apply, status. Always logs a `pass:` line with timings.
+    /// Passes `errorReports` on when it changes.
+    fn sync_error_reports(&mut self) {
+        let wanted = self.config.error_reports;
+        if wanted == self.error_reports_applied {
+            return;
+        }
+        self.error_reports_applied = wanted;
+        (self.error_reports_changed)(wanted);
+        self.note(&format!("errorReports: {}", if wanted { "on" } else { "off" }));
+    }
+
+    /// One pass: snapshot, rules, apply, status. The `pass:` line is written in trace mode only.
     pub fn reconcile(&mut self, consuming_arrivals: bool, origin: Option<Origin>) {
         let t0 = SystemTime::now();
         let mut snap = self.system.snapshot(&self.config);
@@ -143,32 +206,40 @@ impl Engine {
         } else {
             output_pin::reconcile(&snap, config)
         };
-        let balance = if output.is_empty() { balance::reconcile(&snap, config) } else { vec![] };
+        // Not while a balance change is settling: an app may have written one channel and not
+        // yet the other. Any pass can land in that window; the settle beat judges it.
+        let settling = self
+            .balance_changed_at
+            .is_some_and(|at| self.clock.mono() < at + Duration::from_millis(BALANCE_SETTLE_MS));
+        let balance =
+            if output.is_empty() && !settling { balance::reconcile(&snap, config) } else { vec![] };
         actions.extend(output);
         actions.extend(balance);
         actions.extend(input_volume::reconcile(&snap, config));
-        // Stage 1 has no pairing list, so reclaim never has a headset to ask for.
+        // No pairing list until the reclaim port, so reclaim never has a headset to ask for.
         actions.extend(reclaim::reconcile(&snap, &[], config, &HashSet::new()));
         let t2 = SystemTime::now();
 
-        let us = |a: SystemTime, b: SystemTime| b.duration_since(a).map_or(0, |d| d.as_micros());
-        let (label, recv, latency, delay) = match origin {
-            Some(o) => (
-                o.label,
-                clock_ms(o.received),
-                t2.duration_since(o.received).map_or("-".into(), |d| format!("{:.3}", d.as_secs_f64() * 1000.0)),
-                o.delay_ms.to_string(),
-            ),
-            None => ("startup", "-".into(), "-".into(), "-".into()),
-        };
-        self.note(&format!(
-            "pass: trigger={label} recv={recv} decided={} latency_ms={latency} delay_ms={delay} snapshot_us={} rules_us={} actions={}{}",
-            clock_ms(t2),
-            us(t0, t1),
-            us(t1, t2),
-            actions.len(),
-            if actions.is_empty() { " (nothing to do)" } else { "" }
-        ));
+        if self.trace {
+            let us = |a: SystemTime, b: SystemTime| b.duration_since(a).map_or(0, |d| d.as_micros());
+            let (label, recv, latency, delay) = match origin {
+                Some(o) => (
+                    o.label,
+                    clock_ms(o.received),
+                    t2.duration_since(o.received).map_or("-".into(), |d| format!("{:.3}", d.as_secs_f64() * 1000.0)),
+                    o.delay_ms.to_string(),
+                ),
+                None => ("startup", "-".into(), "-".into(), "-".into()),
+            };
+            self.note(&format!(
+                "pass: trigger={label} recv={recv} decided={} latency_ms={latency} delay_ms={delay} snapshot_us={} rules_us={} actions={}{}",
+                clock_ms(t2),
+                us(t0, t1),
+                us(t1, t2),
+                actions.len(),
+                if actions.is_empty() { " (nothing to do)" } else { "" }
+            ));
+        }
         for a in &actions {
             self.apply(a);
         }
@@ -188,18 +259,25 @@ impl Engine {
         arrived
     }
 
-    /// Stage 1 measures nothing (the same as Swift with the microphone denied): every device is
-    /// untracked, which the input rule reads as present.
-    fn liveness_for_rules(&self, _snap: &DeviceSnapshot) -> HashMap<String, Liveness> {
-        HashMap::new()
+    /// Nothing is measured yet (no detectors until the liveness port), so only the pending case
+    /// differs from "untracked": while the dialog is unanswered a configured device reads as
+    /// `measuring`, so nothing switches to it (Swift `livenessForRules`).
+    fn liveness_for_rules(&self, snap: &DeviceSnapshot) -> HashMap<String, Liveness> {
+        let mut liveness = HashMap::new();
+        if self.microphone != MicrophonePermission::Pending {
+            return liveness;
+        }
+        for entry in self.config.liveness.keys() {
+            if let Some(d) = snap.device_matching(entry, true) {
+                liveness.insert(d.uid.clone(), Liveness::Measuring);
+            }
+        }
+        liveness
     }
 
-    /// The only caller of the `AudioSystem` writers. In observe mode it returns before any of them.
+    /// The only caller of the `AudioSystem` writers. Observe mode returns before any of them.
+    /// A failure is logged with its OSStatus and not retried.
     fn apply(&mut self, action: &Action) {
-        if let Action::RequestRoute { reason, .. } = action {
-            self.note(&format!("reclaim: {reason} [stage 1: request not sent]"));
-            return;
-        }
         if self.mode == Mode::Observe {
             self.note(&format!("{}: {} [observe: not applied]", action.label(), action.reason()));
             return;
@@ -209,6 +287,7 @@ impl Engine {
             Action::SetDefaultOutput(id, _) => self.system.set_default_output(id),
             Action::SetBalance(id, v, _) => self.system.set_balance(id, v),
             Action::SetInputVolume(id, v, _) => self.system.set_input_volume(id, v),
+            // Unreachable until the reclaim port supplies headsets; it has no OSStatus anyway.
             Action::RequestRoute { .. } => return,
         };
         if status == 0 {

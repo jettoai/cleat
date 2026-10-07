@@ -1,129 +1,66 @@
-//! cleat-rs CLI. Stage 1 runs the engine only in observe mode.
+//! One binary, two jobs (Swift `main.swift`). A bare launch, or one with flag-shaped arguments only
+//! (LaunchServices passes `-psn_...`), is the daemon; a first argument that is a word is a CLI
+//! subcommand. `run --observe [--trace]` is the observe-only daemon, kept from stage 1.
 
 use std::process::ExitCode;
 use std::sync::mpsc;
 
 use cleat_rs::audio::CoreAudioSystem;
+use cleat_rs::cli;
 use cleat_rs::config::paths;
-use cleat_rs::engine::{self, Engine, Mode, Status};
+use cleat_rs::engine::{self, Engine, EngineDeps, Mode};
+use cleat_rs::identity::Identity;
+use cleat_rs::launch::{LaunchctlJob, SmApp};
+use cleat_rs::model::MicrophonePermission;
+use cleat_rs::state::clock::SystemClock;
 use cleat_rs::state::EventLog;
 use objc2_core_foundation::CFRunLoop;
 
-const USAGE: &str = "usage: cleat-rs run --observe | status | log [-n N] | version";
+const CLI_FLAGS: [&str; 3] = ["--help", "-h", "--version"];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let trace = args.iter().any(|a| a == "--trace");
     match args.first().map(String::as_str) {
-        Some("run") => run(&args[1..]),
-        Some("status") => status(),
-        Some("log") => log(&args[1..]),
-        Some("version") => {
-            println!("{}", env!("CARGO_PKG_VERSION"));
-            ExitCode::SUCCESS
+        Some("run") if args.get(1).map(String::as_str) == Some("--observe") => daemon(Mode::Observe, true),
+        Some(first) if !first.starts_with('-') || CLI_FLAGS.contains(&first) => {
+            ExitCode::from(cli::run(&args).clamp(0, 255) as u8)
         }
-        _ => {
-            eprintln!("{USAGE}");
-            ExitCode::from(2)
-        }
+        _ => daemon(Mode::Enforce, trace),
     }
 }
 
-fn run(args: &[String]) -> ExitCode {
-    if args != ["--observe"] {
-        eprintln!("cleat-rs: stage 1 runs only with --observe (writes to CoreAudio are not enabled in this build)");
-        return ExitCode::from(2);
-    }
+fn daemon(mode: Mode, trace: bool) -> ExitCode {
     let (tx, rx) = mpsc::channel();
-    println!("cleat-rs observing (pid {}, log {})", std::process::id(), paths::log_path().display());
+    if mode == Mode::Observe {
+        println!("cleat-rs observing (pid {}, log {})", std::process::id(), paths::log_path().display());
+    }
     let spawned = std::thread::Builder::new().name("cleat-engine".into()).spawn(move || {
-        let system = CoreAudioSystem::new(&tx);
-        let log = EventLog::new(paths::log_path(), paths::rotated_log_path());
-        let mut eng = Engine::new(Box::new(system), Mode::Observe, log, paths::config_path(), paths::status_path());
-        eng.start(Some(tx));
+        let identity = Identity::current();
+        let label = identity.label();
+        let deps = EngineDeps {
+            system: Box::new(CoreAudioSystem::new(&tx)),
+            log: EventLog::new(paths::log_path(), paths::rotated_log_path()),
+            config_path: paths::config_path(),
+            status_path: paths::status_path(),
+            clock: Box::<SystemClock>::default(),
+            agent: Box::new(SmApp::agent(&format!("{label}.plist"))),
+            login_item: Box::new(SmApp::main_app()),
+            launchd: Box::new(LaunchctlJob { label }),
+            identity,
+            error_reports_changed: Box::new(|_| {}),
+            events: Some(tx),
+        };
+        let mut eng = Engine::new(deps, mode, trace);
+        // The microphone is not asked for until the liveness port.
+        eng.start(MicrophonePermission::Pending);
         engine::run(&mut eng, &rx);
     });
     if let Err(e) = spawned {
-        eprintln!("cleat-rs: could not start the engine thread: {e}");
+        eprintln!("cleat: could not start the engine thread: {e}");
         return ExitCode::FAILURE;
     }
     // The HAL delivers listener callbacks through the main run loop.
     CFRunLoop::run();
-    ExitCode::SUCCESS
-}
-
-fn is_alive(pid: i32) -> bool {
-    if pid <= 0 {
-        return false;
-    }
-    // SAFETY: signal 0 only checks existence.
-    unsafe { libc::kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) }
-}
-
-fn pad(v: &str) -> String {
-    let width = 12.max(v.chars().count() + 1);
-    format!("{v:<width$}")
-}
-
-fn status() -> ExitCode {
-    let path = paths::status_path();
-    let Some(s) = Status::read(&path) else {
-        println!("daemon:      not running (no status file at {})", paths::tilde(&path));
-        return ExitCode::from(1);
-    };
-    let running = is_alive(s.pid);
-    if running {
-        println!("daemon:      running (pid {}, {})", s.pid, s.mode);
-    } else {
-        println!("daemon:      not running (last pid {})", s.pid);
-    }
-    println!("updated:     {}", s.updated_at);
-    println!("config:      {} ({})", s.config_state, paths::tilde(&paths::config_path()));
-    println!("microphone:  {}", s.microphone);
-    println!("input:       {}", s.default_input.as_deref().unwrap_or("-"));
-    println!("output:      {}", s.default_output.as_deref().unwrap_or("-"));
-    if !s.rules.is_empty() {
-        println!("rules:");
-        for (k, v) in &s.rules {
-            println!("  {} {v}", pad(k));
-        }
-    }
-    if !s.liveness.is_empty() {
-        println!("liveness:");
-        for (k, v) in &s.liveness {
-            println!("  {} {v}", pad(k));
-        }
-    }
-    if !s.recent_events.is_empty() {
-        println!("recent:");
-        for e in &s.recent_events[s.recent_events.len().saturating_sub(5)..] {
-            println!("  {e}");
-        }
-    }
-    if running { ExitCode::SUCCESS } else { ExitCode::from(1) }
-}
-
-fn log(args: &[String]) -> ExitCode {
-    let n = match args {
-        [] => 20,
-        [flag, v] if flag == "-n" => match v.parse::<usize>() {
-            Ok(n) if n > 0 => n,
-            _ => {
-                eprintln!("cleat-rs: -n wants a positive integer, got {v}");
-                return ExitCode::from(2);
-            }
-        },
-        _ => {
-            eprintln!("{USAGE}");
-            return ExitCode::from(2);
-        }
-    };
-    let path = paths::log_path();
-    if !path.exists() {
-        println!("no events yet ({})", paths::tilde(&path));
-        return ExitCode::SUCCESS;
-    }
-    for line in EventLog::tail(n, &path) {
-        println!("{line}");
-    }
     ExitCode::SUCCESS
 }

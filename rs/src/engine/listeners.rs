@@ -4,9 +4,21 @@ use super::run_loop::{Event, Origin, Timer};
 use super::Engine;
 use crate::audio::{ListenTarget, ListenerKind};
 use crate::state::clock::clock_ms;
+use std::time::Duration;
 
-const SETTLE_MS: u64 = 500;
-const RETRY_MS: [u64; 3] = [1000, 3000, 6000];
+/// "The device list settled"; this beat and later ones consume arrivals.
+pub const SETTLE_MS: u64 = 500;
+pub const RETRY_MS: [u64; 3] = [1000, 3000, 6000];
+/// How long a balance change is left to settle before it is judged (Swift `balanceSettle`, fa89ada).
+/// Apps change the volume one channel at a time (Parallels 238ms apart) and a device without a
+/// main volume element reports balance from the two channels. Below SETTLE_MS so it never spends
+/// an arrival; the output volume hold's 300ms is kept below this so a volume revert lands first.
+pub const BALANCE_SETTLE_MS: u64 = 400;
+
+/// Whether a scheduled beat is late enough to spend an arrival: the settle beat and later.
+pub fn consumes_arrivals(delay_ms: u64) -> bool {
+    delay_ms >= SETTLE_MS
+}
 
 impl Engine {
     /// Registered once at startup and never removed.
@@ -56,7 +68,9 @@ impl Engine {
         // Logged only when it changes, so a burst of device events writes it once.
         let line = format!("listeners: [{}] failed: [{}]", attached.join(", "), failed.join(", "));
         if self.listener_summary.as_deref() != Some(line.as_str()) {
-            self.note(&line);
+            if self.trace {
+                self.note(&line);
+            }
             self.listener_summary = Some(line);
         }
     }
@@ -64,7 +78,9 @@ impl Engine {
     pub fn handle(&mut self, ev: Event) {
         match ev {
             Event::Listener { kind, received } => {
-                self.note(&format!("event: {} (recv {})", kind.label(), clock_ms(received)));
+                if self.trace {
+                    self.note(&format!("event: {} (recv {})", kind.label(), clock_ms(received)));
+                }
                 let origin = |delay_ms| Origin { label: kind.label(), received, delay_ms };
                 match kind {
                     ListenerKind::Devices => {
@@ -81,24 +97,38 @@ impl Engine {
                             self.schedule(d, origin(d));
                         }
                     }
-                    ListenerKind::Balance | ListenerKind::Running | ListenerKind::Volume => self.schedule(0, origin(0)),
+                    ListenerKind::Balance => {
+                        self.balance_changed_at = Some(self.clock.mono());
+                        self.schedule(BALANCE_SETTLE_MS, origin(BALANCE_SETTLE_MS));
+                    }
+                    ListenerKind::Running | ListenerKind::Volume => self.schedule(0, origin(0)),
                 }
             }
             Event::ConfigTouched { received } => {
-                self.note(&format!("event: config (recv {})", clock_ms(received)));
+                if self.trace {
+                    self.note(&format!("event: config (recv {})", clock_ms(received)));
+                }
                 let o = Origin { label: "config", received, delay_ms: 300 };
-                self.scheduler.schedule(Timer::ConfigReload, 300, o);
+                let deadline = self.clock.mono() + Duration::from_millis(300);
+                self.scheduler.schedule(Timer::ConfigReload, deadline, o);
             }
         }
     }
 
     fn schedule(&mut self, delay_ms: u64, origin: Origin) {
-        self.scheduler.schedule(Timer::Reconcile { delay_ms }, delay_ms, origin);
+        let deadline = self.clock.mono() + Duration::from_millis(delay_ms);
+        self.scheduler.schedule(Timer::Reconcile { delay_ms }, deadline, origin);
+    }
+
+    /// One pending reconcile per delay, as a listener would ask for it.
+    pub fn schedule_reconcile(&mut self, delay_ms: u64) {
+        let received = self.clock.wall();
+        self.schedule(delay_ms, Origin { label: "scheduled", received, delay_ms });
     }
 
     pub fn fire(&mut self, timer: Timer, origin: Origin) {
         match timer {
-            Timer::Reconcile { delay_ms } => self.reconcile(delay_ms >= SETTLE_MS, Some(origin)),
+            Timer::Reconcile { delay_ms } => self.reconcile(consumes_arrivals(delay_ms), Some(origin)),
             Timer::ConfigReload => self.config_file_changed(origin),
         }
     }

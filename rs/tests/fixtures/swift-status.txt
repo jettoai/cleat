@@ -1,0 +1,23 @@
+daemon:      running (pid 50568)
+supervision: launchd agent (registered)
+updated:     2026-10-07 13:48:56
+config:      ok (~/.config/cleat/config.json)
+microphone:  authorized
+reports:     error reports on
+input:       Brio 100
+output:      外接耳機
+rules:
+  balance      on (target 0.50, now unreadable)
+  headphones   on (bluetooth output takes over when it connects; blocked from taking over: Maono AI Microphone)
+  inputPin     on (Wireless microphone, Brio 100), blocked: AirPods Max
+  inputVolume  on (default 100%; Brio 100 75% (now 75%), Maono AI Microphone 100% (now 100%), Microsoft Teams Audio 100% (now 100%), Wireless microphone 88% (now 88%), ZoomAudioDevice 100% (now 100%))
+  outputPin    on (外接耳機, Mac Studio的揚聲器), blocked: Maono AI Microphone
+  reclaim      on (AirPods Max)
+liveness:
+  Wireless microphone  silent
+recent:
+  2026-10-07 13:42:43 liveness: Wireless microphone -> measuring
+  2026-10-07 13:42:43 liveness: Wireless microphone -> live
+  2026-10-07 13:42:43 reclaim: AirPods Max refused (Buds out of ear)
+  2026-10-07 13:46:43 liveness: Wireless microphone -> silent
+  2026-10-07 13:46:43 pinInput: Wireless microphone -> Brio 100 (Wireless microphone silent)

@@ -1,11 +1,12 @@
-//! The append-only log behind `cleat-rs log`. Rotates at a megabyte, keeping one older file.
+//! The append-only log behind `cleat log`. Rotates at a megabyte, keeping one older file. Only
+//! actions that changed something are written (trace lines aside), as in Swift `EventLog.swift`.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::clock::local_ms;
+use super::clock::local_seconds;
 
 const MAX_BYTES: u64 = 1_048_576;
 
@@ -23,10 +24,10 @@ impl EventLog {
         &self.path
     }
 
-    /// Writes `{local_ms} {msg}` and returns the line. Failures are dropped: the log is a
+    /// Writes `{local_seconds} {msg}` and returns the line. Failures are dropped: the log is a
     /// diagnostic.
     pub fn append(&self, msg: &str) -> String {
-        let line = format!("{} {}", local_ms(SystemTime::now()), msg);
+        let line = format!("{} {}", local_seconds(SystemTime::now()), msg);
         if let Some(dir) = self.path.parent() {
             let _ = fs::create_dir_all(dir);
         }

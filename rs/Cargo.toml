@@ -15,7 +15,10 @@ path = "src/main.rs"
 [dependencies]
 objc2-core-audio = { version = "0.3.2", default-features = false, features = ["std", "AudioHardware", "objc2-core-audio-types"] }
 objc2-core-audio-types = { version = "0.3.2", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFRunLoop"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFRunLoop", "CFBundle"] }
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSError"] }
+objc2-service-management = { version = "0.3.2", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

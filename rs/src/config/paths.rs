@@ -5,6 +5,11 @@ use std::path::{Path, PathBuf};
 
 pub const CONFIG_OVERRIDE_VARIABLE: &str = "CLEAT_CONFIG";
 
+/// The one switch for moving the Rust daemon onto the Swift build's files (`Cleat`, `cleat.log`).
+pub const SUPPORT_DIR_NAME: &str = "Cleat-rs";
+pub const LOG_DIR_NAME: &str = "Cleat-rs";
+pub const LOG_FILE: &str = "cleat-rs.log";
+
 pub fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
@@ -31,7 +36,7 @@ pub fn config_path() -> PathBuf {
 }
 
 pub fn support_dir() -> PathBuf {
-    home().join("Library/Application Support/Cleat-rs")
+    home().join("Library/Application Support").join(SUPPORT_DIR_NAME)
 }
 
 pub fn status_path() -> PathBuf {
@@ -39,22 +44,23 @@ pub fn status_path() -> PathBuf {
 }
 
 pub fn log_dir() -> PathBuf {
-    home().join("Library/Logs/Cleat-rs")
+    home().join("Library/Logs").join(LOG_DIR_NAME)
 }
 
 pub fn log_path() -> PathBuf {
-    log_dir().join("cleat-rs.log")
+    log_dir().join(LOG_FILE)
 }
 
 pub fn rotated_log_path() -> PathBuf {
-    log_dir().join("cleat-rs.log.1")
+    log_dir().join(format!("{LOG_FILE}.1"))
 }
 
-/// `~/...` for display.
+/// `~...` for display, a string-prefix test like Swift `CLI.tildePath`.
 pub fn tilde(path: &Path) -> String {
-    let h = home();
-    match path.strip_prefix(&h) {
-        Ok(rest) => format!("~/{}", rest.display()),
-        Err(_) => path.display().to_string(),
+    let h = home().display().to_string();
+    let p = path.display().to_string();
+    match p.strip_prefix(h.as_str()) {
+        Some(rest) => format!("~{rest}"),
+        None => p,
     }
 }
