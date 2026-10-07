@@ -42,7 +42,7 @@ define_class!(
         fn view_for(&self, _table: &NSTableView, _column: Option<&NSTableColumn>, row: NSInteger) -> Option<Retained<NSView>> {
             let mtm = self.ivars().mtm;
             let page = Page::ALL[row as usize];
-            let line = stack(mtm, false, 6.0, &[&icon(mtm, page.symbol(), 24.0, &NSColor::labelColor()), &body(mtm, page.title())]);
+            let line = stack(mtm, false, 6.0, &[&icon(mtm, page.symbol(), 24.0, &NSColor::controlAccentColor()), &body(mtm, page.title())]);
             Some(to_view(&line))
         }
 
@@ -114,6 +114,8 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     table.setHeaderView(None);
     table.setStyle(NSTableViewStyle::SourceList);
     table.setRowHeight(32.0);
+    // SwiftUI's live sidebar: accent icons on a grey selection, the list never taking key focus.
+    table.setRefusesFirstResponder(true);
     // SAFETY: the sidebar object lives as long as the window (returned to the caller).
     unsafe {
         table.setDataSource(Some(ProtocolObject::from_ref(&*sidebar)));

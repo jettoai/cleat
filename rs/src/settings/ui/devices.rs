@@ -8,7 +8,10 @@ use objc2_app_kit::{NSButton, NSColor, NSControlSize, NSControlStateValueOff, NS
 use super::super::draft::{DeviceRow, Side};
 use super::super::text::{self, device_list_footer, noun};
 use super::pages::device_label;
-use super::widgets::{to_view, attributed, icon, ns, plain_button, plain_row, row, secondary, section, spacer, symbol_exists, tag, width, Ctx};
+use super::widgets::{
+    to_view, attributed, fill, icon, label, ns, plain_row, regular, row, secondary, section, spacer, stack, symbol_exists, tag,
+    width, Action, Ctx,
+};
 use super::{app, App};
 use crate::model::device_name;
 
@@ -140,7 +143,7 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
             let entry = entry.clone();
             app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, true))
         });
-        let add = plain_button(mtm, "plus.circle", "加入順序", 10.0, &NSColor::secondaryLabelColor(), &act);
+        let add = add_to_order(mtm, &act);
         let mut views: Vec<Retained<NSView>> = vec![device_icon(a, mtm, side, r), label_view(mtm, r)];
         if let Some(t) = tags(a, mtm, side, r) {
             views.push(t);
@@ -155,4 +158,21 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
     }
     let header = format!("其他{}裝置", noun(side));
     Some(section(mtm, Some(&header), &rows, None))
+}
+
+/// Swift's "加入順序": a caption `Label` in a borderless button, icon and words 13.5 pt apart,
+/// drawn as faint as tertiary text so five of them in a column stay quiet.
+fn add_to_order(mtm: MainThreadMarker, act: &Action) -> Retained<NSView> {
+    let tint = NSColor::tertiaryLabelColor();
+    let words = stack(mtm, false, 11.5, &[&icon(mtm, "plus.circle", 13.0, &tint), &label(mtm, "加入順序", 10.0, regular(), &tint)]);
+    // SAFETY: target and selector match `Action::fire:`.
+    let hit = unsafe { NSButton::buttonWithTitle_target_action(&ns(""), Some(act), Some(sel!(fire:)), mtm) };
+    hit.setBordered(false);
+    hit.setTransparent(true);
+    words.addSubview(&hit);
+    hit.setTranslatesAutoresizingMaskIntoConstraints(false);
+    fill(&words, &hit, 0.0);
+    hit.topAnchor().constraintEqualToAnchor(&words.topAnchor()).setActive(true);
+    hit.bottomAnchor().constraintEqualToAnchor(&words.bottomAnchor()).setActive(true);
+    to_view(&words)
 }
