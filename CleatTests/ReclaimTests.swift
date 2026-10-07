@@ -747,6 +747,60 @@ final class ReclaimTests: XCTestCase {
         XCTAssertEqual(world.lines { $0.contains("refused (Buds out of ear)") }, 2)
     }
 
+    /// Playback starts on the headset and the user moves the output to the speakers: the headset
+    /// was never asked for, but it was in use, so the rest of that playback leaves the choice alone.
+    func testHeadsetSwitchedAwayFromMidPlaybackIsNotAskedFor() throws {
+        let world = try World(config: config)
+        world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
+        world.system.snapshotValue.devices = [Fixture.airPods, Fixture.macStudioSpeakers]
+        world.system.snapshotValue.defaultOutput = Fixture.airPods.id
+
+        world.start()
+        world.system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
+        for _ in 0..<10 {
+            world.advance(Engine.reclaimBackoff + 1)
+            world.reconcile()
+        }
+        XCTAssertEqual(world.routing.addresses, [])
+    }
+
+    /// Playback starts on the headset and the phone takes it: the headset leaves CoreAudio, and
+    /// the Mac, still playing, asks for it back on the usual cadence.
+    func testHeadsetTakenByThePhoneMidPlaybackIsStillAskedFor() throws {
+        let world = try World(config: config)
+        world.routing.answer = nil
+        world.system.snapshotValue.devices = [Fixture.airPods, Fixture.macStudioSpeakers]
+        world.system.snapshotValue.defaultOutput = Fixture.airPods.id
+
+        world.start()
+        world.system.snapshotValue.devices = [Fixture.macStudioSpeakers]
+        world.system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress])
+        world.advance(Engine.reclaimInterval + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+    }
+
+    /// The user's switch away from the headset lasts one playback: the next one asks again.
+    func testHeadsetSwitchedAwayFromIsAskedAgainNextPlayback() throws {
+        let world = try World(config: config)
+        world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
+        world.system.snapshotValue.devices = [Fixture.airPods, Fixture.macStudioSpeakers]
+        world.system.snapshotValue.defaultOutput = Fixture.airPods.id
+
+        world.start()
+        world.system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 0)
+
+        world.system.snapshotValue.outputRunning = false
+        world.reconcile()
+        world.system.snapshotValue.outputRunning = true
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses, [Self.airPodsAddress])
+    }
+
     // MARK: - Harness
 
     /// An engine with every outside edge replaced: the audio system, the routing daemon, the

@@ -64,10 +64,23 @@ extension Engine {
             return []
         }
 
+        let headsets = bluetooth.pairedHeadsets()
+        markHeadsetsInUse(snapshot, headsets)
         return ReclaimRule.reconcile(
-            snapshot, bluetooth.pairedHeadsets(), config,
+            snapshot, headsets, config,
             excluding: heldDownHeadsets().union(presentHeadsetsAlreadyAsked(snapshot))
         )
+    }
+
+    /// A listed headset that is the output during this playback counts as asked for: the user has
+    /// it already, so moving the output elsewhere mid-playback is a choice that stands until the
+    /// next playback, the same as after a request.
+    private func markHeadsetsInUse(_ snapshot: DeviceSnapshot, _ headsets: [BluetoothHeadset]) {
+        for headset in headsets
+        where headset.isListed(in: config.reclaim) && ReclaimRule.isDefaultOutput(headset, in: snapshot) {
+            reclaimNames[headset.address] = headset.name
+            reclaimAskedThisPlayback.insert(headset.address)
+        }
     }
 
     /// A headset macOS moved back by itself never gets a `routed` answer, so its becoming the
@@ -81,9 +94,9 @@ extension Engine {
         }
     }
 
-    /// Headsets in CoreAudio, not the output, and already asked for in this playback. Whatever the
-    /// answer was, the user has had the chance to be switched over; if they then pick another
-    /// output, that choice stands until the next playback. A headset absent from CoreAudio keeps
+    /// Headsets in CoreAudio, not the output, and already asked for (or already the output) in this
+    /// playback. Whatever the answer was, the user has had the chance to be switched over; if they
+    /// then pick another output, that choice stands until the next playback. A headset absent from CoreAudio keeps
     /// the old cadence, since there is no device for anyone to have chosen.
     private func presentHeadsetsAlreadyAsked(_ snapshot: DeviceSnapshot) -> Set<String> {
         reclaimAskedThisPlayback.filter { address in
