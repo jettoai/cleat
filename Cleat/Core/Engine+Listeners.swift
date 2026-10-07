@@ -26,6 +26,7 @@ extension Engine {
 
     private func devicesChanged() {
         note("devices: list changed")
+        checkReturnsNow()
         rebindDevices()
         scheduleReconcile(after: Engine.settleBeat)
         Engine.retryBeats.forEach(scheduleReconcile(after:))
@@ -38,6 +39,7 @@ extension Engine {
     }
 
     private func defaultOutputChanged() {
+        checkReturnsNow()
         // The balance listener is bound to a specific device, so it moves with the default output.
         rebindDevices()
         Engine.retryBeats.forEach(scheduleReconcile(after:))

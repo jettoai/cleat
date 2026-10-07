@@ -112,6 +112,8 @@ final class FakeRouting: RouteRequesting, @unchecked Sendable {
     private(set) var addresses: [String] = []
     private(set) var scores: [Int32] = []
     private(set) var reasons: [String] = []
+    /// The last request left unanswered, so a test can answer it late.
+    private(set) var unanswered: (@Sendable (RouteResponse) -> Void)?
 
     init(available: Bool) {
         isAvailable = available
@@ -127,7 +129,10 @@ final class FakeRouting: RouteRequesting, @unchecked Sendable {
         addresses.append(address)
         scores.append(score)
         reasons.append(reason)
-        guard let answer else { return }
+        guard let answer else {
+            unanswered = completion
+            return
+        }
         completion(answer)
     }
 }

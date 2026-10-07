@@ -262,6 +262,7 @@ final class Engine: @unchecked Sendable {
         for action in inputActions + outputActions + holdActions + balanceActions + volumeActions + reclaimActions {
             apply(action)
         }
+        checkReclaimReturns(snapshot)
         writeStatus(snapshot)
     }
 
