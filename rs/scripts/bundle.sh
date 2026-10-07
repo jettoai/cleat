@@ -1,9 +1,11 @@
 #!/bin/bash
-# Builds rs/target/Cleat-rs.app from the optimised binary, without Xcode: Info.plist and the
-# launchd agent plist from rs/bundle/*.in, ad-hoc signed with the hardened runtime and the one
-# entitlement the Swift build has (audio input), with bundle/AppIcon.icns as its icon. A previous
-# bundle is moved aside, never deleted. CLEAT_LABEL / CLEAT_APP build a copy under another bundle
-# id or path (keep the label ending in .rs), so a test copy never replaces the bundle launchd runs.
+# Builds rs/target/bundle.noindex/Cleat-rs.app from the optimised binary, without Xcode: Info.plist
+# and the launchd agent plist from rs/bundle/*.in, ad-hoc signed with the hardened runtime and the
+# one entitlement the Swift build has (audio input), with bundle/AppIcon.icns as its icon. A
+# previous bundle is moved aside (old-*), never deleted. The .noindex directory keeps Spotlight,
+# and so Raycast, from listing build products beside the installed copy. CLEAT_LABEL / CLEAT_APP
+# build a copy under another bundle id or path (keep the label ending in .rs), so a test copy never
+# replaces the bundle launchd runs.
 set -euo pipefail
 
 RS="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +17,8 @@ cargo build --release
 
 VERSION="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
 BUILD="$(git rev-list --count HEAD)"
-APP="${CLEAT_APP:-$RS/target/$EXE.app}"
+APP="${CLEAT_APP:-$RS/target/bundle.noindex/$EXE.app}"
+mkdir -p "$(dirname "$APP")"
 
 if [ -e "$APP" ]; then
     mv "$APP" "$(dirname "$APP")/old-$(date +%Y%m%d-%H%M%S)-$EXE.app"
