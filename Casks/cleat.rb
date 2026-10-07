@@ -2,7 +2,7 @@
 # scripts/build-release.sh, which prints both after notarizing.
 cask "cleat" do
   version "0.3.8"
-  sha256 "0ea1bb3ad82fbf8f0940bc291d35bc68dcabec34566d6b532de0d4f936fc8721"
+  sha256 "48edc93d450251f3f55ed97bdfac0b099eee35b74c6fb6a3eaae88e12e10ff25"
 
   url "https://github.com/jettoai/cleat/releases/download/v#{version}/Cleat-#{version}.zip"
   name "Cleat"
