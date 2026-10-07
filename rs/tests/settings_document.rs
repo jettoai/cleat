@@ -37,10 +37,12 @@ fn switches_off_remove_their_keys() {
 }
 
 #[test]
-fn rust_only_switches_are_dropped_on_write() {
-    let raw = r#"{"reclaimEnabled":false,"outputVolumeHoldEnabled":false}"#;
+fn rust_only_switches_and_unknown_keys_survive_a_write() {
+    let raw = r#"{"reclaimEnabled":false,"outputVolumeHoldEnabled":true,"someUnknownKey":1}"#;
     let out = text(Some(raw), &default_managed());
-    assert!(!out.contains("reclaimEnabled") && !out.contains("outputVolumeHoldEnabled"), "{out}");
+    assert!(out.contains("  \"reclaimEnabled\": false"), "{out}");
+    assert!(out.contains("  \"outputVolumeHoldEnabled\": true"), "{out}");
+    assert!(out.contains("  \"someUnknownKey\": 1"), "{out}");
 }
 
 #[test]

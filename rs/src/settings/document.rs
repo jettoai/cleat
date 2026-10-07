@@ -1,6 +1,6 @@
 //! Writes the settings window's keys back into the config file, leaving every other key exactly as
-//! it was (Swift `ConfigDocument.swift`). The two Rust-only switches are owned too and never
-//! written: a switch turned on in the window must not stay off through a leftover `false`.
+//! it was (Swift `ConfigDocument.swift`). The Rust-only switches `reclaimEnabled` and
+//! `outputVolumeHoldEnabled` are not owned: the daemon reads them, so they are carried verbatim.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -26,8 +26,8 @@ pub struct Managed {
     pub hold_against: Option<Vec<String>>,
 }
 
-/// Swift's nine keys plus the two Rust-only switches, which `values()` never emits.
-pub const MANAGED_KEYS: [&str; 11] = [
+/// Swift's nine keys.
+pub const MANAGED_KEYS: [&str; 9] = [
     "input",
     "blockedInput",
     "output",
@@ -37,8 +37,6 @@ pub const MANAGED_KEYS: [&str; 11] = [
     "reclaim",
     "balance",
     "outputVolumeHoldAgainst",
-    "reclaimEnabled",
-    "outputVolumeHoldEnabled",
 ];
 
 /// Canonical top-level order; keys outside it follow, sorted.
