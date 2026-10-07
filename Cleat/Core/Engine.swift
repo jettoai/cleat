@@ -57,6 +57,9 @@ final class Engine: @unchecked Sendable {
     var reclaimRetryWindow: [String: Date] = [:]
     /// The name each headset was asked for under, so a beat can tell it has turned up in CoreAudio.
     var reclaimNames: [String: String] = [:]
+    /// Headsets asked for during the current playback. One that is in CoreAudio but not the output
+    /// is not asked again until the Mac stops and starts playing, apart from short retries.
+    var reclaimAskedThisPlayback: Set<String> = []
     /// Whether the "no routing service" line has been written. Once is enough.
     var reclaimUnavailableLogged = false
 

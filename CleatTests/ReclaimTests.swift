@@ -71,10 +71,18 @@ final class ReclaimTests: XCTestCase {
         XCTAssertEqual(ReclaimRule.reconcile(playing(), [away], config), [])
     }
 
-    /// (c) The headset is already a CoreAudio output device. Whether it holds the output is the
-    /// output rules' business; this rule only fills the gap where there is no device at all.
-    func testHeadsetThatIsAlreadyAnAudioDeviceIsNotAskedFor() {
+    /// (c) The headset is in CoreAudio but the Mac plays through something else. The takeover rule
+    /// fired once when it connected and the pin list does not name it, so this rule asks.
+    func testHeadsetHereButNotTheOutputIsAskedFor() {
         let snapshot = playing([Fixture.macStudioSpeakers, Fixture.airPods])
+        XCTAssertEqual(
+            ReclaimRule.reconcile(snapshot, [connectedAirPods], config), [request(connectedAirPods)]
+        )
+    }
+
+    /// The headset already is the output: there is nothing to ask for.
+    func testHeadsetThatIsTheOutputIsNotAskedFor() {
+        let snapshot = playing([Fixture.airPods, Fixture.macStudioSpeakers])
         XCTAssertEqual(ReclaimRule.reconcile(snapshot, [connectedAirPods], config), [])
     }
 
@@ -595,8 +603,10 @@ final class ReclaimTests: XCTestCase {
 
         world.start()
         world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+        world.system.snapshotValue.defaultOutput = Fixture.airPods.id
         world.reconcile()
         world.system.snapshotValue.devices = [Fixture.macStudioSpeakers]
+        world.system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
         world.advance(Engine.reclaimRetryDelay + 1)
         world.reconcile()
         XCTAssertEqual(world.routing.addresses.count, 2)
@@ -612,9 +622,11 @@ final class ReclaimTests: XCTestCase {
         world.start()
         world.advance(10)
         world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+        world.system.snapshotValue.defaultOutput = Fixture.airPods.id
         world.reconcile()
         world.advance(Engine.reclaimRetrySpan + 20)
         world.system.snapshotValue.devices = [Fixture.macStudioSpeakers]
+        world.system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
         world.reconcile()
         XCTAssertEqual(world.routing.addresses.count, 2)
 
@@ -635,6 +647,104 @@ final class ReclaimTests: XCTestCase {
         world.advance(Engine.reclaimRetryDelay + 1)
         world.reconcile()
         XCTAssertEqual(world.routing.addresses.count, 1)
+    }
+
+    // MARK: - A headset that is here but not the output
+
+    /// 2026-10-07: music on the external headphones, AirPods Max in CoreAudio and connected, and
+    /// nothing asked for them. The first beat of a playback asks; whatever the answer, the rest of
+    /// that playback leaves the user's choice of output alone.
+    func testHeadsetHereButNotChosenIsAskedOncePerPlayback() throws {
+        let answers: [RouteResponse] = [
+            RouteResponse(action: 1, reason: "Tipi device hijack was successful"),
+            RouteResponse(action: 1, reason: "Device already routed"),
+            Self.onACall,
+            RouteResponse(action: 0, reason: "Something final"),
+        ]
+        for answer in answers {
+            let world = try World(config: config)
+            world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+            world.routing.answer = answer
+
+            world.start()
+            XCTAssertEqual(world.routing.addresses.count, 1, "\(answer)")
+            for _ in 0..<10 {
+                world.advance(Engine.reclaimBackoff + 1)
+                world.reconcile()
+            }
+            XCTAssertEqual(world.routing.addresses.count, 1, "\(answer)")
+        }
+    }
+
+    /// Playback stops and starts again: a new playback is a new chance to switch over.
+    func testHeadsetHereButNotChosenIsAskedAgainNextPlayback() throws {
+        let world = try World(config: config)
+        world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+        world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
+
+        world.start()
+        world.advance(Engine.reclaimInterval + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 1)
+
+        world.system.snapshotValue.outputRunning = false
+        world.reconcile()
+        world.system.snapshotValue.outputRunning = true
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+    }
+
+    /// Out of ear on a headset that is here: the short retries still run, and stop when the window
+    /// is spent. Every beat in between sees the headset in CoreAudio, and none of them may reset
+    /// the window, or the retries never end.
+    func testHeadsetHereButNotChosenRetriesShortRefusalsWithinTheWindowOnly() throws {
+        let world = try World(config: config)
+        world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+        world.routing.answer = Self.outOfEar
+
+        world.start()
+        world.advance(Engine.reclaimRetryDelay - 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 1)
+        world.advance(1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+
+        for _ in 0..<60 {
+            world.advance(Engine.reclaimRetryDelay + 0.5)
+            world.reconcile()
+        }
+        let windowRetries = Int(Engine.reclaimRetrySpan / Engine.reclaimRetryDelay) + 2
+        XCTAssertLessThanOrEqual(world.routing.addresses.count, windowRetries)
+        let spent = world.routing.addresses.count
+        world.advance(600)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, spent)
+        XCTAssertEqual(world.lines { $0.contains("out of ear") }, 1)
+    }
+
+    /// The headset becoming the output ends the spell even while playback goes on: no request,
+    /// and the next refusal is a new one with a fresh window and its own log line.
+    func testHeadsetBecomingTheOutputIsNotAskedForAndEndsTheSpell() throws {
+        let world = try World(config: config)
+        world.routing.answer = Self.outOfEar
+
+        world.start()
+        world.advance(Engine.reclaimRetrySpan + 20)
+        world.system.snapshotValue.devices = [Fixture.airPods, Fixture.macStudioSpeakers]
+        world.system.snapshotValue.defaultOutput = Fixture.airPods.id
+        for _ in 0..<5 {
+            world.advance(Engine.reclaimBackoff + 1)
+            world.reconcile()
+        }
+        let asked = world.routing.addresses.count
+        world.system.snapshotValue.defaultOutput = Fixture.macStudioSpeakers.id
+        world.system.snapshotValue.outputRunning = false
+        world.reconcile()
+        world.system.snapshotValue.outputRunning = true
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, asked + 1)
+        XCTAssertEqual(world.lines { $0.contains("refused (Buds out of ear)") }, 2)
     }
 
     // MARK: - Harness

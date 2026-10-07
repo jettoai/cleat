@@ -15,9 +15,11 @@ import Foundation
 /// too outranks it and keeps the headset - which is the behaviour anyone would want, and is
 /// arbitrated by the system rather than by this rule.
 ///
-/// A headset that is here in CoreAudio needs nothing: either it already holds the output, or one
-/// of the output rules owns that decision. This rule is only about the window where there is no
-/// audio device to point at.
+/// A headset is asked for whenever it is not the default output, whether or not it is in CoreAudio.
+/// The takeover rule only acts the moment a headset connects, and the output pin list does not name
+/// it, so a headset that is here but not chosen had nobody looking after it. Asking costs nothing
+/// when it is unwanted: the system refuses a headset that is not being worn, and the engine asks for
+/// a headset that is already here only once per playback, so a manual switch away from it stands.
 enum ReclaimRule {
 
     /// The reason string that travels with the request. It ends up in the system's own routing
@@ -49,7 +51,7 @@ enum ReclaimRule {
         )]
     }
 
-    /// The listed headsets that are connected to this Mac and have no CoreAudio device here, in
+    /// The listed headsets that are connected to this Mac and are not its default output, in
     /// the order the rule would act on them. `cleat reclaim` cannot use this list - it has no
     /// CoreAudio snapshot to leave devices out by - but it picks from the listed and connected
     /// headsets in the same `inRuleOrder`, and sends the same `requestReason`, so a config entry
@@ -61,7 +63,7 @@ enum ReclaimRule {
             headsets.filter { headset in
                 headset.isConnected
                     && headset.isListed(in: config.reclaim)
-                    && !isAudioDevice(headset, in: snapshot)
+                    && !isDefaultOutput(headset, in: snapshot)
             }
         )
     }
@@ -79,5 +81,11 @@ enum ReclaimRule {
         snapshot.devices.contains { device in
             device.hasOutput && DeviceName.matches(entry: headset.name, name: device.name, uid: device.uid)
         }
+    }
+
+    /// Whether this headset is the device the Mac is playing through, matched the same way.
+    static func isDefaultOutput(_ headset: BluetoothHeadset, in snapshot: DeviceSnapshot) -> Bool {
+        guard let device = snapshot.defaultOutput.flatMap(snapshot.device(id:)) else { return false }
+        return DeviceName.matches(entry: headset.name, name: device.name, uid: device.uid)
     }
 }

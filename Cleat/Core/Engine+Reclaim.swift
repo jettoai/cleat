@@ -57,22 +57,39 @@ extension Engine {
         // on a microphone in use is one, several times a minute - and every beat that reaches the
         // rule while the Mac is silent would have paid for a list it then ignores.
         guard snapshot.outputRunning else {
-            // The Mac stopped playing: the next refusal starts a fresh run of short retries.
+            // The Mac stopped playing: the next refusal starts a fresh run of short retries, and
+            // the next playback asks again for a headset that is here but not chosen.
             reclaimRetryWindow.removeAll()
+            reclaimAskedThisPlayback.removeAll()
             return []
         }
 
         return ReclaimRule.reconcile(
-            snapshot, bluetooth.pairedHeadsets(), config, excluding: heldDownHeadsets()
+            snapshot, bluetooth.pairedHeadsets(), config,
+            excluding: heldDownHeadsets().union(presentHeadsetsAlreadyAsked(snapshot))
         )
     }
 
-    /// A headset macOS moved back by itself never gets a `routed` answer, so its appearing in
-    /// CoreAudio is what ends the spell: the next refusal is logged and retried as a new one.
+    /// A headset macOS moved back by itself never gets a `routed` answer, so its becoming the
+    /// default output is what ends the spell: the next refusal is logged and retried as a new one.
+    /// Merely being in CoreAudio is not enough - a headset that is here but not chosen is still
+    /// being asked for, and ending its spell every beat would make the short retries endless.
     private func forgetHeadsetsThatCameBack(_ snapshot: DeviceSnapshot) {
         for (address, name) in reclaimNames {
             let headset = BluetoothHeadset(name: name, address: address, isConnected: true)
-            if ReclaimRule.isAudioDevice(headset, in: snapshot) { endSpell(address) }
+            if ReclaimRule.isDefaultOutput(headset, in: snapshot) { endSpell(address) }
+        }
+    }
+
+    /// Headsets in CoreAudio, not the output, and already asked for in this playback. Whatever the
+    /// answer was, the user has had the chance to be switched over; if they then pick another
+    /// output, that choice stands until the next playback. A headset absent from CoreAudio keeps
+    /// the old cadence, since there is no device for anyone to have chosen.
+    private func presentHeadsetsAlreadyAsked(_ snapshot: DeviceSnapshot) -> Set<String> {
+        reclaimAskedThisPlayback.filter { address in
+            guard let name = reclaimNames[address] else { return false }
+            let headset = BluetoothHeadset(name: name, address: address, isConnected: true)
+            return ReclaimRule.isAudioDevice(headset, in: snapshot)
         }
     }
 
@@ -94,6 +111,7 @@ extension Engine {
     func requestRoute(name: String, address: String, reason: String) {
         reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimInterval)
         reclaimNames[address] = name
+        reclaimAskedThisPlayback.insert(address)
 
         routing.request(
             address: address, score: Engine.reclaimScore, reason: reason, queue: queue
@@ -131,10 +149,12 @@ extension Engine {
             // A previous hijack of ours is still running. Not news, and not a reason to wait: the
             // next beat is the retry.
             reclaimNextAttempt[address] = nil
+            reclaimAskedThisPlayback.remove(address)
 
         case .refused(let detail):
             if Engine.isShortLivedRefusal(detail), retryWindowOpen(address) {
                 reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimRetryDelay)
+                reclaimAskedThisPlayback.remove(address)
                 scheduleReconcile(after: Engine.reclaimRetryDelay)
             } else {
                 reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimBackoff)
@@ -143,14 +163,14 @@ extension Engine {
         }
     }
 
-    /// The headset is back: the next refusal is logged and retried as a new one.
+    /// The headset is the output: the next refusal is logged and retried as a new one.
     private func endSpell(_ address: String) {
         reclaimHeldLogged[address] = nil
         reclaimRetryWindow[address] = nil
     }
 
     /// Opens the window on the first short-lived refusal and says whether it is still open. A
-    /// spent window stays spent until the headset comes back or the Mac stops playing.
+    /// spent window stays spent until the headset becomes the output or the Mac stops playing.
     private func retryWindowOpen(_ address: String) -> Bool {
         let start = reclaimRetryWindow[address] ?? now()
         reclaimRetryWindow[address] = start
