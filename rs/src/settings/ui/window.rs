@@ -1,15 +1,18 @@
 //! The window: 720 x 560, a source-list sidebar of the three panes, the detail pane on the right
 //! (Swift `SettingsWindow.makeWindow`, `SettingsView.body`).
 
+use std::cell::OnceCell;
+
 use objc2::rc::Retained;
 use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
-use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSBackingStoreType, NSColor, NSControlTextEditingDelegate, NSScrollView, NSSplitViewController, NSSplitViewItem, NSTableColumn, NSTableView,
     NSTableViewDataSource, NSTableViewDelegate, NSTableViewStyle, NSView, NSViewController, NSWindow,
+    NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification,
     NSWindowStyleMask, NSWindowTitleVisibility,
 };
-use objc2_foundation::{NSIndexSet, NSInteger, NSNotification, NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSEdgeInsets, NSIndexSet, NSInteger, NSNotification, NSNotificationCenter, NSPoint, NSRange, NSRect, NSSize};
 
 use super::super::text::Page;
 use super::widgets::{to_view, body, ns, overflowing_icon, stack};
@@ -17,6 +20,7 @@ use super::{app, App};
 
 pub struct SidebarIvars {
     mtm: MainThreadMarker,
+    table: OnceCell<Retained<NSTableView>>,
 }
 
 define_class!(
@@ -25,6 +29,18 @@ define_class!(
     #[name = "CleatRsSettingsSidebar"]
     #[ivars = SidebarIvars]
     pub struct Sidebar;
+
+    impl Sidebar {
+        /// The window became or stopped being key: redraw the rows in that state's colours.
+        #[unsafe(method(keyChanged:))]
+        fn key_changed(&self, _notification: &NSNotification) {
+            // Only the cells: a full `reloadData` here drops the selected row's highlight.
+            if let Some(table) = self.ivars().table.get() {
+                let rows = NSIndexSet::indexSetWithIndexesInRange(NSRange::new(0, Page::ALL.len()));
+                table.reloadDataForRowIndexes_columnIndexes(&rows, &NSIndexSet::indexSetWithIndex(0));
+            }
+        }
+    }
 
     unsafe impl NSObjectProtocol for Sidebar {}
 
@@ -39,14 +55,25 @@ define_class!(
 
     unsafe impl NSTableViewDelegate for Sidebar {
         #[unsafe(method_id(tableView:viewForTableColumn:row:))]
-        fn view_for(&self, _table: &NSTableView, _column: Option<&NSTableColumn>, row: NSInteger) -> Option<Retained<NSView>> {
+        fn view_for(&self, table: &NSTableView, _column: Option<&NSTableColumn>, row: NSInteger) -> Option<Retained<NSView>> {
             let mtm = self.ivars().mtm;
             let page = Page::ALL[row as usize];
-            // Swift `SettingsIcon(symbol:)` in the sidebar `List`: a 20pt square, `.primary` (opaque,
-            // so `textColor` rather than `labelColor`). The List draws the glyph 1.3x its 15pt font,
-            // measured off the Swift window (mic 20pt tall).
-            let glyph = overflowing_icon(mtm, page.symbol(), 20.0, 15.0 * 1.3, &NSColor::textColor());
-            let line = stack(mtm, false, 6.0, &[&glyph, &body(mtm, page.title())]);
+            // Swift `SettingsIcon(symbol:)` in the sidebar `List`, as the Swift window draws it: in a
+            // key window accent glyphs and opaque text; otherwise opaque glyphs and text at about
+            // 40% (measured: 117 on 40 dark, 140 on 242 light). The glyph sits in a 20pt square at
+            // 1.3x its 15pt font (mic 20pt tall).
+            let key = table.window().is_some_and(|w| w.isKeyWindow());
+            let (glyph_color, text_color) = if key {
+                (NSColor::controlAccentColor(), NSColor::textColor())
+            } else {
+                (NSColor::textColor(), NSColor::textColor().colorWithAlphaComponent(0.4))
+            };
+            let glyph = overflowing_icon(mtm, page.symbol(), 20.0, 15.0 * 1.3, &glyph_color);
+            let title = body(mtm, page.title());
+            title.setTextColor(Some(&text_color));
+            let line = stack(mtm, false, 7.0, &[&glyph, &title]);
+            // Measured off the Swift row: glyph 3pt further in, title 7pt after it.
+            line.setEdgeInsets(NSEdgeInsets { top: 0.0, left: 3.0, bottom: 0.0, right: 0.0 });
             Some(to_view(&line))
         }
 
@@ -109,7 +136,7 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     // SAFETY: the window is held by the App for the life of the process.
     unsafe { window.setReleasedWhenClosed(false) };
 
-    let sidebar = Sidebar::alloc(mtm).set_ivars(SidebarIvars { mtm });
+    let sidebar = Sidebar::alloc(mtm).set_ivars(SidebarIvars { mtm, table: OnceCell::new() });
     // SAFETY: NSObject's init.
     let sidebar: Retained<Sidebar> = unsafe { msg_send![super(sidebar), init] };
     let table = NSTableView::new(mtm);
@@ -123,6 +150,12 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     unsafe {
         table.setDataSource(Some(ProtocolObject::from_ref(&*sidebar)));
         table.setDelegate(Some(ProtocolObject::from_ref(&*sidebar)));
+    }
+    let _ = sidebar.ivars().table.set(table.clone());
+    let center = NSNotificationCenter::defaultCenter();
+    for name in [unsafe { NSWindowDidBecomeKeyNotification }, unsafe { NSWindowDidResignKeyNotification }] {
+        // SAFETY: `keyChanged:` takes one NSNotification; the sidebar and window outlive the observation.
+        unsafe { center.addObserver_selector_name_object(&sidebar, sel!(keyChanged:), Some(name), Some(&window)) };
     }
     let start = match debug_env("CLEAT_SETTINGS_PAGE").as_deref() {
         Some("input") => Page::Input,
