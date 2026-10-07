@@ -20,8 +20,14 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
     /// A ledger that has already adopted `level` for the device.
     private func ledger(holding level: Float) -> OutputVolumeLedger {
         var ledger = OutputVolumeLedger()
+        ledger.observe([level, level], at: t0 - 10)
         _ = ledger.judge(device: device, current: [level, level], now: t0 - 10)
         return ledger
+    }
+
+    /// The volume listener reading both channels at `offset`.
+    private func output(_ ledger: inout OutputVolumeLedger, at offset: TimeInterval, _ values: Float...) {
+        ledger.observe(values, at: t0 + offset)
     }
 
     /// Records a listed write, lands it on both channels and judges at its deadline.
@@ -30,6 +36,8 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
         let line = write("prl_vm_app", at: offset, from, to)
         let deadline = ledger.record(line, listed: true, ownPID: 1, outputUID: device.uid, now: line.at)
         XCTAssertNotNil(deadline)
+        output(&ledger, at: offset - 0.01, from, from)
+        output(&ledger, at: offset, to, to)
         ledger.volumeChanged(at: line.at)
         return ledger.judge(device: device, current: [to, to], now: deadline ?? line.at)
     }
@@ -81,7 +89,9 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
         let right = write("prl_vm_app", at: 0.249, 0.5, 0.43, control: 263)
         let deadline = ledger.record(left, listed: true, ownPID: 1, outputUID: device.uid, now: left.at)
         XCTAssertEqual(deadline, t0 + 0.3)
+        output(&ledger, at: 0, 0.43, 0.5)
         XCTAssertNil(ledger.record(right, listed: true, ownPID: 1, outputUID: device.uid, now: right.at))
+        output(&ledger, at: 0.249, 0.43, 0.43)
         ledger.volumeChanged(at: right.at)
 
         XCTAssertEqual(ledger.judge(device: device, current: [0.43, 0.5], now: t0 + 0.25).verdict, .none)
@@ -98,6 +108,8 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
         _ = echoed.record(write("prl_vm_app", at: 0, 0.625, 0.531160), listed: true, ownPID: 1, outputUID: device.uid, now: t0)
         _ = echoed.record(write("ControlCenter", at: 0.016, 0.531160, 0.5625, pid: 531), listed: false, ownPID: 1,
                           outputUID: device.uid, now: t0 + 0.016)
+        output(&echoed, at: 0, 0.531160, 0.531160)
+        output(&echoed, at: 0.016, 0.5625, 0.5625)
         XCTAssertEqual(echoed.judge(device: device, current: [0.5625, 0.5625], now: t0 + 0.3).verdict,
                        .revert(from: 0.5625, restore: 0.625, writer: "prl_vm_app", prior: nil))
 
@@ -105,6 +117,8 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
         _ = overruled.record(write("prl_vm_app", at: 0, 0.625, 0.531160), listed: true, ownPID: 1, outputUID: device.uid, now: t0)
         _ = overruled.record(write("ControlCenter", at: 0.2, 0.531160, 0.5, pid: 531), listed: false, ownPID: 1,
                              outputUID: device.uid, now: t0 + 0.2)
+        output(&overruled, at: 0, 0.531160, 0.531160)
+        output(&overruled, at: 0.2, 0.5, 0.5)
         XCTAssertEqual(overruled.judge(device: device, current: [0.5, 0.5], now: t0 + 0.5).verdict,
                        .kept(from: 0.625, to: 0.5, writer: "ControlCenter", note: nil))
     }
@@ -115,6 +129,8 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
         _ = ledger.record(write("prl_vm_app", at: 0, 0.5, 0.43), listed: true, ownPID: 1, outputUID: device.uid, now: t0)
         _ = ledger.record(write("Jetto", at: 0.05, 0.43, 0.1, pid: 72504), listed: false, ownPID: 1,
                           outputUID: device.uid, now: t0 + 0.05)
+        output(&ledger, at: 0, 0.43, 0.43)
+        output(&ledger, at: 0.05, 0.1, 0.1)
         XCTAssertEqual(ledger.judge(device: device, current: [0.1, 0.1], now: t0 + 0.3).verdict,
                        .kept(from: 0.5, to: 0.1, writer: "Jetto", note: nil))
         XCTAssertEqual(ledger.held[device.uid], 0.1)
@@ -174,8 +190,74 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
     func testStreakForAnotherDeviceIsDropped() {
         var ledger = ledger(holding: 0.5)
         _ = ledger.record(write("prl_vm_app", at: 0, 0.5, 0.43), listed: true, ownPID: 1, outputUID: "other-UID", now: t0)
+        output(&ledger, at: 0, 0.43, 0.43)
         let judgement = ledger.judge(device: device, current: [0.43, 0.43], now: t0 + 0.3)
         XCTAssertEqual(judgement.verdict, .kept(from: 0.5, to: 0.43, writer: "unknown", note: nil))
         XCTAssertNil(ledger.streak)
+    }
+
+    // MARK: - Which lines moved the output
+
+    /// A listed line, as a line and as the output change it caused, in either arrival order.
+    private func listedWrite(_ ledger: inout OutputVolumeLedger, at offset: TimeInterval, _ from: Float, _ to: Float,
+                             control: Int = 262, listenerFirst: Bool = false, listenerLag: TimeInterval = 0) {
+        let line = write("prl_vm_app", at: offset, from, to, control: control)
+        if listenerFirst { output(&ledger, at: offset + listenerLag, to, to) }
+        _ = ledger.record(line, listed: true, ownPID: 1, outputUID: device.uid, now: line.at + 0.005)
+        if !listenerFirst { output(&ledger, at: offset + listenerLag, to, to) }
+        ledger.volumeChanged(at: t0 + offset + listenerLag)
+    }
+
+    /// Sample A: the microphone 100% -> 40%, then the output 50% -> 40%. What goes back is the
+    /// output's 50%, not the microphone's 100%.
+    func testMixedControlsRestoreTheOutputsOwnValue() {
+        var ledger = ledger(holding: 0.5)
+        _ = ledger.record(write("prl_vm_app", at: 0, 1.0, 0.4, control: 261), listed: true, ownPID: 1,
+                          outputUID: device.uid, now: t0 + 0.005)
+        listedWrite(&ledger, at: 0.1, 0.5, 0.4)
+        XCTAssertEqual(ledger.judge(device: device, current: [0.4, 0.4], now: t0 + 0.3).verdict,
+                       .revert(from: 0.4, restore: 0.5, writer: "prl_vm_app", prior: nil))
+    }
+
+    /// Sample B: the user turned 50% -> 60% and Parallels wrote 60% -> 50% before it was judged.
+    /// The output is back on the held value, but the user's 60% is what goes back.
+    func testUserChangeNotYetJudgedIsRestored() {
+        var ledger = ledger(holding: 0.5)
+        output(&ledger, at: 0, 0.6, 0.6)
+        ledger.volumeChanged(at: t0)
+        listedWrite(&ledger, at: 0.1, 0.6, 0.5)
+        XCTAssertEqual(ledger.judge(device: device, current: [0.5, 0.5], now: t0 + 0.3).verdict, .none)
+        XCTAssertEqual(ledger.judge(device: device, current: [0.5, 0.5], now: t0 + 0.4).verdict,
+                       .revert(from: 0.5, restore: 0.6, writer: "prl_vm_app",
+                               prior: .init(from: 0.5, to: 0.6, writer: "unknown")))
+        XCTAssertEqual(ledger.held[device.uid], 0.6)
+    }
+
+    /// Sample C: only the microphone 100% -> 50%, the output already at 50%. Nothing moved.
+    func testListedWriteThatDidNotMoveTheOutputIsIgnored() {
+        var ledger = ledger(holding: 0.5)
+        _ = ledger.record(write("prl_vm_app", at: 0, 1.0, 0.5, control: 261), listed: true, ownPID: 1,
+                          outputUID: device.uid, now: t0 + 0.005)
+        output(&ledger, at: 0.01, 0.5, 0.5)
+        XCTAssertEqual(ledger.judge(device: device, current: [0.5, 0.5], now: t0 + 0.3).verdict, .none)
+        XCTAssertEqual(ledger.held[device.uid], 0.5)
+    }
+
+    func testLineAndListenerMayArriveInEitherOrder() {
+        for listenerFirst in [false, true] {
+            var ledger = ledger(holding: 0.5)
+            listedWrite(&ledger, at: 0, 0.5, 0.43, listenerFirst: listenerFirst, listenerLag: 0.02)
+            XCTAssertEqual(ledger.judge(device: device, current: [0.43, 0.43], now: t0 + 0.3).verdict,
+                           .revert(from: 0.43, restore: 0.5, writer: "prl_vm_app", prior: nil),
+                           "listenerFirst \(listenerFirst)")
+        }
+    }
+
+    /// The output moved 0.2s after the line: too far apart to be that line's doing.
+    func testOutputChangeTooFarFromTheLineIsNotItsWrite() {
+        var ledger = ledger(holding: 0.5)
+        listedWrite(&ledger, at: 0, 0.5, 0.43, listenerLag: 0.2)
+        XCTAssertEqual(ledger.judge(device: device, current: [0.43, 0.43], now: t0 + 0.5).verdict,
+                       .kept(from: 0.5, to: 0.43, writer: "unknown", note: nil))
     }
 }

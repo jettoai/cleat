@@ -23,12 +23,30 @@ struct OutputVolumeLedger: Sendable {
     /// blind. The crown and reconnects legitimately have none, so this is high.
     static let blindAfter = 10
     static let selfWriter = "cleat"
+    /// A writer line and the output change it caused are at most this far apart. The log line
+    /// carries the write's own time, the listener the time it ran; both trail the write by ms.
+    static let attributionWindow: TimeInterval = 0.15
+    /// Output changes older than this can no longer be paired with a line (lines older than
+    /// `staleAfter` are dropped, and a streak is judged `judgeDelay` after it opens).
+    static let changeMemory: TimeInterval = 2
 
     struct Streak: Sendable {
         var uid: String
         var startedAt: Date
         var lastForeignAt: Date
-        var foreign: OutputVolumeHoldRule.Foreign
+        /// Every listed line of the streak, whichever control it wrote.
+        var listed: [VolumeWrite]
+        /// Control Center lines that continue a listed result.
+        var echoes: [VolumeWrite]
+        var overruled: Bool
+        var priorWriter: String?
+    }
+
+    /// One channel of the default output moving, as the volume listener saw it.
+    struct OutputChange: Equatable, Sendable {
+        var at: Date
+        var from: Float
+        var to: Float
     }
 
     struct Revert: Equatable, Sendable {
@@ -54,6 +72,9 @@ struct OutputVolumeLedger: Sendable {
     private(set) var lastRevert: Revert?
     private(set) var unattributedInARow = 0
     private(set) var unrecognised: String?
+    /// The default output's channels at the last reading, and how they moved recently.
+    private(set) var observed: [Float] = []
+    private(set) var outputChanges: [OutputChange] = []
 
     /// Takes one writer line. Returns when the streak it opened should be judged, or nil when it
     /// opened none.
@@ -74,28 +95,25 @@ struct OutputVolumeLedger: Sendable {
             guard let uid = outputUID else { return nil }
             if var open = streak {
                 open.lastForeignAt = write.at
-                open.foreign.results.append(write.to)
+                open.listed.append(write)
                 streak = open
                 return nil
             }
-            streak = Streak(
-                uid: uid, startedAt: write.at, lastForeignAt: write.at,
-                foreign: .init(restore: write.from, writer: write.writer, results: [write.to],
-                               overruled: false, priorWriter: lastWriter)
-            )
+            streak = Streak(uid: uid, startedAt: write.at, lastForeignAt: write.at,
+                            listed: [write], echoes: [], overruled: false, priorWriter: lastWriter)
             return write.at + Self.judgeDelay
         }
 
         if var open = streak {
             let isEcho = write.writer == Self.echoWriter
                 && write.at.timeIntervalSince(open.lastForeignAt) <= Self.echoGrace
-                && open.foreign.results.contains { abs($0 - write.from) <= OutputVolumeHoldRule.tolerance }
+                && (open.listed + open.echoes).contains { abs($0.to - write.from) <= OutputVolumeHoldRule.tolerance }
             if isEcho {
-                open.foreign.results.append(write.to)
+                open.echoes.append(write)
                 streak = open
                 return nil
             }
-            open.foreign.overruled = true
+            open.overruled = true
             streak = open
         }
         lastWriter = write.writer
@@ -110,6 +128,38 @@ struct OutputVolumeLedger: Sendable {
 
     mutating func volumeChanged(at: Date) {
         lastChangeAt = at
+    }
+
+    /// One reading of the default output's channels. A channel that differs from the last reading
+    /// is an output change; a different channel count (another device) only starts over.
+    mutating func observe(_ values: [Float], at: Date) {
+        if values.count == observed.count {
+            for (old, new) in zip(observed, values) where abs(old - new) > OutputVolumeHoldRule.tolerance {
+                outputChanges.append(OutputChange(at: at, from: old, to: new))
+            }
+        }
+        observed = values
+        outputChanges.removeAll { at.timeIntervalSince($0.at) > Self.changeMemory }
+    }
+
+    /// The line moved the output: some channel went from its `from` to its `to` around its time.
+    /// Equal values alone prove nothing (a microphone write can land on the output's value).
+    func movedOutput(_ write: VolumeWrite) -> Bool {
+        let tolerance = OutputVolumeHoldRule.tolerance
+        return outputChanges.contains {
+            abs($0.from - write.from) <= tolerance && abs($0.to - write.to) <= tolerance
+                && abs($0.at.timeIntervalSince(write.at)) <= Self.attributionWindow
+        }
+    }
+
+    /// The streak as the rule sees it: only its lines that moved the output. None did: nothing
+    /// for the rule to undo.
+    private func foreign(_ open: Streak) -> OutputVolumeHoldRule.Foreign? {
+        let output = open.listed.filter(movedOutput)
+        guard let first = output.min(by: { $0.at < $1.at }) else { return nil }
+        let results = (output + open.echoes.filter(movedOutput)).map(\.to)
+        return .init(restore: first.from, writer: first.writer, results: results,
+                     overruled: open.overruled, priorWriter: open.priorWriter)
     }
 
     /// A streak that is due is judged even while later changes keep arriving: Control Center's
@@ -133,7 +183,7 @@ struct OutputVolumeLedger: Sendable {
         revertTimes.removeAll { now.timeIntervalSince($0) > Self.tugWindow }
 
         var verdict = OutputVolumeHoldRule.decide(.init(
-            current: current, held: held[device.uid], foreign: streak?.foreign,
+            current: current, held: held[device.uid], foreign: streak.flatMap(foreign),
             lastWriter: lastWriter, paused: pausedUntil != nil || sourceDown || blind != nil
         ))
         var startedPause = false

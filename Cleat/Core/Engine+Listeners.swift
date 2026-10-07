@@ -98,7 +98,7 @@ extension Engine {
                     scope: kAudioObjectPropertyScopeOutput,
                     element: AudioObjectPropertyElement(element),
                     queue: queue
-                ) { [weak self] in self?.outputVolumeChanged() })
+                ) { [weak self] in self?.outputVolumeChanged(output) })
             }
         }
 

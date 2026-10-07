@@ -18,6 +18,8 @@ protocol AudioSystem: AnyObject {
     func setOutputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus
 
     func nominalSampleRate(_ device: AudioDeviceID) -> Double?
+    /// The output volume of each channel (or the main element), as `snapshot` reads it.
+    func outputVolumes(_ device: AudioDeviceID) -> [Float]
 
     func addSystemListener(
         selector: AudioObjectPropertySelector,
@@ -148,7 +150,7 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
     }
 
     /// Main element when the device has one, otherwise each channel that answers.
-    private func outputVolumes(_ device: AudioDeviceID) -> [Float] {
+    func outputVolumes(_ device: AudioDeviceID) -> [Float] {
         if let main = AudioProperty.value(device, Self.outputVolumeAddress(element: kAudioObjectPropertyElementMain), as: Float32.self) {
             return [main]
         }

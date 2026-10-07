@@ -136,8 +136,10 @@ extension Engine {
 
     // MARK: - Listener and rule
 
-    /// The default output's volume moved, whoever moved it.
-    func outputVolumeChanged() {
+    /// The default output's volume moved, whoever moved it. The reading is what lets a writer
+    /// line be matched to the output change it caused.
+    func outputVolumeChanged(_ device: AudioDeviceID) {
+        outputVolume.ledger.observe(system.outputVolumes(device), at: now())
         outputVolume.ledger.volumeChanged(at: now())
         scheduleReconcile(after: Engine.outputVolumeSettle)
     }
@@ -146,6 +148,8 @@ extension Engine {
         guard !config.outputVolumeHoldAgainst.isEmpty,
               let id = snapshot.defaultOutput, let device = snapshot.device(id: id) else { return [] }
         outputVolume.outputUID = device.uid
+        // Keeps the baseline current, so the listener's next reading is a change from here.
+        outputVolume.ledger.observe(snapshot.outputVolumes, at: now())
 
         let judgement = outputVolume.ledger.judge(
             device: device, current: snapshot.outputVolumes, now: now(),

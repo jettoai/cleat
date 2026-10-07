@@ -62,12 +62,22 @@ final class OutputVolumeReplayTests: XCTestCase {
 
     /// The steps of the plan's section 4.3: every due judgement before the next event, our own
     /// write fires the listener, a line arrives 5ms after it was logged.
+    ///
+    /// The captures have no listener readings, so the output changes are synthesised: every time
+    /// channel 262 or 263 moves (a write line to those controls, the crown, a reconnect, our own
+    /// revert) the listener is taken to read both channels at that instant. That holds for this
+    /// day's AirPods Max, whose output controls are 262/263; on a real machine the readings come
+    /// from the listener, at its own time (named blind spot: the replay cannot show listener lag).
     private static func replay() -> (reverts: [Revert], timeline: [(at: Date, held: Float?)]) {
         var ledger = OutputVolumeLedger()
         var channels: [Int: Float] = [:]
         var judged = Set<Date>()
         var reverts: [Revert] = []
         var timeline: [(at: Date, held: Float?)] = []
+
+        func listener(at: Date) {
+            ledger.observe([262, 263].compactMap { channels[$0] }, at: at)
+        }
 
         func runDue(upTo limit: Date?) {
             while true {
@@ -83,6 +93,7 @@ final class OutputVolumeReplayTests: XCTestCase {
                 if case .revert(_, let restore, let writer, _) = judgement.verdict {
                     channels[262] = restore
                     channels[263] = restore
+                    listener(at: mark)
                     ledger.volumeChanged(at: mark)
                     reverts.append(Revert(at: mark, streakStart: streakStart ?? .distantPast,
                                           writer: writer, restore: restore))
@@ -97,7 +108,10 @@ final class OutputVolumeReplayTests: XCTestCase {
             case .write(let pid, let control, let from, let to):
                 let old = channels[control]
                 channels[control] = to
-                if old.map({ abs($0 - to) > 1e-9 }) ?? true { ledger.volumeChanged(at: event.at) }
+                if old.map({ abs($0 - to) > 1e-9 }) ?? true {
+                    listener(at: event.at)
+                    ledger.volumeChanged(at: event.at)
+                }
                 let name = writer(pid)
                 let line = VolumeWrite(at: event.at, pid: pid, writer: name, control: control, from: from, to: to)
                 _ = ledger.record(line, listed: name == "prl_vm_app", ownPID: 1,
@@ -107,6 +121,7 @@ final class OutputVolumeReplayTests: XCTestCase {
                 if changed { ledger.volumeChanged(at: event.at) }
                 channels[262] = value
                 channels[263] = value
+                if changed { listener(at: event.at) }
             }
         }
         runDue(upTo: nil)

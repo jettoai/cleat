@@ -64,6 +64,8 @@ final class FakeAudioSystem: AudioSystem, @unchecked Sendable {
 
     func nominalSampleRate(_ device: AudioDeviceID) -> Double? { sampleRate }
 
+    func outputVolumes(_ device: AudioDeviceID) -> [Float] { snapshotValue.outputVolumes }
+
     func addSystemListener(
         selector: AudioObjectPropertySelector,
         queue: DispatchQueue,

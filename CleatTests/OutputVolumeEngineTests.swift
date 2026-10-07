@@ -101,6 +101,21 @@ final class OutputVolumeEngineTests: XCTestCase {
         XCTAssertEqual(system.writes, [])
     }
 
+    /// Sample A through the engine: the microphone 100% -> 40%, then the output 50% -> 40%.
+    func testMicrophoneWriteBeforeAnOutputWriteRestoresTheOutputsValue() throws {
+        let (system, engine, source) = try start(holdAgainst: ["Parallels Desktop"])
+        engine.queue.async {
+            source.emit(.write(Self.write(Self.parallelsPath, 1.0, 0.4, control: 261)))
+        }
+        engine.queue.asyncAfter(deadline: .now() + 0.1) {
+            source.emit(.write(Self.write(Self.parallelsPath, 0.5, 0.4)))
+            system.snapshotValue.outputVolumes = [0.4, 0.4]
+            system.fire(kAudioDevicePropertyVolumeScalar)
+        }
+        waitOnQueue(engine, seconds: 0.7)
+        XCTAssertEqual(system.writes, ["outvol:30:0.5000"])
+    }
+
     /// A line the parser cannot read arrives while a listed write waits: the source is not
     /// trusted, so the write is not undone.
     func testUnrecognisedLineDuringAPendingWriteStopsTheRevert() throws {

@@ -14,7 +14,8 @@ enum OutputVolumeHoldRule {
 
     /// A listed writer's write still waiting to be judged.
     struct Foreign: Equatable, Sendable {
-        /// The value right before the listed writer touched it, from its own log line.
+        /// The value right before the listed writer touched the output, from the earliest of its
+    /// lines that moved the output.
         var restore: Float
         var writer: String
         /// Every value the write (and any echo of it) left on a channel.
@@ -76,10 +77,9 @@ enum OutputVolumeHoldRule {
             let stillTheirs = input.current.allSatisfy { value in
                 foreign.results.contains { abs($0 - value) <= tolerance }
             }
-            // The output must have moved off what we hold: a listed write to another control (the
-            // microphone) can land on a value the output already had.
-            if stillTheirs, !foreign.overruled, abs(level - foreign.restore) > tolerance,
-               abs(level - held) > tolerance {
+            // The ledger hands over only lines that moved the output, so `held` is not consulted:
+            // a user change not yet judged can sit between it and `restore`.
+            if stillTheirs, !foreign.overruled, abs(level - foreign.restore) > tolerance {
                 if input.paused {
                     return .kept(from: held, to: level, writer: foreign.writer, note: "paused")
                 }
