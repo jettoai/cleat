@@ -88,3 +88,14 @@ fn nothing_to_do_still_writes_a_pass_line_in_observe_mode() {
     assert!(log.contains("pass: trigger=startup"));
     assert!(log.contains("actions=0 (nothing to do)"));
 }
+
+/// P2 column: observe mode opens no silence detector even with the microphone granted.
+#[test]
+fn observe_never_makes_a_detector_and_enforce_does() {
+    let config = r#"{"input": ["Wireless microphone", "Brio 100"], "liveness": {"Wireless microphone": {"zeroSeconds": 3}}}"#;
+    let snapshot = || DeviceSnapshot { devices: vec![wireless(), brio()], default_input: Some(wireless().id), ..Default::default() };
+    let observe = run(Mode::Observe, config, snapshot());
+    assert_eq!(observe.detectors.made.get(), 0);
+    let enforce = run(Mode::Enforce, config, snapshot());
+    assert!(enforce.detectors.made.get() >= 1);
+}

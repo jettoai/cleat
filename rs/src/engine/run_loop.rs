@@ -8,10 +8,15 @@ use std::time::{Duration, SystemTime};
 
 use super::Engine;
 use crate::audio::ListenerKind;
+use crate::model::MicrophonePermission;
 
 pub enum Event {
     Listener { kind: ListenerKind, received: SystemTime },
     ConfigTouched { received: SystemTime },
+    /// The microphone dialog's answer.
+    Microphone(MicrophonePermission),
+    /// A silence detector changed its verdict.
+    LivenessFlip { uid: String, name: String, live: bool },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

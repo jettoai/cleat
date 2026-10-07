@@ -12,6 +12,7 @@ use cleat_rs::config::Config;
 use cleat_rs::engine::{Engine, EngineDeps, Event, Mode, Status};
 use cleat_rs::identity::Identity;
 use cleat_rs::launch::{AgentService, AgentStatus, Launchd};
+use cleat_rs::liveness::LivenessDetecting;
 use cleat_rs::model::{DeviceSnapshot, MicrophonePermission};
 use cleat_rs::state::clock::Clock;
 use cleat_rs::state::EventLog;
@@ -51,6 +52,9 @@ impl AudioSystem for FakeAudio {
         self.0.writes.borrow_mut().push(format!("volume:{id}:{value:.2}"));
         self.0.snapshot.borrow_mut().input_volumes.insert(id, value);
         0
+    }
+    fn nominal_sample_rate(&self, _id: u32) -> Option<f64> {
+        None
     }
     fn add_listener(&self, _target: ListenTarget) -> Option<ListenerToken> {
         None
@@ -120,7 +124,51 @@ impl Launchd for FakeLaunchd {
     }
 }
 
+/// The HAL side of silence detection as a script (Swift `DetectorLog`). Answers for successive
+/// `start()` calls; the last one repeats once the script runs out, `true` when it is empty.
+#[derive(Default)]
+pub struct DetectorLog {
+    pub start_results: Vec<bool>,
+    pub made: Cell<usize>,
+    pub start_count: Cell<usize>,
+    pub stop_count: Cell<usize>,
+}
+
+impl DetectorLog {
+    fn next_start_result(&self) -> bool {
+        let n = self.start_count.get();
+        self.start_count.set(n + 1);
+        self.start_results.get(n).or(self.start_results.last()).copied().unwrap_or(true)
+    }
+}
+
+pub struct FakeDetector {
+    device_id: u32,
+    name: String,
+    zero_seconds: f64,
+    log: Rc<DetectorLog>,
+}
+
+impl LivenessDetecting for FakeDetector {
+    fn device_id(&self) -> u32 {
+        self.device_id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn zero_seconds(&self) -> f64 {
+        self.zero_seconds
+    }
+    fn start(&mut self) -> bool {
+        self.log.next_start_result()
+    }
+    fn stop(&mut self) {
+        self.log.stop_count.set(self.log.stop_count.get() + 1);
+    }
+}
+
 pub struct Opts {
+    pub start_results: Vec<bool>,
     pub mode: Mode,
     pub trace: bool,
     pub identity: Identity,
@@ -131,6 +179,7 @@ pub struct Opts {
 impl Default for Opts {
     fn default() -> Self {
         Self {
+            start_results: vec![],
             mode: Mode::Enforce,
             trace: false,
             identity: Identity::default(),
@@ -153,6 +202,7 @@ pub struct Harness {
     pub agent: Rc<FakeAgentState>,
     pub login_item: Rc<FakeAgentState>,
     pub reports: Rc<RefCell<Vec<bool>>>,
+    pub detectors: Rc<DetectorLog>,
     pub engine: Engine,
 }
 
@@ -177,6 +227,8 @@ impl Harness {
         let login_item = FakeAgentState::new(AgentStatus::NotRegistered);
         let reports = Rc::new(RefCell::new(vec![]));
         let sink = reports.clone();
+        let detectors = Rc::new(DetectorLog { start_results: opts.start_results, ..Default::default() });
+        let log = detectors.clone();
         let deps = EngineDeps {
             system: Box::new(FakeAudio(audio.clone())),
             log: EventLog::new(dir.join("cleat.log"), dir.join("cleat.log.1")),
@@ -188,11 +240,20 @@ impl Harness {
             login_item: Box::new(FakeAgent(login_item.clone())),
             launchd: Box::new(FakeLaunchd),
             error_reports_changed: Box::new(move |v| sink.borrow_mut().push(v)),
+            detectors: Box::new(move |device, _rate, zero_seconds| {
+                log.made.set(log.made.get() + 1);
+                Box::new(FakeDetector {
+                    device_id: device.id,
+                    name: device.name.clone(),
+                    zero_seconds,
+                    log: log.clone(),
+                })
+            }),
             events: None,
         };
         let mut engine = Engine::new(deps, opts.mode, opts.trace);
         engine.start(opts.microphone);
-        Self { dir, audio, clock, agent, login_item, reports, engine }
+        Self { dir, audio, clock, agent, login_item, reports, detectors, engine }
     }
 
     pub fn writes(&self) -> Vec<String> {

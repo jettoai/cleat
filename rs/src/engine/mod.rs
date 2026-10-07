@@ -3,6 +3,7 @@
 
 mod launch;
 mod listeners;
+mod liveness;
 mod run_loop;
 mod status;
 
@@ -21,6 +22,7 @@ use crate::audio::{AudioSystem, ListenerToken};
 use crate::config::{watcher, Config};
 use crate::identity::Identity;
 use crate::launch::{AgentService, Launchd};
+use crate::liveness::{DetectorFactory, LivenessDetecting};
 use crate::model::{Action, DeviceSnapshot, Liveness, MicrophonePermission};
 use crate::rules::{balance, headphones_takeover, input_pin, input_volume, output_pin, reclaim};
 use crate::state::clock::{clock_ms, Clock};
@@ -49,8 +51,10 @@ pub struct EngineDeps {
     /// The app as a login item, which versions up to 0.3.2 registered and this retires.
     pub login_item: Box<dyn AgentService>,
     pub launchd: Box<dyn Launchd>,
-    /// Told when `errorReports` changes. A no-op until error reporting is ported.
+    /// Told when `errorReports` changes.
     pub error_reports_changed: Box<dyn FnMut(bool)>,
+    /// Makes a silence detector for a device; flips come back as `Event::LivenessFlip`.
+    pub detectors: DetectorFactory,
     /// Where the config watcher sends; None runs without a watcher (tests).
     pub events: Option<Sender<Event>>,
 }
@@ -69,10 +73,16 @@ pub struct Engine {
     login_item: Box<dyn AgentService>,
     launchd: Box<dyn Launchd>,
     error_reports_changed: Box<dyn FnMut(bool)>,
+    detectors: DetectorFactory,
     events: Option<Sender<Event>>,
     pub(crate) config: Config,
     config_state: String,
     microphone: MicrophonePermission,
+    /// Silence verdict per device UID, owned here because the detectors are.
+    liveness_state: HashMap<String, Liveness>,
+    liveness_detectors: HashMap<String, Box<dyn LivenessDetecting>>,
+    /// UIDs whose detector could not be started; membership keeps the retry quiet.
+    liveness_unavailable: HashSet<String>,
     error_reports_applied: bool,
     previous_device_uids: Option<HashSet<String>>,
     pub(crate) system_tokens: Vec<ListenerToken>,
@@ -99,10 +109,14 @@ impl Engine {
             login_item: deps.login_item,
             launchd: deps.launchd,
             error_reports_changed: deps.error_reports_changed,
+            detectors: deps.detectors,
             events: deps.events,
             config: Config::disabled(),
             config_state: "missing".into(),
             microphone: MicrophonePermission::Pending,
+            liveness_state: HashMap::new(),
+            liveness_detectors: HashMap::new(),
+            liveness_unavailable: HashSet::new(),
             error_reports_applied: false,
             previous_device_uids: None,
             system_tokens: vec![],
@@ -196,6 +210,8 @@ impl Engine {
         let t0 = SystemTime::now();
         let mut snap = self.system.snapshot(&self.config);
         snap.arrived = self.arrivals(&snap, consuming_arrivals);
+        // Also the retry for a detector whose start failed on a device not yet ready.
+        self.sync_liveness_detectors(&snap);
         snap.liveness = self.liveness_for_rules(&snap);
         let t1 = SystemTime::now();
 
@@ -257,22 +273,6 @@ impl Engine {
             self.previous_device_uids = Some(present);
         }
         arrived
-    }
-
-    /// Nothing is measured yet (no detectors until the liveness port), so only the pending case
-    /// differs from "untracked": while the dialog is unanswered a configured device reads as
-    /// `measuring`, so nothing switches to it (Swift `livenessForRules`).
-    fn liveness_for_rules(&self, snap: &DeviceSnapshot) -> HashMap<String, Liveness> {
-        let mut liveness = HashMap::new();
-        if self.microphone != MicrophonePermission::Pending {
-            return liveness;
-        }
-        for entry in self.config.liveness.keys() {
-            if let Some(d) = snap.device_matching(entry, true) {
-                liveness.insert(d.uid.clone(), Liveness::Measuring);
-            }
-        }
-        liveness
     }
 
     /// The only caller of the `AudioSystem` writers. Observe mode returns before any of them.

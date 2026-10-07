@@ -73,6 +73,8 @@ impl Engine {
             }
             self.listener_summary = Some(line);
         }
+        // One enumeration serves the listeners and the detectors (Swift `rebindDevices`).
+        self.sync_liveness_detectors(&snap);
     }
 
     pub fn handle(&mut self, ev: Event) {
@@ -112,6 +114,8 @@ impl Engine {
                 let deadline = self.clock.mono() + Duration::from_millis(300);
                 self.scheduler.schedule(Timer::ConfigReload, deadline, o);
             }
+            Event::Microphone(permission) => self.update_microphone(permission),
+            Event::LivenessFlip { uid, name, live } => self.liveness_flipped(&uid, &name, live),
         }
     }
 

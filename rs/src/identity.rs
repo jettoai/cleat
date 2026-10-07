@@ -41,6 +41,12 @@ impl Identity {
     }
 }
 
+/// `CFBundleVersion` of the running bundle; None for a bare executable.
+pub fn build_number() -> Option<String> {
+    let bundle = CFBundle::main_bundle()?;
+    info_string(&bundle, "CFBundleVersion")
+}
+
 pub fn is_development_label(label: &str) -> bool {
     label.ends_with(".dev") || label.ends_with(".rs")
 }

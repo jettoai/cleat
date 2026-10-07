@@ -5,13 +5,16 @@
 use std::process::ExitCode;
 use std::sync::mpsc;
 
+use cleat_rs::app::microphone;
 use cleat_rs::audio::CoreAudioSystem;
 use cleat_rs::cli;
 use cleat_rs::config::paths;
 use cleat_rs::engine::{self, Engine, EngineDeps, Mode};
-use cleat_rs::identity::Identity;
+use cleat_rs::identity::{self, Identity};
 use cleat_rs::launch::{LaunchctlJob, SmApp};
+use cleat_rs::liveness::live_detectors;
 use cleat_rs::model::MicrophonePermission;
+use cleat_rs::report::{self, Curl, Meta, Reporter, ReporterConfig};
 use cleat_rs::state::clock::SystemClock;
 use cleat_rs::state::EventLog;
 use objc2_core_foundation::CFRunLoop;
@@ -35,6 +38,13 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
     if mode == Mode::Observe {
         println!("cleat-rs observing (pid {}, log {})", std::process::id(), paths::log_path().display());
     }
+    // Observe mode asks for nothing and reports nothing (D6).
+    let observe = mode == Mode::Observe;
+    let reporter = (!observe).then(make_reporter);
+    if let Some(r) = &reporter {
+        r.install_panic_hook();
+    }
+    let microphone_tx = tx.clone();
     let spawned = std::thread::Builder::new().name("cleat-engine".into()).spawn(move || {
         let identity = Identity::current();
         let label = identity.label();
@@ -48,19 +58,45 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
             login_item: Box::new(SmApp::main_app()),
             launchd: Box::new(LaunchctlJob { label }),
             identity,
-            error_reports_changed: Box::new(|_| {}),
+            error_reports_changed: match reporter {
+                Some(r) => Box::new(move |on| r.set_enabled(on)),
+                None => Box::new(|_| {}),
+            },
+            detectors: live_detectors(tx.clone()),
             events: Some(tx),
         };
         let mut eng = Engine::new(deps, mode, trace);
-        // The microphone is not asked for until the liveness port.
-        eng.start(MicrophonePermission::Pending);
+        // Engine first, dialog second: four of the five rules need no microphone.
+        eng.start(if observe { MicrophonePermission::Pending } else { microphone::current() });
         engine::run(&mut eng, &rx);
     });
     if let Err(e) = spawned {
         eprintln!("cleat: could not start the engine thread: {e}");
         return ExitCode::FAILURE;
     }
+    if !observe {
+        microphone::request(microphone_tx);
+    }
     // The HAL delivers listener callbacks through the main run loop.
     CFRunLoop::run();
     ExitCode::SUCCESS
+}
+
+fn make_reporter() -> Reporter {
+    let identity = Identity::current();
+    let version = identity.version();
+    let build = identity::build_number().unwrap_or_else(|| "0".into());
+    let home = paths::home();
+    let cfg = ReporterConfig {
+        support_dir: paths::support_dir(),
+        diagnostics_dir: home.join("Library/Logs/DiagnosticReports"),
+        home: home.display().to_string(),
+        meta: Meta {
+            release: format!("{}@{version}+{build}", identity.label()),
+            environment: if identity.is_development_build() { "development" } else { "production" }.into(),
+            os_version: report::os_version(),
+        },
+        probe: std::env::var("CLEAT_SENTRY_TEST_EVENT").is_ok_and(|v| v == "1"),
+    };
+    Reporter::new(cfg, Box::new(Curl { client: format!("cleat-rs/{version}") }))
 }

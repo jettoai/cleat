@@ -4,7 +4,7 @@ mod core_audio;
 mod listeners;
 mod property;
 
-pub use core_audio::CoreAudioSystem;
+pub use core_audio::{prepare_liveness_input, CoreAudioSystem};
 pub use listeners::{ListenerKind, ListenerToken};
 
 use crate::config::Config;
@@ -24,6 +24,8 @@ pub trait AudioSystem {
     fn set_default_output(&self, id: u32) -> i32;
     fn set_balance(&self, id: u32, value: f32) -> i32;
     fn set_input_volume(&self, id: u32, value: f32) -> i32;
+    /// What a silence detector's frame threshold is computed from.
+    fn nominal_sample_rate(&self, id: u32) -> Option<f64>;
     fn add_listener(&self, target: ListenTarget) -> Option<ListenerToken>;
     fn remove_listener(&self, token: ListenerToken);
 }

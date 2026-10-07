@@ -3,12 +3,15 @@
 use std::sync::mpsc::Sender;
 
 use objc2_core_audio::{
-    kAudioDevicePropertyDeviceIsRunningSomewhere, kAudioDevicePropertyDeviceUID, kAudioDevicePropertyTransportType,
+    kAudioDevicePropertyBufferFrameSize, kAudioDevicePropertyBufferFrameSizeRange,
+    kAudioDevicePropertyDeviceIsRunningSomewhere, kAudioDevicePropertyNominalSampleRate, kAudioDevicePropertyDeviceUID, kAudioDevicePropertyTransportType,
     kAudioDevicePropertyVolumeScalar, kAudioDeviceTransportTypeUnknown, kAudioHardwarePropertyDefaultInputDevice,
     kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwareUnknownPropertyError, kAudioObjectPropertyElementMain,
     kAudioObjectPropertyName, kAudioObjectPropertyScopeInput, kAudioObjectPropertyScopeOutput, kAudioObjectUnknown,
     AudioObjectPropertyAddress, AudioObjectPropertySelector,
 };
+
+use objc2_core_audio_types::{AudioStreamBasicDescription, AudioValueRange};
 
 use super::listeners::{Contexts, VIRTUAL_MAIN_BALANCE};
 use super::property::{self, address, global, SYSTEM_OBJECT};
@@ -68,6 +71,31 @@ impl CoreAudioSystem {
     }
 }
 
+/// Frames per IOProc callback a detector asks for; 4096 is the ceiling most devices allow.
+const PREFERRED_BUFFER_FRAMES: u32 = 4096;
+
+/// Readies an input for a silence detector (Swift `applyPreferredBufferSize`, `readStreamFormat`):
+/// the largest buffer up to 4096 frames, then the sample width buffers will arrive in. Float32,
+/// the HAL's virtual format, when the device will not say.
+pub fn prepare_liveness_input(id: u32) -> usize {
+    let range = address(kAudioDevicePropertyBufferFrameSizeRange, kAudioObjectPropertyScopeInput, kAudioObjectPropertyElementMain);
+    let mut wanted = PREFERRED_BUFFER_FRAMES;
+    if let Some(r) = property::get::<AudioValueRange>(id, range) {
+        wanted = wanted.max(r.mMinimum as u32).min(r.mMaximum as u32);
+    }
+    let size = address(kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeInput, kAudioObjectPropertyElementMain);
+    let _ = property::set(id, size, wanted);
+    let format = address(STREAM_FORMAT, kAudioObjectPropertyScopeInput, kAudioObjectPropertyElementMain);
+    match property::get::<AudioStreamBasicDescription>(id, format) {
+        Some(f) if f.mBitsPerChannel >= 8 => (f.mBitsPerChannel / 8) as usize,
+        _ => std::mem::size_of::<f32>(),
+    }
+}
+
+/// `kAudioDevicePropertyStreamFormat` ('sfmt', AudioHardwareDeprecated.h:694), which the crate
+/// only exports behind its deprecated-API feature.
+const STREAM_FORMAT: u32 = u32::from_be_bytes(*b"sfmt");
+
 impl AudioSystem for CoreAudioSystem {
     fn snapshot(&self, config: &Config) -> DeviceSnapshot {
         let devices: Vec<AudioDevice> = property::device_ids().into_iter().filter_map(Self::describe).collect();
@@ -122,6 +150,10 @@ impl AudioSystem for CoreAudioSystem {
             }
         }
         if wrote_one { 0 } else { last_error }
+    }
+
+    fn nominal_sample_rate(&self, id: u32) -> Option<f64> {
+        property::get::<f64>(id, global(kAudioDevicePropertyNominalSampleRate))
     }
 
     fn add_listener(&self, target: ListenTarget) -> Option<ListenerToken> {

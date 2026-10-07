@@ -30,9 +30,10 @@ pub fn global(selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddre
 }
 
 /// Read a fixed-size POD property.
-pub fn get<T: Copy + Default>(object: AudioObjectID, addr: AudioObjectPropertyAddress) -> Option<T> {
+pub fn get<T: Copy>(object: AudioObjectID, addr: AudioObjectPropertyAddress) -> Option<T> {
     let mut addr = addr;
-    let mut value = T::default();
+    // SAFETY: only plain C structs and numbers are read through here; all-zero is a valid value.
+    let mut value: T = unsafe { std::mem::zeroed() };
     let mut size = size_of::<T>() as u32;
     // SAFETY: every pointer refers to a live local of the stated size.
     let status = unsafe {

@@ -1,7 +1,7 @@
 //! What the daemon publishes after every reconcile, and the only thing `cleat status` reads.
 //! Fields follow Swift `StatusStore.swift`; summaries follow the Swift engine word for word.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Engine;
 use crate::config::{Config, INPUT_VOLUME_WILDCARD};
-use crate::model::{AudioDevice, DeviceSnapshot, MicrophonePermission};
+use crate::model::{AudioDevice, DeviceSnapshot, Liveness, MicrophonePermission};
 use crate::state::clock::iso8601_utc;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -64,7 +64,7 @@ impl Engine {
             default_input: name_of(snap, snap.default_input),
             default_output: name_of(snap, snap.default_output),
             rules: rule_summaries(&self.config, snap),
-            liveness: liveness_summaries(&self.config, snap, &self.microphone),
+            liveness: liveness_summaries(&self.config, snap, &self.microphone, &self.liveness_state),
             recent_events: self.recent_events.clone(),
         };
         status.write(&self.status_path);
@@ -165,24 +165,31 @@ pub fn wildcard_volume_summary(config: &Config, snap: &DeviceSnapshot, wildcard:
     }
 }
 
-/// Swift `livenessSummaries`. No detectors run yet, so a granted microphone reads `unavailable`.
+/// Swift `livenessSummaries`. A present, granted device with no verdict could not be opened.
 pub fn liveness_summaries(
     config: &Config,
     snap: &DeviceSnapshot,
     microphone: &MicrophonePermission,
+    state: &HashMap<String, Liveness>,
 ) -> BTreeMap<String, String> {
     config
         .liveness
         .keys()
         .map(|entry| {
-            let v = if snap.device_matching(entry, true).is_none() {
-                "absent"
-            } else if *microphone == MicrophonePermission::Pending {
+            let Some(device) = snap.device_matching(entry, true) else {
+                return (entry.clone(), "absent".to_string());
+            };
+            let v = if *microphone == MicrophonePermission::Pending {
                 "awaiting microphone permission"
             } else if !microphone.is_granted() {
                 "disabled (no microphone permission)"
             } else {
-                "unavailable"
+                match state.get(&device.uid) {
+                    Some(Liveness::Measuring) => "measuring",
+                    Some(Liveness::Live) => "live",
+                    Some(Liveness::Silent) => "silent",
+                    None => "unavailable",
+                }
             };
             (entry.clone(), v.to_string())
         })
