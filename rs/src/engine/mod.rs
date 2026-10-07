@@ -4,10 +4,16 @@
 mod launch;
 mod listeners;
 mod liveness;
+mod output_volume;
+mod reclaim;
 mod run_loop;
 mod status;
 
 pub use listeners::{consumes_arrivals, BALANCE_SETTLE_MS, RETRY_MS, SETTLE_MS};
+pub use reclaim::{
+    RECLAIM_BACKOFF, RECLAIM_INTERVAL, RECLAIM_RETRY_DELAY, RECLAIM_RETRY_SPAN, RECLAIM_SCORE, RETURN_TIMEOUT,
+};
+pub use output_volume::{OutputVolumeStatus, WriterSourceFactory, OUTPUT_VOLUME_SETTLE_MS};
 pub use run_loop::{run, Event, Origin, Timer};
 pub use status::Status;
 
@@ -24,7 +30,8 @@ use crate::identity::Identity;
 use crate::launch::{AgentService, Launchd};
 use crate::liveness::{DetectorFactory, LivenessDetecting};
 use crate::model::{Action, DeviceSnapshot, Liveness, MicrophonePermission};
-use crate::rules::{balance, headphones_takeover, input_pin, input_volume, output_pin, reclaim};
+use crate::reclaim::{BluetoothInventory, RouteRequesting};
+use crate::rules::{balance, headphones_takeover, input_pin, input_volume, output_pin};
 use crate::state::clock::{clock_ms, Clock};
 use crate::state::EventLog;
 
@@ -55,6 +62,12 @@ pub struct EngineDeps {
     pub error_reports_changed: Box<dyn FnMut(bool)>,
     /// Makes a silence detector for a device; flips come back as `Event::LivenessFlip`.
     pub detectors: DetectorFactory,
+    /// The routing SPI; answers come back as `Event::RouteAnswered`.
+    pub routing: Box<dyn RouteRequesting>,
+    /// The paired Bluetooth devices.
+    pub inventory: Box<dyn BluetoothInventory>,
+    /// Makes the output volume hold's writer source (`log stream`).
+    pub writer_source: WriterSourceFactory,
     /// Where the config watcher sends; None runs without a watcher (tests).
     pub events: Option<Sender<Event>>,
 }
@@ -74,6 +87,11 @@ pub struct Engine {
     launchd: Box<dyn Launchd>,
     error_reports_changed: Box<dyn FnMut(bool)>,
     detectors: DetectorFactory,
+    routing: Box<dyn RouteRequesting>,
+    inventory: Box<dyn BluetoothInventory>,
+    reclaim: reclaim::ReclaimBook,
+    writer_source: WriterSourceFactory,
+    outvol: output_volume::OutputVolumeHold,
     events: Option<Sender<Event>>,
     pub(crate) config: Config,
     config_state: String,
@@ -110,6 +128,11 @@ impl Engine {
             launchd: deps.launchd,
             error_reports_changed: deps.error_reports_changed,
             detectors: deps.detectors,
+            routing: deps.routing,
+            inventory: deps.inventory,
+            reclaim: reclaim::ReclaimBook::default(),
+            writer_source: deps.writer_source,
+            outvol: output_volume::OutputVolumeHold::default(),
             events: deps.events,
             config: Config::disabled(),
             config_state: "missing".into(),
@@ -215,25 +238,30 @@ impl Engine {
         snap.liveness = self.liveness_for_rules(&snap);
         let t1 = SystemTime::now();
 
-        let config = &self.config;
-        let mut actions = input_pin::reconcile(&snap, config);
-        let output = if headphones_takeover::has_eligible_arrival(&snap, config) {
-            headphones_takeover::reconcile(&snap, config)
+        let mut actions = input_pin::reconcile(&snap, &self.config);
+        let output = if headphones_takeover::has_eligible_arrival(&snap, &self.config) {
+            headphones_takeover::reconcile(&snap, &self.config)
         } else {
-            output_pin::reconcile(&snap, config)
+            output_pin::reconcile(&snap, &self.config)
         };
+        // A revert waits while the output itself is being moved, and goes before the balance.
+        let hold = if output.is_empty() { self.output_volume_actions(&snap) } else { vec![] };
+        let config = &self.config;
         // Not while a balance change is settling: an app may have written one channel and not
         // yet the other. Any pass can land in that window; the settle beat judges it.
         let settling = self
             .balance_changed_at
             .is_some_and(|at| self.clock.mono() < at + Duration::from_millis(BALANCE_SETTLE_MS));
-        let balance =
-            if output.is_empty() && !settling { balance::reconcile(&snap, config) } else { vec![] };
+        let balance = if output.is_empty() && hold.is_empty() && !settling {
+            balance::reconcile(&snap, config)
+        } else {
+            vec![]
+        };
         actions.extend(output);
+        actions.extend(hold);
         actions.extend(balance);
         actions.extend(input_volume::reconcile(&snap, config));
-        // No pairing list until the reclaim port, so reclaim never has a headset to ask for.
-        actions.extend(reclaim::reconcile(&snap, &[], config, &HashSet::new()));
+        actions.extend(self.reclaim_requests(&snap));
         let t2 = SystemTime::now();
 
         if self.trace {
@@ -259,6 +287,7 @@ impl Engine {
         for a in &actions {
             self.apply(a);
         }
+        self.check_reclaim_returns(&snap);
         self.write_status(&snap);
     }
 
@@ -282,13 +311,20 @@ impl Engine {
             self.note(&format!("{}: {} [observe: not applied]", action.label(), action.reason()));
             return;
         }
-        let status = match *action {
-            Action::SetDefaultInput(id, _) => self.system.set_default_input(id),
-            Action::SetDefaultOutput(id, _) => self.system.set_default_output(id),
-            Action::SetBalance(id, v, _) => self.system.set_balance(id, v),
-            Action::SetInputVolume(id, v, _) => self.system.set_input_volume(id, v),
-            // Unreachable until the reclaim port supplies headsets; it has no OSStatus anyway.
-            Action::RequestRoute { .. } => return,
+        let status = match action {
+            Action::SetDefaultInput(id, _) => self.system.set_default_input(*id),
+            Action::SetDefaultOutput(id, _) => {
+                self.note_own_output_write(*id);
+                self.system.set_default_output(*id)
+            }
+            Action::SetBalance(id, v, _) => self.system.set_balance(*id, *v),
+            Action::SetInputVolume(id, v, _) => self.system.set_input_volume(*id, *v),
+            Action::SetOutputVolume(id, v, _) => self.system.set_output_volume(*id, *v),
+            // A question for another daemon: its line is written when the answer arrives.
+            Action::RequestRoute { name, address, reason } => {
+                self.request_route(name, address, reason);
+                return;
+            }
         };
         if status == 0 {
             self.note(&format!("{}: {}", action.label(), action.reason()));

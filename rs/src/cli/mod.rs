@@ -1,9 +1,11 @@
-//! `cleat status`, `cleat log`, `cleat restart`, `cleat version`: Swift `CLI.swift`, output and
+//! `cleat status`, `cleat log`, `cleat restart`, `cleat reclaim`, `cleat version`: Swift `CLI.swift`, output and
 //! exit codes word for word. The CLI never talks to the daemon; it reads the files it writes.
 
+mod reclaim;
 mod restart;
 mod status;
 
+pub use reclaim::verdict;
 pub use status::{render_log, render_status, supervision};
 
 use crate::config::paths;
@@ -35,6 +37,7 @@ pub fn run(args: &[String]) -> i32 {
         "status" => status::status(),
         "log" => log(&args[1..]),
         "restart" => restart::restart(),
+        "reclaim" => reclaim::reclaim(&args[1..]),
         "version" | "--version" => {
             println!("{}", Identity::current().version());
             0
@@ -43,7 +46,6 @@ pub fn run(args: &[String]) -> i32 {
             print!("{USAGE}");
             0
         }
-        // The reclaim subcommand arrives with the reclaim port.
         _ => {
             eprintln!("cleat: unknown command '{command}'");
             usage()

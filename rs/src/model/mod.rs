@@ -3,6 +3,7 @@ mod device;
 pub mod device_name;
 mod headset;
 mod microphone;
+pub mod presence;
 
 pub use action::Action;
 pub use device::{

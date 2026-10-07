@@ -99,3 +99,24 @@ fn observe_never_makes_a_detector_and_enforce_does() {
     let enforce = run(Mode::Enforce, config, snapshot());
     assert!(enforce.detectors.made.get() >= 1);
 }
+
+/// P3 column: observe mode sends no reclaim request and starts no writer log; enforce does both.
+#[test]
+fn observe_never_asks_for_a_headset_or_reads_writers_and_enforce_does() {
+    use common::reclaim::{connected_air_pods, hijacked, playing};
+    let config = r#"{"reclaim": ["AirPods Max"], "outputVolumeHoldAgainst": ["Parallels Desktop"], "launchAtLogin": false}"#;
+    let make = |mode| {
+        Harness::with_json(
+            config,
+            playing(),
+            Opts { mode, headsets: vec![connected_air_pods()], route_answer: Some(hijacked()), ..Opts::default() },
+        )
+    };
+    let observe = make(Mode::Observe);
+    assert!(observe.requests().is_empty());
+    assert_eq!(observe.writer.made.get(), 0);
+    assert!(log(&observe).contains("reclaim: cleat: AirPods Max connected but not an audio device, Mac is playing [observe: not applied]"));
+    let enforce = make(Mode::Enforce);
+    assert_eq!(enforce.requests().len(), 1);
+    assert_eq!(enforce.writer.made.get(), 1);
+}

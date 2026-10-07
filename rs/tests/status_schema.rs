@@ -53,5 +53,8 @@ fn rust_writes_the_swift_key_set() {
     let h = Harness::new(&config, snap, Opts::default());
     let written: serde_json::Value =
         serde_json::from_slice(&std::fs::read(h.dir.join("status.json")).unwrap()).unwrap();
-    assert_eq!(keys(&written), keys(&swift_json()));
+    // Swift 0.3.11's own status.json (2026-10-07, recentEvents emptied): 0.3.10 added outputVolume.
+    let current: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/swift-status-0.3.11.json")).unwrap();
+    assert_eq!(keys(&written), keys(&current));
 }

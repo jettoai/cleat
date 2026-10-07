@@ -28,6 +28,8 @@ pub struct Status {
     pub rules: BTreeMap<String, String>,
     pub liveness: BTreeMap<String, String>,
     pub recent_events: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_volume: Option<super::OutputVolumeStatus>,
 }
 
 impl Status {
@@ -63,28 +65,25 @@ impl Engine {
             error_reports: Some(self.config.error_reports),
             default_input: name_of(snap, snap.default_input),
             default_output: name_of(snap, snap.default_output),
-            rules: rule_summaries(&self.config, snap),
+            rules: {
+                let mut rules = rule_summaries(&self.config, snap, self.reclaim_summary());
+                rules.insert("outputVolume".into(), self.output_volume_summary());
+                rules
+            },
             liveness: liveness_summaries(&self.config, snap, &self.microphone, &self.liveness_state),
             recent_events: self.recent_events.clone(),
+            output_volume: Some(self.output_volume_status()),
         };
         status.write(&self.status_path);
     }
 }
 
-pub fn rule_summaries(config: &Config, snap: &DeviceSnapshot) -> BTreeMap<String, String> {
+pub fn rule_summaries(config: &Config, snap: &DeviceSnapshot, reclaim: String) -> BTreeMap<String, String> {
     let mut rules = BTreeMap::new();
     rules.insert("inputPin".into(), pin_summary(&config.input, &config.blocked_input));
     rules.insert("outputPin".into(), pin_summary(&config.output, &config.blocked_output));
     rules.insert("headphones".into(), headphones_summary(config));
-    rules.insert(
-        "reclaim".into(),
-        if config.reclaim.is_empty() {
-            "off".into()
-        } else {
-            // No routing service until the reclaim port: Swift's wording for that case.
-            format!("unavailable (no routing service on this macOS) ({})", config.reclaim.join(", "))
-        },
-    );
+    rules.insert("reclaim".into(), reclaim);
     rules.insert(
         "balance".into(),
         match config.balance {

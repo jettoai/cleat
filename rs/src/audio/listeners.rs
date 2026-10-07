@@ -31,16 +31,19 @@ pub enum ListenerKind {
     Balance,
     Running,
     Volume,
+    /// The default output's volume, output scope (the hold); `Volume` is the input side.
+    OutputVolume,
 }
 
 impl ListenerKind {
-    pub const ALL: [ListenerKind; 6] = [
+    pub const ALL: [ListenerKind; 7] = [
         ListenerKind::Devices,
         ListenerKind::DefaultInput,
         ListenerKind::DefaultOutput,
         ListenerKind::Balance,
         ListenerKind::Running,
         ListenerKind::Volume,
+        ListenerKind::OutputVolume,
     ];
 
     pub fn label(self) -> &'static str {
@@ -51,6 +54,7 @@ impl ListenerKind {
             ListenerKind::Balance => "balance",
             ListenerKind::Running => "running",
             ListenerKind::Volume => "volume",
+            ListenerKind::OutputVolume => "outputVolume",
         }
     }
 
@@ -72,6 +76,7 @@ impl ListenerKind {
                 (kAudioDevicePropertyDeviceIsRunningSomewhere, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain)
             }
             ListenerKind::Volume => (kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeInput, element),
+            ListenerKind::OutputVolume => (kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, element),
         };
         address(sel, scope, el)
     }
@@ -90,7 +95,7 @@ struct ListenerCtx {
     tx: Sender<Event>,
 }
 
-pub(super) struct Contexts([&'static ListenerCtx; 6]);
+pub(super) struct Contexts([&'static ListenerCtx; 7]);
 
 impl Contexts {
     /// Leaks six small contexts for the life of the process.
@@ -124,13 +129,20 @@ impl Contexts {
 }
 
 unsafe extern "C-unwind" fn on_property(
-    _object: AudioObjectID,
+    object: AudioObjectID,
     _count: u32,
     _addresses: NonNull<AudioObjectPropertyAddress>,
     data: *mut c_void,
 ) -> i32 {
     // SAFETY: `data` is one of the leaked 'static contexts.
     let ctx = unsafe { &*(data as *const ListenerCtx) };
-    let _ = ctx.tx.send(Event::Listener { kind: ctx.kind, received: SystemTime::now() });
+    // The output volume hold must know which device spoke: a late reading from the previous
+    // output is not the new output's (Swift `outputVolumeChanged(device)`).
+    let event = if ctx.kind == ListenerKind::OutputVolume {
+        Event::OutputVolumeChanged { device: object }
+    } else {
+        Event::Listener { kind: ctx.kind, received: SystemTime::now() }
+    };
+    let _ = ctx.tx.send(event);
     0
 }

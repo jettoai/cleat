@@ -1,0 +1,25 @@
+{
+  "configState": "ok",
+  "defaultInput": "Brio 100",
+  "defaultOutput": "AirPods Max",
+  "errorReports": true,
+  "liveness": {
+    "Wireless microphone": "silent"
+  },
+  "microphone": "authorized",
+  "outputVolume": {
+    "state": "on (holding against Parallels Desktop)"
+  },
+  "pid": 46547,
+  "recentEvents": [],
+  "rules": {
+    "balance": "on (target 0.50, now 0.50)",
+    "headphones": "on (bluetooth output takes over when it connects; blocked from taking over: Maono AI Microphone)",
+    "inputPin": "on (Wireless microphone, Brio 100), blocked: AirPods Max",
+    "inputVolume": "on (default 100%; AirPods Max 100% (now 100%), Brio 100 75% (now 75%), Maono AI Microphone 100% (now 100%), Microsoft Teams Audio 100% (now 100%), Wireless microphone 88% (now 88%), ZoomAudioDevice 100% (now 100%))",
+    "outputPin": "on (外接耳機, Mac Studio的揚聲器), blocked: Maono AI Microphone",
+    "outputVolume": "on (holding against Parallels Desktop)",
+    "reclaim": "on (AirPods Max)"
+  },
+  "updatedAt": "2026-10-07T11:41:53Z"
+}

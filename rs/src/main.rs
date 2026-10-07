@@ -14,6 +14,8 @@ use cleat_rs::identity::{self, Identity};
 use cleat_rs::launch::{LaunchctlJob, SmApp};
 use cleat_rs::liveness::live_detectors;
 use cleat_rs::model::MicrophonePermission;
+use cleat_rs::outvol::writer_log::LogStream;
+use cleat_rs::reclaim::{SmartRoutingClient, SystemProfilerPairings};
 use cleat_rs::report::{self, Curl, Meta, Reporter, ReporterConfig};
 use cleat_rs::state::clock::SystemClock;
 use cleat_rs::state::EventLog;
@@ -63,6 +65,12 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
                 None => Box::new(|_| {}),
             },
             detectors: live_detectors(tx.clone()),
+            routing: Box::new(routing_client(tx.clone())),
+            inventory: Box::<SystemProfilerPairings>::default(),
+            writer_source: {
+                let tx = tx.clone();
+                Box::new(move || Box::new(LogStream::new(tx.clone())))
+            },
             events: Some(tx),
         };
         let mut eng = Engine::new(deps, mode, trace);
@@ -80,6 +88,20 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
     // The HAL delivers listener callbacks through the main run loop.
     CFRunLoop::run();
     ExitCode::SUCCESS
+}
+
+/// The routing SPI, answering onto the engine's channel.
+fn routing_client(tx: mpsc::Sender<engine::Event>) -> SmartRoutingClient {
+    let bundle_id = Identity::current().bundle_id.unwrap_or_else(|| "ai.jetto.cleat".into());
+    let tx = std::sync::Mutex::new(tx);
+    SmartRoutingClient::new(
+        bundle_id,
+        std::sync::Arc::new(move |name, address, response| {
+            if let Ok(tx) = tx.lock() {
+                let _ = tx.send(engine::Event::RouteAnswered { name, address, response });
+            }
+        }),
+    )
 }
 
 fn make_reporter() -> Reporter {

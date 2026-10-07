@@ -18,6 +18,8 @@ use super::property::{self, address, global, SYSTEM_OBJECT};
 use super::{AudioSystem, ListenTarget, ListenerToken};
 use crate::config::Config;
 use crate::engine::Event;
+use crate::app::presence;
+use crate::model::presence::{PresenceFacts, USER_ACTIVE_WINDOW_S};
 use crate::model::{AudioDevice, DeviceSnapshot};
 
 pub struct CoreAudioSystem {
@@ -30,6 +32,39 @@ fn balance_address() -> AudioObjectPropertyAddress {
 
 fn volume_address(element: u32) -> AudioObjectPropertyAddress {
     address(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeInput, element)
+}
+
+fn output_volume_address(element: u32) -> AudioObjectPropertyAddress {
+    address(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, element)
+}
+
+/// Main element alone when it answers, otherwise channels 1 and 2 (Swift `volumes`).
+fn output_volumes(id: u32) -> Vec<f32> {
+    if let Some(v) = property::get::<f32>(id, output_volume_address(kAudioObjectPropertyElementMain)) {
+        return vec![v];
+    }
+    [1, 2].iter().filter_map(|&e| property::get::<f32>(id, output_volume_address(e))).collect()
+}
+
+/// Main element when settable, otherwise each settable channel.
+fn set_volume(id: u32, value: f32, addr: fn(u32) -> AudioObjectPropertyAddress) -> i32 {
+    let main = addr(kAudioObjectPropertyElementMain);
+    if property::is_settable(id, main) {
+        return property::set(id, main, value);
+    }
+    let mut last_error = kAudioHardwareUnknownPropertyError;
+    let mut wrote_one = false;
+    for channel in [1, 2] {
+        let a = addr(channel);
+        if !property::is_settable(id, a) {
+            continue;
+        }
+        match property::set(id, a, value) {
+            0 => wrote_one = true,
+            status => last_error = status,
+        }
+    }
+    if wrote_one { 0 } else { last_error }
 }
 
 impl CoreAudioSystem {
@@ -106,7 +141,13 @@ impl AudioSystem for CoreAudioSystem {
             .iter()
             .filter_map(|d| Self::input_volume(d.id).map(|v| (d.id, v)))
             .collect();
-        let output_running = !config.reclaim.is_empty() && default_output.is_some_and(Self::is_running_somewhere);
+        let output_running = !config.reclaim_active().is_empty() && default_output.is_some_and(Self::is_running_somewhere);
+        // Only reclaim asks who is at the Mac, and only while it is playing. The rest of the
+        // reading (assertions, front app) waits until the rule actually asks: `complete_presence`.
+        let presence = PresenceFacts {
+            input_idle: if output_running { presence::input_idle_seconds() } else { None },
+            ..Default::default()
+        };
         let output_balance = default_output.and_then(|id| property::get::<f32>(id, balance_address()));
         DeviceSnapshot {
             devices,
@@ -115,8 +156,24 @@ impl AudioSystem for CoreAudioSystem {
             output_balance,
             output_running,
             input_volumes,
+            presence,
+            // Only the output volume hold reads the output volume.
+            output_volumes: if config.hold_against_active().is_empty() {
+                vec![]
+            } else {
+                default_output.map(output_volumes).unwrap_or_default()
+            },
             ..Default::default()
         }
+    }
+
+    fn complete_presence(&self, facts: &mut PresenceFacts) {
+        if facts.input_idle.is_some_and(|s| s < USER_ACTIVE_WINDOW_S) {
+            return;
+        }
+        let full = presence::read_assertions_and_front();
+        facts.display_assertions = full.display_assertions;
+        facts.front_pid = full.front_pid;
     }
 
     fn set_default_input(&self, id: u32) -> i32 {
@@ -131,25 +188,12 @@ impl AudioSystem for CoreAudioSystem {
         property::set(id, balance_address(), value)
     }
 
-    /// Main element when settable, otherwise each settable channel.
     fn set_input_volume(&self, id: u32, value: f32) -> i32 {
-        let main = volume_address(kAudioObjectPropertyElementMain);
-        if property::is_settable(id, main) {
-            return property::set(id, main, value);
-        }
-        let mut last_error = kAudioHardwareUnknownPropertyError;
-        let mut wrote_one = false;
-        for channel in [1, 2] {
-            let addr = volume_address(channel);
-            if !property::is_settable(id, addr) {
-                continue;
-            }
-            match property::set(id, addr, value) {
-                0 => wrote_one = true,
-                status => last_error = status,
-            }
-        }
-        if wrote_one { 0 } else { last_error }
+        set_volume(id, value, volume_address)
+    }
+
+    fn set_output_volume(&self, id: u32, value: f32) -> i32 {
+        set_volume(id, value, output_volume_address)
     }
 
     fn nominal_sample_rate(&self, id: u32) -> Option<f64> {

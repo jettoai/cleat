@@ -41,8 +41,16 @@ impl Engine {
             if self.config.balance.is_some() {
                 targets.push(ListenTarget::Device { device: out, kind: ListenerKind::Balance, element: 0 });
             }
-            if !self.config.reclaim.is_empty() {
+            if !self.config.reclaim_active().is_empty() {
                 targets.push(ListenTarget::Device { device: out, kind: ListenerKind::Running, element: 0 });
+            }
+        }
+        if let Some(out) = snap.default_output {
+            // AirPods Max have no main volume element and report each channel instead.
+            if !self.config.hold_against_active().is_empty() {
+                for element in [0, 1, 2] {
+                    targets.push(ListenTarget::Device { device: out, kind: ListenerKind::OutputVolume, element });
+                }
             }
         }
         let mut held = self.config.input_volume_devices(&snap.devices);
@@ -75,6 +83,7 @@ impl Engine {
         }
         // One enumeration serves the listeners and the detectors (Swift `rebindDevices`).
         self.sync_liveness_detectors(&snap);
+        self.sync_output_volume_source();
     }
 
     pub fn handle(&mut self, ev: Event) {
@@ -87,6 +96,7 @@ impl Engine {
                 match kind {
                     ListenerKind::Devices => {
                         self.note("devices: list changed");
+                        self.check_returns_now();
                         self.rebind_devices();
                         for d in std::iter::once(SETTLE_MS).chain(RETRY_MS) {
                             self.schedule(d, origin(d));
@@ -94,6 +104,7 @@ impl Engine {
                     }
                     ListenerKind::DefaultInput => self.schedule(SETTLE_MS, origin(SETTLE_MS)),
                     ListenerKind::DefaultOutput => {
+                        self.check_returns_now();
                         self.rebind_devices();
                         for d in RETRY_MS {
                             self.schedule(d, origin(d));
@@ -104,6 +115,7 @@ impl Engine {
                         self.schedule(BALANCE_SETTLE_MS, origin(BALANCE_SETTLE_MS));
                     }
                     ListenerKind::Running | ListenerKind::Volume => self.schedule(0, origin(0)),
+                    ListenerKind::OutputVolume => {}
                 }
             }
             Event::ConfigTouched { received } => {
@@ -116,7 +128,17 @@ impl Engine {
             }
             Event::Microphone(permission) => self.update_microphone(permission),
             Event::LivenessFlip { uid, name, live } => self.liveness_flipped(&uid, &name, live),
+            Event::RouteAnswered { name, address, response } => self.route_answered(&name, &address, &response),
+            Event::OutputVolumeChanged { device } => self.output_volume_changed(device),
+            Event::VolumeWriter(e) => self.volume_writer_event(e),
+            Event::VolumeWriterExited(status) => self.volume_writer_exited(status),
         }
+    }
+
+    /// Times a headset coming back the moment the output moves, not on the next beat.
+    fn check_returns_now(&mut self) {
+        let snap = self.system.snapshot(&self.config);
+        self.check_reclaim_returns(&snap);
     }
 
     fn schedule(&mut self, delay_ms: u64, origin: Origin) {
@@ -134,6 +156,8 @@ impl Engine {
         match timer {
             Timer::Reconcile { delay_ms } => self.reconcile(consumes_arrivals(delay_ms), Some(origin)),
             Timer::ConfigReload => self.config_file_changed(origin),
+            Timer::StreakJudge => self.reconcile(false, Some(origin)),
+            Timer::SourceRestart => self.source_restart_due(),
         }
     }
 }

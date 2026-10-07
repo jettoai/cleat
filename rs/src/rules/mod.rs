@@ -6,4 +6,5 @@ pub mod headphones_takeover;
 pub mod input_pin;
 pub mod input_volume;
 pub mod output_pin;
+pub mod output_volume_hold;
 pub mod reclaim;

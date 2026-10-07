@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod engine;
+pub mod reclaim;
 
 use std::collections::BTreeMap;
 

@@ -1,0 +1,19 @@
+2026-10-07 17:20:29 outputVolume: AirPods Max 43% -> 21% writer=Jetto kept
+2026-10-07 17:20:42 outputVolume: AirPods Max 21% -> 43% writer=unknown kept
+2026-10-07 17:21:19 devices: list changed
+2026-10-07 17:21:19 devices: list changed
+2026-10-07 17:21:20 reclaim: AirPods Max refused (Buds out of ear)
+2026-10-07 17:23:05 devices: list changed
+2026-10-07 17:23:05 devices: list changed
+2026-10-07 17:23:05 pinInput: AirPods Max -> Wireless microphone (blocked)
+2026-10-07 17:23:06 pinInput: AirPods Max -> Wireless microphone (blocked)
+2026-10-07 17:23:06 pinOutput: 外接耳機 -> AirPods Max (headphones connected)
+2026-10-07 17:23:07 outputVolume: AirPods Max 43% -> 48% writer=coreaudiod kept
+2026-10-07 17:23:07 pinInput: AirPods Max -> Wireless microphone (blocked)
+2026-10-07 17:23:20 outputVolume: AirPods Max 48% -> 42% writer=unknown kept
+2026-10-07 17:23:30 outputVolume: AirPods Max 42% -> 48% writer=unknown kept
+2026-10-07 17:35:04 outputVolume: 外接耳機 25% -> 42% writer=unknown kept
+2026-10-07 17:35:05 outputVolume: 外接耳機 42% -> 40% writer=unknown kept
+2026-10-07 17:35:40 outputVolume: 外接耳機 40% -> 31% writer=unknown kept
+2026-10-07 17:38:21 outputVolume: 外接耳機 31% -> 16% writer=unknown kept
+2026-10-07 17:38:23 outputVolume: 外接耳機 16% -> 31% writer=unknown kept

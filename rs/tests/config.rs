@@ -225,3 +225,27 @@ fn config_path_ignores_an_empty_override() {
     let home = Path::new("/Users/someone");
     assert_eq!(config_path_from(home, Some("")), home.join(".config/cleat").join("config.json"));
 }
+
+#[test]
+fn output_volume_hold_is_off_unless_asked() {
+    assert!(decode("{}").unwrap().output_volume_hold_against.is_empty());
+    assert_eq!(
+        decode(r#"{"outputVolumeHoldAgainst": ["prl_vm_app"]}"#).unwrap().output_volume_hold_against,
+        s(&["prl_vm_app"])
+    );
+    assert!(decode(r#"{"outputVolumeHoldAgainst": "prl_vm_app"}"#).is_err());
+}
+
+/// §6.6 E1-E3: the switches default on and turn a rule off without emptying its list.
+#[test]
+fn switches_are_kept_apart_from_their_lists() {
+    let c = decode("{}").unwrap();
+    assert!(c.reclaim_enabled && c.output_volume_hold_enabled);
+    let c = decode(r#"{"reclaimEnabled": false, "reclaim": ["AirPods Max"]}"#).unwrap();
+    assert_eq!(c.reclaim, s(&["AirPods Max"]));
+    assert!(c.reclaim_active().is_empty());
+    let c = decode(r#"{"outputVolumeHoldEnabled": false, "outputVolumeHoldAgainst": ["Parallels Desktop"]}"#).unwrap();
+    assert_eq!(c.output_volume_hold_against, s(&["Parallels Desktop"]));
+    assert!(c.hold_against_active().is_empty());
+    assert!(decode(r#"{"reclaimEnabled": "no"}"#).is_err());
+}

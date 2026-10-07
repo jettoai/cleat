@@ -1,5 +1,4 @@
 //! Rule 7: ask a listed, connected headset back while the Mac is playing and it is not the output.
-//! Stage 1 ports the rule only; the engine never sends the request.
 
 use std::collections::HashSet;
 
@@ -17,7 +16,7 @@ pub fn reconcile(
     config: &Config,
     excluding: &HashSet<String>,
 ) -> Vec<Action> {
-    if config.reclaim.is_empty() || !snapshot.output_running {
+    if config.reclaim_active().is_empty() || !snapshot.output_running {
         return vec![];
     }
     let Some(target) = candidates(snapshot, headsets, config).into_iter().find(|h| !excluding.contains(&h.address))
@@ -35,7 +34,7 @@ pub fn candidates(snapshot: &DeviceSnapshot, headsets: &[BluetoothHeadset], conf
     in_rule_order(
         headsets
             .iter()
-            .filter(|h| h.is_connected && h.is_listed(&config.reclaim) && !is_default_output(h, snapshot))
+            .filter(|h| h.is_connected && h.is_listed(config.reclaim_active()) && !is_default_output(h, snapshot))
             .cloned()
             .collect(),
     )

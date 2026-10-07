@@ -10,6 +10,8 @@ pub mod identity;
 pub mod launch;
 pub mod liveness;
 pub mod model;
+pub mod outvol;
+pub mod reclaim;
 pub mod report;
 pub mod rules;
 pub mod state;

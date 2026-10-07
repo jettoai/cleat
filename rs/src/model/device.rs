@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use super::device_name;
+use super::presence::PresenceFacts;
 
 pub type AudioDeviceId = u32;
 
@@ -75,6 +76,9 @@ pub struct DeviceSnapshot {
     pub default_output: Option<AudioDeviceId>,
     /// Virtual main balance of the default output, 0.0 (left) - 1.0 (right).
     pub output_balance: Option<f32>,
+    /// The default output's volume per channel (main element alone when it has one); read only
+    /// when the output volume hold is on.
+    pub output_volumes: Vec<f32>,
     /// Whether something plays through the default output; read only when reclaim is on.
     pub output_running: bool,
     pub input_volumes: HashMap<AudioDeviceId, f32>,
@@ -82,6 +86,8 @@ pub struct DeviceSnapshot {
     pub liveness: HashMap<String, Liveness>,
     /// UIDs that appeared on this pass and were not here on the last one.
     pub arrived: HashSet<String>,
+    /// Who is at the Mac; read only while reclaim is on and the Mac is playing.
+    pub presence: PresenceFacts,
 }
 
 impl DeviceSnapshot {

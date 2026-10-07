@@ -76,6 +76,12 @@ pub struct Config {
     pub reclaim: Vec<String>,
     pub launch_at_login: bool,
     pub error_reports: bool,
+    /// Rust only (§6.6): turns reclaim off without emptying `reclaim`. Read through `reclaim_active`.
+    pub reclaim_enabled: bool,
+    /// Writers whose output volume changes are reverted. Off unless asked for (Swift 0.3.10).
+    pub output_volume_hold_against: Vec<String>,
+    /// Rust only (§6.6): turns the hold off without emptying its list. Read through `hold_against_active`.
+    pub output_volume_hold_enabled: bool,
 }
 
 impl Default for Config {
@@ -92,6 +98,9 @@ impl Default for Config {
             reclaim: vec![],
             launch_at_login: true,
             error_reports: false,
+            reclaim_enabled: true,
+            output_volume_hold_against: vec![],
+            output_volume_hold_enabled: true,
         }
     }
 }
@@ -103,6 +112,16 @@ impl Config {
     /// What Cleat enforces when there is no config file at all: nothing.
     pub fn disabled() -> Self {
         Self::default()
+    }
+
+    /// The reclaim list when the switch is on; the only reader of `reclaim_enabled`.
+    pub fn reclaim_active(&self) -> &[String] {
+        if self.reclaim_enabled { &self.reclaim } else { &[] }
+    }
+
+    /// The hold list when the switch is on; the only reader of `output_volume_hold_enabled`.
+    pub fn hold_against_active(&self) -> &[String] {
+        if self.output_volume_hold_enabled { &self.output_volume_hold_against } else { &[] }
     }
 
     /// Range checks the decoder cannot express.

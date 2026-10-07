@@ -9,6 +9,8 @@ use std::time::{Duration, SystemTime};
 use super::Engine;
 use crate::audio::ListenerKind;
 use crate::model::MicrophonePermission;
+use crate::outvol::writer_log::VolumeWriterEvent;
+use crate::reclaim::RouteResponse;
 
 pub enum Event {
     Listener { kind: ListenerKind, received: SystemTime },
@@ -17,12 +19,24 @@ pub enum Event {
     Microphone(MicrophonePermission),
     /// A silence detector changed its verdict.
     LivenessFlip { uid: String, name: String, live: bool },
+    /// The routing daemon answered a reclaim request.
+    RouteAnswered { name: String, address: String, response: RouteResponse },
+    /// A device's output volume changed (the hold's listener, which names the device).
+    OutputVolumeChanged { device: u32 },
+    /// A line from coreaudiod's writer log.
+    VolumeWriter(VolumeWriterEvent),
+    /// The writer log ended with this status.
+    VolumeWriterExited(i32),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Timer {
     Reconcile { delay_ms: u64 },
     ConfigReload,
+    /// The output volume hold's judgement of an open writer streak; never rescheduled by beats.
+    StreakJudge,
+    /// The writer log's restart after it stopped.
+    SourceRestart,
 }
 
 /// Which event scheduled a pass, for the trace's latency columns.
@@ -47,6 +61,14 @@ impl Scheduler {
         self.pending.values().map(|(d, _)| *d).min()
     }
 
+    pub fn is_pending(&self, timer: Timer) -> bool {
+        self.pending.contains_key(&timer)
+    }
+
+    pub fn cancel(&mut self, timer: Timer) {
+        self.pending.remove(&timer);
+    }
+
     /// Due timers, earliest first.
     pub fn take_due(&mut self, now: Duration) -> Vec<(Timer, Origin)> {
         let mut due: Vec<(Duration, Timer, Origin)> =
@@ -63,6 +85,15 @@ impl Engine {
     /// The earliest pending timer, on the engine's clock.
     pub fn next_deadline(&self) -> Option<Duration> {
         self.scheduler.next_deadline()
+    }
+
+    /// Whether a reconcile `delay_ms` out is waiting (Swift `pendingReconciles[delay]`).
+    pub fn reconcile_pending(&self, delay_ms: u64) -> bool {
+        self.scheduler.is_pending(Timer::Reconcile { delay_ms })
+    }
+
+    pub fn cancel_reconcile(&mut self, delay_ms: u64) {
+        self.scheduler.cancel(Timer::Reconcile { delay_ms });
     }
 
     /// Fires every timer that is due now.

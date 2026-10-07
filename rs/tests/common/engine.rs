@@ -5,7 +5,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use cleat_rs::audio::{AudioSystem, ListenTarget, ListenerKind, ListenerToken};
 use cleat_rs::config::Config;
@@ -13,7 +13,8 @@ use cleat_rs::engine::{Engine, EngineDeps, Event, Mode, Status};
 use cleat_rs::identity::Identity;
 use cleat_rs::launch::{AgentService, AgentStatus, Launchd};
 use cleat_rs::liveness::LivenessDetecting;
-use cleat_rs::model::{DeviceSnapshot, MicrophonePermission};
+use cleat_rs::model::{BluetoothHeadset, DeviceSnapshot, MicrophonePermission};
+use cleat_rs::reclaim::{BluetoothInventory, RouteRequesting, RouteResponse};
 use cleat_rs::state::clock::Clock;
 use cleat_rs::state::EventLog;
 
@@ -53,6 +54,13 @@ impl AudioSystem for FakeAudio {
         self.0.snapshot.borrow_mut().input_volumes.insert(id, value);
         0
     }
+    fn set_output_volume(&self, id: u32, value: f32) -> i32 {
+        self.0.writes.borrow_mut().push(format!("outvol:{id}:{value:.4}"));
+        let mut s = self.0.snapshot.borrow_mut();
+        let channels = s.output_volumes.len().max(2);
+        s.output_volumes = vec![value; channels];
+        0
+    }
     fn nominal_sample_rate(&self, _id: u32) -> Option<f64> {
         None
     }
@@ -69,8 +77,9 @@ impl Clock for FakeClock {
     fn mono(&self) -> Duration {
         self.0.get()
     }
+    /// Deterministic: a fixed origin plus the monotonic offset, so log-time windows can be driven.
     fn wall(&self) -> SystemTime {
-        SystemTime::now()
+        UNIX_EPOCH + Duration::from_secs(1_791_339_595) + self.0.get()
     }
 }
 
@@ -167,7 +176,71 @@ impl LivenessDetecting for FakeDetector {
     }
 }
 
+/// The routing daemon as one canned answer (Swift `FakeRouting`). `None` is a request that is
+/// never answered. Answers queue in `delivered` until the harness hands them to the engine, which
+/// is what the real client's GCD hop does.
+pub struct FakeRoutingState {
+    pub available: bool,
+    pub answer: RefCell<Option<RouteResponse>>,
+    pub addresses: RefCell<Vec<String>>,
+    pub scores: RefCell<Vec<i32>>,
+    pub reasons: RefCell<Vec<String>>,
+    pub delivered: RefCell<Vec<(String, String, RouteResponse)>>,
+}
+
+pub struct FakeRouting(pub Rc<FakeRoutingState>);
+
+impl RouteRequesting for FakeRouting {
+    fn is_available(&self) -> bool {
+        self.0.available
+    }
+    fn request(&mut self, name: &str, address: &str, score: i32, reason: &str) {
+        self.0.addresses.borrow_mut().push(address.into());
+        self.0.scores.borrow_mut().push(score);
+        self.0.reasons.borrow_mut().push(reason.into());
+        if let Some(a) = self.0.answer.borrow().clone() {
+            self.0.delivered.borrow_mut().push((name.into(), address.into(), a));
+        }
+    }
+}
+
+pub struct FakePairingsState {
+    pub headsets: RefCell<Vec<BluetoothHeadset>>,
+    pub reads: Cell<usize>,
+}
+
+pub struct FakePairings(pub Rc<FakePairingsState>);
+
+impl BluetoothInventory for FakePairings {
+    fn paired_headsets(&self) -> Vec<BluetoothHeadset> {
+        self.0.reads.set(self.0.reads.get() + 1);
+        self.0.headsets.borrow().clone()
+    }
+}
+
+/// The writer log as a script (Swift `FakeVolumeWriterSource`).
+#[derive(Default)]
+pub struct FakeWriterState {
+    pub start_result: Cell<bool>,
+    pub made: Cell<usize>,
+    pub starts: Cell<usize>,
+}
+
+pub struct FakeWriterSource(pub Rc<FakeWriterState>);
+
+impl cleat_rs::outvol::writer_log::VolumeWriterSource for FakeWriterSource {
+    fn start(&mut self) -> bool {
+        self.0.starts.set(self.0.starts.get() + 1);
+        self.0.start_result.get()
+    }
+    fn stop(&mut self) {}
+}
+
 pub struct Opts {
+    pub writer_starts: bool,
+    pub routing_available: bool,
+    pub route_answer: Option<RouteResponse>,
+    pub headsets: Vec<BluetoothHeadset>,
     pub start_results: Vec<bool>,
     pub mode: Mode,
     pub trace: bool,
@@ -179,6 +252,10 @@ pub struct Opts {
 impl Default for Opts {
     fn default() -> Self {
         Self {
+            writer_starts: true,
+            routing_available: true,
+            route_answer: None,
+            headsets: vec![],
             start_results: vec![],
             mode: Mode::Enforce,
             trace: false,
@@ -203,6 +280,9 @@ pub struct Harness {
     pub login_item: Rc<FakeAgentState>,
     pub reports: Rc<RefCell<Vec<bool>>>,
     pub detectors: Rc<DetectorLog>,
+    pub routing: Rc<FakeRoutingState>,
+    pub pairings: Rc<FakePairingsState>,
+    pub writer: Rc<FakeWriterState>,
     pub engine: Engine,
 }
 
@@ -229,6 +309,18 @@ impl Harness {
         let sink = reports.clone();
         let detectors = Rc::new(DetectorLog { start_results: opts.start_results, ..Default::default() });
         let log = detectors.clone();
+        let routing = Rc::new(FakeRoutingState {
+            available: opts.routing_available,
+            answer: RefCell::new(opts.route_answer),
+            addresses: RefCell::default(),
+            scores: RefCell::default(),
+            reasons: RefCell::default(),
+            delivered: RefCell::default(),
+        });
+        let pairings = Rc::new(FakePairingsState { headsets: RefCell::new(opts.headsets), reads: Cell::new(0) });
+        let writer = Rc::new(FakeWriterState::default());
+        writer.start_result.set(opts.writer_starts);
+        let w = writer.clone();
         let deps = EngineDeps {
             system: Box::new(FakeAudio(audio.clone())),
             log: EventLog::new(dir.join("cleat.log"), dir.join("cleat.log.1")),
@@ -249,11 +341,50 @@ impl Harness {
                     log: log.clone(),
                 })
             }),
+            routing: Box::new(FakeRouting(routing.clone())),
+            inventory: Box::new(FakePairings(pairings.clone())),
+            writer_source: Box::new(move || {
+                w.made.set(w.made.get() + 1);
+                Box::new(FakeWriterSource(w.clone()))
+            }),
             events: None,
         };
         let mut engine = Engine::new(deps, opts.mode, opts.trace);
         engine.start(opts.microphone);
-        Self { dir, audio, clock, agent, login_item, reports, detectors, engine }
+        let mut h = Self { dir, audio, clock, agent, login_item, reports, detectors, routing, pairings, writer, engine };
+        h.deliver_answers();
+        h
+    }
+
+    /// Hands queued routing answers to the engine, as the GCD hop would.
+    pub fn deliver_answers(&mut self) {
+        loop {
+            let next = {
+                let mut q = self.routing.delivered.borrow_mut();
+                if q.is_empty() { None } else { Some(q.remove(0)) }
+            };
+            let Some((name, address, response)) = next else { break };
+            self.engine.handle(Event::RouteAnswered { name, address, response });
+        }
+    }
+
+    /// One pass, answers delivered (Swift `world.reconcile()`).
+    pub fn reconcile(&mut self) {
+        self.engine.reconcile(false, None);
+        self.deliver_answers();
+    }
+
+    /// Walks the clock forward without firing timers (Swift `world.advance`).
+    pub fn advance(&self, d: Duration) {
+        self.clock.0.set(self.clock.0.get() + d);
+    }
+
+    pub fn requests(&self) -> Vec<String> {
+        self.routing.addresses.borrow().clone()
+    }
+
+    pub fn count(&self, needle: &str) -> usize {
+        self.log_lines().iter().filter(|l| l.contains(needle)).count()
     }
 
     pub fn writes(&self) -> Vec<String> {
@@ -294,6 +425,7 @@ impl Harness {
             }
             self.clock.0.set(d.max(self.clock.0.get()));
             self.engine.run_due();
+            self.deliver_answers();
         }
         self.clock.0.set(target);
     }

@@ -9,6 +9,7 @@ pub enum Action {
     SetDefaultOutput(AudioDeviceId, String),
     SetBalance(AudioDeviceId, f32, String),
     SetInputVolume(AudioDeviceId, f32, String),
+    SetOutputVolume(AudioDeviceId, f32, String),
     RequestRoute { name: String, address: String, reason: String },
 }
 
@@ -19,6 +20,7 @@ impl Action {
             | Action::SetDefaultOutput(_, r)
             | Action::SetBalance(_, _, r)
             | Action::SetInputVolume(_, _, r)
+            | Action::SetOutputVolume(_, _, r)
             | Action::RequestRoute { reason: r, .. } => r,
         }
     }
@@ -30,6 +32,7 @@ impl Action {
             Action::SetDefaultOutput(..) => "pinOutput",
             Action::SetBalance(..) => "balance",
             Action::SetInputVolume(..) => "inputVolume",
+            Action::SetOutputVolume(..) => "outputVolume",
             Action::RequestRoute { .. } => "reclaim",
         }
     }
