@@ -227,13 +227,13 @@ extension Engine {
     /// output by itself, and if it does not, the device arriving is an ordinary arrival that
     /// `HeadphonesTakeoverRule` already knows what to do with.
     private func routeAnswered(name: String, address: String, response: RouteResponse) {
-        if response.outcome != .routed { noteRouteAnswer(address: address, routed: false) }
+        if response.outcome != .routed { forgetReturn(address) }
         switch response.outcome {
         case .routed:
             endSpell(address)
             reclaimAskedThisPlayback.insert(address)
             note("reclaim: \(name) <- remote device (hijack accepted)")
-            noteRouteAnswer(address: address, routed: true)
+            acceptReturn(address)
             // The audio device appears a moment after the answer. These are the same beats a
             // device change would schedule, and they are what lets the takeover rule see the
             // arrival if macOS has not already moved the output itself.

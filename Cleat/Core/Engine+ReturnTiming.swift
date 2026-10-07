@@ -17,22 +17,18 @@ extension Engine {
         reclaimWatch.returns[address] = ReturnTiming(name: name, sent: now())
     }
 
-    /// Anything but `routed` ends the timing without a line.
-    func noteRouteAnswer(address: String, routed: Bool) {
-        guard routed else {
-            reclaimWatch.returns[address] = nil
-            return
-        }
-        acceptReturn(address)
+    /// Any answer but `routed` ends the timing without a line.
+    func forgetReturn(_ address: String) {
+        reclaimWatch.returns[address] = nil
     }
 
     /// The hijack was accepted: log now if the headset already arrived, otherwise wait for it.
-    private func acceptReturn(_ address: String) {
+    func acceptReturn(_ address: String) {
         guard var timing = reclaimWatch.returns[address] else { return }
         timing.accepted = true
         if let at = timing.arrived {
             reclaimWatch.returns[address] = nil
-            note("reclaim: \(timing.name) back on the Mac in \(Engine.seconds(at.timeIntervalSince(timing.sent))) s")
+            note(Engine.backLine(timing, at: at))
         } else {
             reclaimWatch.returns[address] = timing
             let left = timing.sent.addingTimeInterval(Engine.returnTimeout).timeIntervalSince(now())
@@ -57,7 +53,7 @@ extension Engine {
                 timing.arrived = moment
             }
             if timing.accepted, let at = timing.arrived {
-                lines.append("reclaim: \(timing.name) back on the Mac in \(Engine.seconds(at.timeIntervalSince(timing.sent))) s")
+                lines.append(Engine.backLine(timing, at: at))
                 reclaimWatch.returns[address] = nil
             } else if moment.timeIntervalSince(timing.sent) >= Engine.returnTimeout {
                 if timing.accepted {
@@ -106,6 +102,10 @@ extension Engine {
             }
         }
         lines.forEach(note)
+    }
+
+    private static func backLine(_ timing: ReturnTiming, at: Date) -> String {
+        "reclaim: \(timing.name) back on the Mac in \(seconds(at.timeIntervalSince(timing.sent))) s"
     }
 
     private static func seconds(_ interval: TimeInterval) -> String {
