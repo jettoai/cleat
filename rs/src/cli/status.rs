@@ -8,6 +8,8 @@ use crate::engine::Status;
 use crate::identity::Identity;
 use crate::launch::{AgentService, AgentStatus, LaunchctlJob, Launchd, SmApp};
 use crate::state::clock::{local_seconds, parse_iso8601_utc};
+use crate::settings::text::millis_text;
+use crate::state::reaction_clock::DaemonPerformance;
 use crate::state::EventLog;
 
 fn pad(v: &str) -> String {
@@ -79,6 +81,9 @@ pub fn render_status(
     line(format!("reports:     {reports}"));
     line(format!("input:       {}", s.default_input.as_deref().unwrap_or("-")));
     line(format!("output:      {}", s.default_output.as_deref().unwrap_or("-")));
+    if alive {
+        line(reaction_line(s.performance.as_ref()));
+    }
     if !s.rules.is_empty() {
         line("rules:".into());
         for (k, v) in &s.rules {
@@ -98,6 +103,21 @@ pub fn render_status(
         }
     }
     (out, if alive { 0 } else { 1 })
+}
+
+/// Swift `CLI.printVitals`'s reaction line; the `vitals:` line before it is not ported.
+fn reaction_line(p: Option<&DaemonPerformance>) -> String {
+    let Some(p) = p else { return "reaction:    -".into() };
+    match (p.samples, p.last_reaction_ms, p.last_work_ms, p.median_reaction_ms) {
+        (1.., Some(last), Some(work), Some(median)) => format!(
+            "reaction:    last {} (work {}), median {} over {}",
+            millis_text(last),
+            millis_text(work),
+            millis_text(median),
+            p.samples
+        ),
+        _ => "reaction:    no write-back yet".into(),
+    }
 }
 
 /// `log -n count`: the last lines, or the no-events line when there are none.

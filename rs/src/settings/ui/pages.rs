@@ -97,7 +97,7 @@ fn divider(mtm: MainThreadMarker) -> Retained<NSView> {
     to_view(&d)
 }
 
-/// Swift `VitalsBand`, with the Rust daemon's missing `performance` as "—".
+/// Swift `VitalsBand`.
 fn vitals_band(mtm: MainThreadMarker, v: &DaemonVitals) -> Retained<NSView> {
     let dot_color = match v.state {
         VitalsState::Running => NSColor::systemGreenColor(),
@@ -110,7 +110,7 @@ fn vitals_band(mtm: MainThreadMarker, v: &DaemonVitals) -> Retained<NSView> {
     let cells = [
         cell(mtm, "CPU", &text::vitals_cpu(v), &text::vitals_cpu_note(v), text::CPU_HELP),
         cell(mtm, "記憶體", &text::vitals_memory(v), "實體記憶體", text::MEMORY_HELP),
-        cell(mtm, "拉回速度", "—", "還沒有拉回紀錄", text::reaction_help(v)),
+        cell(mtm, "拉回速度", &text::reaction_value(v), &text::reaction_note(v), &text::reaction_help(v)),
     ];
     let grid = stack(mtm, false, 0.0, &[&cells[0], &divider(mtm), &cells[1], &divider(mtm), &cells[2]]);
     grid.setAlignment(objc2_app_kit::NSLayoutAttribute::Top);

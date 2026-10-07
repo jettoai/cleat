@@ -1,6 +1,8 @@
 //! The daemon's CPU and memory, read from outside like Activity Monitor (Swift `DaemonVitals.swift`
 //! and `Core/State/ProcessVitals.swift`). The sampler is pure; `read_process` is the one syscall.
 
+use crate::state::reaction_clock::DaemonPerformance;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VitalsState {
     Running,
@@ -15,11 +17,20 @@ pub struct DaemonVitals {
     pub cpu_measuring: bool,
     pub cpu_window_seconds: Option<i64>,
     pub footprint_bytes: Option<u64>,
+    /// status.json `performance`; None for a daemon older than the measurement.
+    pub performance: Option<DaemonPerformance>,
 }
 
 impl DaemonVitals {
     pub fn with_state(state: VitalsState) -> Self {
-        Self { state, cpu_percent: None, cpu_measuring: false, cpu_window_seconds: None, footprint_bytes: None }
+        Self {
+            state,
+            cpu_percent: None,
+            cpu_measuring: false,
+            cpu_window_seconds: None,
+            footprint_bytes: None,
+            performance: None,
+        }
     }
 }
 

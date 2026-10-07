@@ -28,7 +28,10 @@ fn status_matches_swift_byte_for_byte() {
         "~/Library/Application Support/Cleat/status.json",
         "~/.config/cleat/config.json",
     );
-    assert_eq!(text, fixture("swift-status.txt"));
+    // 0.3.8 predates the `reaction:` line; a newer Swift prints `-` for a file without `performance`
+    // (CLI.swift `printVitals`; its `vitals:` line is not ported).
+    let golden = fixture("swift-status.txt").replacen("\nrules:", "\nreaction:    -\nrules:", 1);
+    assert_eq!(text, golden);
     assert_eq!(code, 0);
 }
 

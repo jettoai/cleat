@@ -8,6 +8,7 @@ use objc2_core_audio::{
 
 use super::draft::Side;
 use super::vitals::{DaemonVitals, VitalsState};
+use crate::state::reaction_clock::DaemonPerformance;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -125,13 +126,44 @@ pub fn vitals_memory(v: &DaemonVitals) -> String {
     v.footprint_bytes.map_or_else(|| "—".into(), memory_text)
 }
 
-/// The Rust daemon publishes no `performance` block, so this is Swift's `performance == nil` branch.
-pub fn reaction_help(v: &DaemonVitals) -> &'static str {
-    if v.state != VitalsState::Running {
-        "Cleat 沒在執行"
+/// Swift `PerformanceFormat.millis`.
+pub fn millis_text(ms: f64) -> String {
+    if ms < 10.0 {
+        format!("{ms:.1} ms")
+    } else if ms < 1000.0 {
+        format!("{ms:.0} ms")
     } else {
-        "這個版本的 Cleat 還不會量拉回速度"
+        format!("{:.2} s", ms / 1000.0)
     }
+}
+
+/// Only a performance block with at least one write-back has a figure to show.
+fn reaction(v: &DaemonVitals) -> Option<&DaemonPerformance> {
+    v.performance.as_ref().filter(|p| v.state == VitalsState::Running && p.samples > 0)
+}
+
+pub fn reaction_value(v: &DaemonVitals) -> String {
+    reaction(v).and_then(|p| p.median_reaction_ms).map_or_else(|| "—".into(), millis_text)
+}
+
+pub fn reaction_note(v: &DaemonVitals) -> String {
+    reaction(v).map_or_else(|| "還沒有拉回紀錄".into(), |p| format!("最近 {} 次的中位數", p.samples))
+}
+
+pub fn reaction_help(v: &DaemonVitals) -> String {
+    if v.state != VitalsState::Running {
+        return "Cleat 沒在執行".into();
+    }
+    let Some(p) = &v.performance else { return "這個版本的 Cleat 還不會量拉回速度".into() };
+    let (Some(total), Some(work)) = (p.last_reaction_ms, p.last_work_ms) else { return "還沒有拉回紀錄".into() };
+    if p.samples == 0 {
+        return "還沒有拉回紀錄".into();
+    }
+    format!(
+        "其他程式或系統改掉你的設定後，Cleat 改回來要多久。最近一次共 {}，其中 Cleat 自己處理 {}，其餘是刻意等裝置穩定",
+        millis_text(total),
+        millis_text(work)
+    )
 }
 
 /// Which SF Symbol stands for a device, from its name and bus. The caller checks the symbol exists.

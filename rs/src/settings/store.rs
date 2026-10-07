@@ -100,6 +100,9 @@ impl Store {
         self.last_revert = data.as_deref().and_then(sources::last_revert);
         let pid = data.as_deref().and_then(sources::status_pid);
         self.vitals = self.sampler.sample(pid, read_process);
+        if self.vitals.state != VitalsState::NotRunning {
+            self.vitals.performance = data.as_deref().and_then(sources::performance);
+        }
     }
 
     pub fn transport_of(&self, name: &str) -> Option<u32> {

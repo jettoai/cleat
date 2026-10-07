@@ -11,6 +11,7 @@ use super::Engine;
 use crate::config::{Config, INPUT_VOLUME_WILDCARD};
 use crate::model::{AudioDevice, DeviceSnapshot, Liveness, MicrophonePermission};
 use crate::state::clock::iso8601_utc;
+use crate::state::reaction_clock::DaemonPerformance;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +31,9 @@ pub struct Status {
     pub recent_events: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_volume: Option<super::OutputVolumeStatus>,
+    /// Reaction timing; None in a file written by a daemon older than the measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<DaemonPerformance>,
 }
 
 impl Status {
@@ -73,6 +77,7 @@ impl Engine {
             liveness: liveness_summaries(&self.config, snap, &self.microphone, &self.liveness_state),
             recent_events: self.recent_events.clone(),
             output_volume: Some(self.output_volume_status()),
+            performance: Some(self.reactions.summary()),
         };
         status.write(&self.status_path);
     }

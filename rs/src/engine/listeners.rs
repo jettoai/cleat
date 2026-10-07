@@ -95,6 +95,7 @@ impl Engine {
                 let origin = |delay_ms| Origin { label: kind.label(), received, delay_ms };
                 match kind {
                     ListenerKind::Devices => {
+                        self.reaction_event(RETRY_MS[RETRY_MS.len() - 1]);
                         self.note("devices: list changed");
                         self.check_returns_now();
                         self.rebind_devices();
@@ -102,8 +103,12 @@ impl Engine {
                             self.schedule(d, origin(d));
                         }
                     }
-                    ListenerKind::DefaultInput => self.schedule(SETTLE_MS, origin(SETTLE_MS)),
+                    ListenerKind::DefaultInput => {
+                        self.reaction_event(SETTLE_MS);
+                        self.schedule(SETTLE_MS, origin(SETTLE_MS));
+                    }
                     ListenerKind::DefaultOutput => {
+                        self.reaction_event(RETRY_MS[RETRY_MS.len() - 1]);
                         self.check_returns_now();
                         self.rebind_devices();
                         for d in RETRY_MS {
@@ -112,9 +117,13 @@ impl Engine {
                     }
                     ListenerKind::Balance => {
                         self.balance_changed_at = Some(self.clock.mono());
+                        self.reaction_event(BALANCE_SETTLE_MS);
                         self.schedule(BALANCE_SETTLE_MS, origin(BALANCE_SETTLE_MS));
                     }
-                    ListenerKind::Running | ListenerKind::Volume => self.schedule(0, origin(0)),
+                    ListenerKind::Running | ListenerKind::Volume => {
+                        self.reaction_event(0);
+                        self.schedule(0, origin(0));
+                    }
                     ListenerKind::OutputVolume => {}
                 }
             }
@@ -141,6 +150,17 @@ impl Engine {
         self.check_reclaim_returns(&snap);
     }
 
+    /// Monotonic nanoseconds for the reaction clock (Swift `Engine.uptime`).
+    pub(crate) fn uptime(&self) -> u64 {
+        self.clock.mono().as_nanos() as u64
+    }
+
+    /// Starts the reaction clock for an event whose last scheduled beat is `last_beat_ms` out.
+    fn reaction_event(&mut self, last_beat_ms: u64) {
+        let now = self.uptime();
+        self.reactions.event_arrived(now, now + last_beat_ms * 1_000_000);
+    }
+
     fn schedule(&mut self, delay_ms: u64, origin: Origin) {
         let deadline = self.clock.mono() + Duration::from_millis(delay_ms);
         self.scheduler.schedule(Timer::Reconcile { delay_ms }, deadline, origin);
@@ -154,7 +174,13 @@ impl Engine {
 
     pub fn fire(&mut self, timer: Timer, origin: Origin) {
         match timer {
-            Timer::Reconcile { delay_ms } => self.reconcile(consumes_arrivals(delay_ms), Some(origin)),
+            Timer::Reconcile { delay_ms } => {
+                let began = self.uptime();
+                self.reactions.pass_began(began);
+                self.reconcile(consumes_arrivals(delay_ms), Some(origin));
+                let ended = self.uptime();
+                self.reactions.pass_ended(ended);
+            }
             Timer::ConfigReload => self.config_file_changed(origin),
             Timer::StreakJudge => self.reconcile(false, Some(origin)),
             Timer::SourceRestart => self.source_restart_due(),

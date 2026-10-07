@@ -33,6 +33,7 @@ use crate::model::{Action, DeviceSnapshot, Liveness, MicrophonePermission};
 use crate::reclaim::{BluetoothInventory, RouteRequesting};
 use crate::rules::{balance, headphones_takeover, input_pin, input_volume, output_pin};
 use crate::state::clock::{clock_ms, Clock};
+use crate::state::reaction_clock::ReactionClock;
 use crate::state::EventLog;
 
 const RECENT_EVENT_LIMIT: usize = 20;
@@ -110,6 +111,8 @@ pub struct Engine {
     pub(crate) balance_changed_at: Option<Duration>,
     recent_events: Vec<String>,
     listener_summary: Option<String>,
+    /// Event-to-write-back timing, published as status.json `performance`.
+    pub(crate) reactions: ReactionClock,
 }
 
 impl Engine {
@@ -148,6 +151,7 @@ impl Engine {
             balance_changed_at: None,
             recent_events: vec![],
             listener_summary: None,
+            reactions: ReactionClock::default(),
         }
     }
 
@@ -328,6 +332,8 @@ impl Engine {
         };
         if status == 0 {
             self.note(&format!("{}: {}", action.label(), action.reason()));
+            let (mono, wall) = (self.uptime(), self.clock.wall());
+            self.reactions.wrote(mono, wall);
         } else {
             self.note(&format!("{}: {} failed (OSStatus {status})", action.label(), action.reason()));
         }

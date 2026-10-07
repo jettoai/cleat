@@ -13,6 +13,7 @@ use crate::audio::property::{self, address, global, SYSTEM_OBJECT};
 use crate::audio::{CoreAudioSystem, VIRTUAL_MAIN_BALANCE};
 use crate::model::{AudioDevice, BluetoothHeadset};
 use crate::reclaim::child::run_with_deadline;
+use crate::state::reaction_clock::DaemonPerformance;
 use crate::reclaim::pairings::TIMEOUT;
 
 /// `kAudioHardwareServiceDeviceProperty_VirtualMainVolume` ('vmvc').
@@ -85,6 +86,12 @@ pub fn parse_paired(data: &[u8]) -> Vec<PairedDevice> {
 pub fn last_revert(data: &[u8]) -> Option<String> {
     let v: Value = serde_json::from_slice(data).ok()?;
     v.get("outputVolume")?.get("lastRevert")?.as_str().map(String::from)
+}
+
+/// status.json `performance`; None for a file written before the measurement existed.
+pub fn performance(data: &[u8]) -> Option<DaemonPerformance> {
+    let v: Value = serde_json::from_slice(data).ok()?;
+    serde_json::from_value(v.get("performance")?.clone()).ok()
 }
 
 pub fn status_pid(data: &[u8]) -> Option<i32> {
