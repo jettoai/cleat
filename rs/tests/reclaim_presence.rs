@@ -383,6 +383,95 @@ fn refused_request_is_not_timed() {
     assert_eq!(w.count("back on the Mac"), 0);
 }
 
+// MARK: - macOS switching the headset back by itself (B-1173, Albert 20:25)
+
+fn nobody_playing() -> common::engine::Harness {
+    world_where(None, |s| s.presence = facts(Some(120.0), vec![], None))
+}
+
+#[test]
+fn macos_switching_back_by_itself_logs_one_line_with_the_seconds() {
+    let mut w = nobody_playing();
+    assert!(w.requests().is_empty());
+    w.advance(Duration::from_millis(1500));
+    arrive(&mut w);
+    w.drive(20_000);
+    assert_eq!(w.count("reclaim: AirPods Max back on the Mac (macOS) in 1.5 s"), 1);
+    assert_eq!(w.count("back on the Mac"), 1);
+}
+
+#[test]
+fn macos_switch_slower_than_the_limit_is_not_logged() {
+    for (after, lines) in [(31.0, 0), (29.0, 1)] {
+        let mut w = nobody_playing();
+        w.advance(secs(after));
+        arrive(&mut w);
+        w.drive(20_000);
+        assert_eq!(w.count("(macOS)"), lines, "{after} s");
+    }
+}
+
+#[test]
+fn cleats_own_request_logs_only_its_own_line() {
+    let mut w = taken_world(Some(hijacked()));
+    w.drive(800);
+    w.advance(Duration::from_millis(1000));
+    arrive(&mut w);
+    w.drive(20_000);
+    assert_eq!(w.count("reclaim: AirPods Max back on the Mac in 1.8 s"), 1);
+    assert_eq!(w.count("(macOS)"), 0);
+}
+
+#[test]
+fn playback_stopping_voids_the_clock() {
+    let mut w = nobody_playing();
+    w.advance(secs(5.0));
+    w.set(|s| s.output_running = false);
+    w.reconcile();
+    w.advance(secs(5.0));
+    w.set(|s| s.output_running = true);
+    w.reconcile();
+    w.advance(secs(1.0));
+    arrive(&mut w);
+    assert_eq!(w.count("reclaim: AirPods Max back on the Mac (macOS) in 1.0 s"), 1, "timed from the new playback");
+
+    let mut w = nobody_playing();
+    w.set(|s| s.output_running = false);
+    w.reconcile();
+    arrive(&mut w);
+    w.drive(20_000);
+    assert_eq!(w.count("back on the Mac"), 0, "arrived after the playback stopped");
+}
+
+#[test]
+fn headset_moved_away_by_hand_is_not_timed() {
+    let mut w = world_where(None, |s| {
+        on_the_headset(s);
+        s.presence = facts(Some(120.0), vec![], None);
+    });
+    w.user(Some(1.0));
+    move_output(&w, wired_headphones().id);
+    w.reconcile();
+    w.advance(secs(2.0));
+    move_output(&w, air_pods().id);
+    w.fire(ListenerKind::DefaultOutput);
+    w.drive(20_000);
+    assert_eq!(w.count("back on the Mac"), 0);
+}
+
+#[test]
+fn headset_already_the_output_when_playback_starts_is_not_timed() {
+    let mut w = world_where(None, |s| {
+        on_the_headset(s);
+        s.output_running = false;
+    });
+    w.set(|s| s.output_running = true);
+    w.fire(ListenerKind::Running);
+    w.drive(20_000);
+    w.fire(ListenerKind::DefaultOutput);
+    assert_eq!(w.count("back on the Mac"), 0);
+}
+
 // MARK: - The switch kept apart from the list (§6.6 E4, E5)
 
 #[test]

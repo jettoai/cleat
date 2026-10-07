@@ -29,6 +29,8 @@ pub const OWN_OUTPUT_WRITE_WINDOW: Duration = Duration::from_secs(10);
 /// An accepted hijack whose headset is not the output this long after the request is logged as
 /// not back (B-1173).
 pub const RETURN_TIMEOUT: Duration = Duration::from_secs(10);
+/// A macOS switch back slower than this is a headset taken out of its case, not a return.
+pub const MACOS_RETURN_LIMIT: Duration = Duration::from_secs(30);
 /// The beats a device change schedules; a granted hijack schedules the same ones.
 const RETRY_BEATS_MS: [u64; 3] = [1000, 3000, 6000];
 
@@ -54,6 +56,8 @@ pub struct ReclaimBook {
     own_output_write: Option<(u32, Duration)>,
     not_asking_logged: Option<String>,
     returns: HashMap<String, Return>,
+    /// When a listed headset, not the output, was first seen while the Mac played (B-1173).
+    macos_return: HashMap<String, Duration>,
 }
 
 fn short_lived(detail: &str) -> bool {
@@ -294,6 +298,7 @@ impl Engine {
     /// Called on every pass and on every device or default-output event, so the time is taken
     /// when the output moves rather than on the next scheduled beat.
     pub(crate) fn check_reclaim_returns(&mut self, snap: &DeviceSnapshot) {
+        self.time_macos_return(snap);
         if self.reclaim.returns.is_empty() {
             return;
         }
@@ -327,6 +332,36 @@ impl Engine {
                 _ => true,
             }
         });
+        for line in lines {
+            self.note(&line);
+        }
+    }
+
+    /// macOS bringing a listed headset back by itself: timed from the first pass that saw the Mac
+    /// playing with the headset elsewhere. Arrival is judged before the reset, so a playback that
+    /// stops in the same move still counts. Cleat's own request or a hand-picked output voids it.
+    fn time_macos_return(&mut self, snap: &DeviceSnapshot) {
+        if self.config.reclaim_active().is_empty() {
+            self.reclaim.macos_return.clear();
+            return;
+        }
+        let now = self.now();
+        let mut lines = vec![];
+        let book = &mut self.reclaim;
+        for (address, name) in &book.names {
+            let voided = book.returns.contains_key(address) || book.user_chose.contains(address);
+            if reclaim::is_default_output(&headset(name, address), snap) {
+                let start = book.macos_return.remove(address).filter(|_| !voided);
+                if let Some(took) = start.map(|s| now.saturating_sub(s)).filter(|t| *t <= MACOS_RETURN_LIMIT) {
+                    let secs = took.as_secs_f64();
+                    lines.push(format!("reclaim: {name} back on the Mac (macOS) in {secs:.1} s"));
+                }
+            } else if voided || !snap.output_running {
+                book.macos_return.remove(address);
+            } else {
+                book.macos_return.entry(address.clone()).or_insert(now);
+            }
+        }
         for line in lines {
             self.note(&line);
         }
