@@ -90,6 +90,32 @@ final class OutputVolumeEngineTests: XCTestCase {
         XCTAssertEqual(block, ["state": "on (holding against Parallels Desktop)"])
     }
 
+    /// Parallels set the microphone (control 261) 100% -> 50% while the output already sat at 50%:
+    /// the output never moved, so nothing is written back.
+    func testListedWriteToAnotherControlLeavesAnUnmovedOutputAlone() throws {
+        let (system, engine, source) = try start(holdAgainst: ["Parallels Desktop"])
+        engine.queue.async {
+            source.emit(.write(Self.write(Self.parallelsPath, 1.0, 0.5, control: 261)))
+        }
+        waitOnQueue(engine, seconds: 0.6)
+        XCTAssertEqual(system.writes, [])
+    }
+
+    /// A line the parser cannot read arrives while a listed write waits: the source is not
+    /// trusted, so the write is not undone.
+    func testUnrecognisedLineDuringAPendingWriteStopsTheRevert() throws {
+        let (system, engine, source) = try start(holdAgainst: ["Parallels Desktop"])
+        engine.queue.async {
+            source.emit(.write(Self.write(Self.parallelsPath, 0.5, 0.43)))
+            system.snapshotValue.outputVolumes = [0.43, 0.43]
+            system.fire(kAudioDevicePropertyVolumeScalar)
+            source.emit(.unrecognised("volume changed by something new"))
+        }
+        waitOnQueue(engine, seconds: 0.6)
+        XCTAssertEqual(system.writes, [])
+        XCTAssertTrue(logLines().contains { $0.hasSuffix("writer=Parallels Desktop kept (paused)") })
+    }
+
     func testSourceThatCannotStartPausesTheHold() throws {
         let (system, engine, _) = try start(holdAgainst: ["Parallels Desktop"], sourceStarts: false)
         XCTAssertEqual(status()?.rules["outputVolume"],

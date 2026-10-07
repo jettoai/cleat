@@ -12,6 +12,8 @@ struct OutputVolumeLedger: Sendable {
     /// A non-listed write this soon after a listed one, starting from the listed write's result,
     /// is the system reacting to it (Control Center's HUD did, 16ms later), not a person.
     static let echoGrace: TimeInterval = 0.1
+    /// The only writer seen echoing a listed write. Anyone else that soon is a person.
+    static let echoWriter = "ControlCenter"
     /// A line that arrives this late may describe a change somebody has already changed again.
     static let staleAfter: TimeInterval = 1.0
     static let tugWindow: TimeInterval = 60
@@ -85,7 +87,8 @@ struct OutputVolumeLedger: Sendable {
         }
 
         if var open = streak {
-            let isEcho = write.at.timeIntervalSince(open.lastForeignAt) <= Self.echoGrace
+            let isEcho = write.writer == Self.echoWriter
+                && write.at.timeIntervalSince(open.lastForeignAt) <= Self.echoGrace
                 && open.foreign.results.contains { abs($0 - write.from) <= OutputVolumeHoldRule.tolerance }
             if isEcho {
                 open.foreign.results.append(write.to)
@@ -118,7 +121,8 @@ struct OutputVolumeLedger: Sendable {
         return lastChangeAt + Self.judgeDelay > now
     }
 
-    mutating func judge(device: AudioDevice, current: [Float], now: Date) -> Judgement {
+    /// `sourceDown`: the writer source is not delivering, so a pending listed write is not trusted.
+    mutating func judge(device: AudioDevice, current: [Float], now: Date, sourceDown: Bool = false) -> Judgement {
         let idle = Judgement(verdict: .none, startedPause: false)
         guard !current.isEmpty, !isSettling(now: now) else { return idle }
         if let open = streak, open.uid != device.uid { streak = nil }
@@ -130,7 +134,7 @@ struct OutputVolumeLedger: Sendable {
 
         var verdict = OutputVolumeHoldRule.decide(.init(
             current: current, held: held[device.uid], foreign: streak?.foreign,
-            lastWriter: lastWriter, paused: pausedUntil != nil
+            lastWriter: lastWriter, paused: pausedUntil != nil || sourceDown || blind != nil
         ))
         var startedPause = false
         if case .revert(let from, _, let writer, _) = verdict, revertTimes.count >= Self.tugLimit {

@@ -109,6 +109,17 @@ final class OutputVolumeHoldRuleTests: XCTestCase {
                        .kept(from: 0.625, to: 0.5, writer: "ControlCenter", note: nil))
     }
 
+    /// Parallels 50 -> 43, then Jetto 43 -> 10 only 50ms later: Jetto is a person's change, not an echo.
+    func testOnlyControlCenterCountsAsEcho() {
+        var ledger = ledger(holding: 0.5)
+        _ = ledger.record(write("prl_vm_app", at: 0, 0.5, 0.43), listed: true, ownPID: 1, outputUID: device.uid, now: t0)
+        _ = ledger.record(write("Jetto", at: 0.05, 0.43, 0.1, pid: 72504), listed: false, ownPID: 1,
+                          outputUID: device.uid, now: t0 + 0.05)
+        XCTAssertEqual(ledger.judge(device: device, current: [0.1, 0.1], now: t0 + 0.3).verdict,
+                       .kept(from: 0.5, to: 0.1, writer: "Jetto", note: nil))
+        XCTAssertEqual(ledger.held[device.uid], 0.1)
+    }
+
     func testStaleLineOpensNoStreak() {
         var ledger = ledger(holding: 0.5)
         let line = write("prl_vm_app", at: 0, 0.5, 0.43)

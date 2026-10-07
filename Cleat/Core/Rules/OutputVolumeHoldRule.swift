@@ -76,7 +76,10 @@ enum OutputVolumeHoldRule {
             let stillTheirs = input.current.allSatisfy { value in
                 foreign.results.contains { abs($0 - value) <= tolerance }
             }
-            if stillTheirs, !foreign.overruled, abs(level - foreign.restore) > tolerance {
+            // The output must have moved off what we hold: a listed write to another control (the
+            // microphone) can land on a value the output already had.
+            if stillTheirs, !foreign.overruled, abs(level - foreign.restore) > tolerance,
+               abs(level - held) > tolerance {
                 if input.paused {
                     return .kept(from: held, to: level, writer: foreign.writer, note: "paused")
                 }

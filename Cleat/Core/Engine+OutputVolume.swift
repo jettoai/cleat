@@ -147,7 +147,10 @@ extension Engine {
               let id = snapshot.defaultOutput, let device = snapshot.device(id: id) else { return [] }
         outputVolume.outputUID = device.uid
 
-        let judgement = outputVolume.ledger.judge(device: device, current: snapshot.outputVolumes, now: now())
+        let judgement = outputVolume.ledger.judge(
+            device: device, current: snapshot.outputVolumes, now: now(),
+            sourceDown: outputVolume.sourceProblem != nil
+        )
         // One line per judged change, the reconciliation record: who moved it and what we did.
         switch judgement.verdict {
         case .kept(let from, let to, let writer, let remark):
