@@ -1,0 +1,29 @@
+//! Everything the engine may do to the audio system, behind a trait so tests can use a fake.
+
+mod core_audio;
+mod listeners;
+mod property;
+
+pub use core_audio::CoreAudioSystem;
+pub use listeners::{ListenerKind, ListenerToken};
+
+use crate::config::Config;
+use crate::model::DeviceSnapshot;
+
+/// What a listener is registered on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListenTarget {
+    System(ListenerKind),
+    Device { device: u32, kind: ListenerKind, element: u32 },
+}
+
+pub trait AudioSystem {
+    /// One consistent reading. Input volumes are read only for the devices the config holds.
+    fn snapshot(&self, config: &Config) -> DeviceSnapshot;
+    fn set_default_input(&self, id: u32) -> i32;
+    fn set_default_output(&self, id: u32) -> i32;
+    fn set_balance(&self, id: u32, value: f32) -> i32;
+    fn set_input_volume(&self, id: u32, value: f32) -> i32;
+    fn add_listener(&self, target: ListenTarget) -> Option<ListenerToken>;
+    fn remove_listener(&self, token: ListenerToken);
+}

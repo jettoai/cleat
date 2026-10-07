@@ -1,0 +1,28 @@
+[package]
+name = "cleat-rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "cleat_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cleat-rs"
+path = "src/main.rs"
+
+[dependencies]
+objc2-core-audio = { version = "0.3.2", default-features = false, features = ["std", "AudioHardware", "objc2-core-audio-types"] }
+objc2-core-audio-types = { version = "0.3.2", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFRunLoop"] }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-normalization = "0.1.25"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,0 +1,184 @@
+//! What the daemon publishes after every reconcile, and the only thing `cleat-rs status` reads.
+//! Summaries follow the Swift engine word for word, with stage 1 notes where behaviour differs.
+
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+
+use super::{Engine, Mode};
+use crate::config::{Config, INPUT_VOLUME_WILDCARD};
+use crate::model::{AudioDevice, DeviceSnapshot};
+use crate::state::clock::iso8601_utc;
+
+pub const MICROPHONE_LABEL: &str = "not requested (stage 1)";
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Status {
+    pub pid: i32,
+    pub updated_at: String,
+    pub config_state: String,
+    pub microphone: String,
+    pub error_reports: Option<bool>,
+    pub default_input: Option<String>,
+    pub default_output: Option<String>,
+    pub rules: BTreeMap<String, String>,
+    pub liveness: BTreeMap<String, String>,
+    pub recent_events: Vec<String>,
+    pub mode: String,
+}
+
+impl Status {
+    pub fn read(path: &Path) -> Option<Status> {
+        serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+    }
+
+    /// Atomic: write a sibling temp file, then rename over the target.
+    pub fn write(&self, path: &Path) {
+        let Some(dir) = path.parent() else { return };
+        let _ = std::fs::create_dir_all(dir);
+        let Ok(value) = serde_json::to_value(self) else { return };
+        let Ok(text) = serde_json::to_string_pretty(&value) else { return };
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        let tmp = dir.join(format!(".status-{}-{nanos}.json", std::process::id()));
+        if std::fs::write(&tmp, text).is_ok() && std::fs::rename(&tmp, path).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+}
+
+fn name_of(snap: &DeviceSnapshot, id: Option<u32>) -> Option<String> {
+    id.and_then(|i| snap.device(i)).map(|d| d.name.clone())
+}
+
+impl Engine {
+    pub(super) fn write_status(&self, snap: &DeviceSnapshot) {
+        let status = Status {
+            pid: std::process::id() as i32,
+            updated_at: iso8601_utc(SystemTime::now()),
+            config_state: self.config_state.clone(),
+            microphone: MICROPHONE_LABEL.into(),
+            error_reports: Some(self.config.error_reports),
+            default_input: name_of(snap, snap.default_input),
+            default_output: name_of(snap, snap.default_output),
+            rules: rule_summaries(&self.config, snap),
+            liveness: liveness_summaries(&self.config, snap),
+            recent_events: self.recent_events.clone(),
+            mode: match self.mode {
+                Mode::Observe => "observe".into(),
+                Mode::Enforce => "enforce".into(),
+            },
+        };
+        status.write(&self.status_path);
+    }
+}
+
+pub fn rule_summaries(config: &Config, snap: &DeviceSnapshot) -> BTreeMap<String, String> {
+    let mut rules = BTreeMap::new();
+    rules.insert("inputPin".into(), pin_summary(&config.input, &config.blocked_input));
+    rules.insert("outputPin".into(), pin_summary(&config.output, &config.blocked_output));
+    rules.insert("headphones".into(), headphones_summary(config));
+    rules.insert(
+        "reclaim".into(),
+        if config.reclaim.is_empty() {
+            "off".into()
+        } else {
+            format!("on ({}; stage 1: rule ported, requests not sent)", config.reclaim.join(", "))
+        },
+    );
+    rules.insert(
+        "balance".into(),
+        match config.balance {
+            Some(b) => {
+                let now = snap.output_balance.map_or("unreadable".into(), |v| format!("{v:.2}"));
+                format!("on (target {b:.2}, now {now})")
+            }
+            None => "off".into(),
+        },
+    );
+    let volume = if config.input_volume.is_empty() {
+        "off".into()
+    } else if let Some(&w) = config.input_volume.get(INPUT_VOLUME_WILDCARD) {
+        wildcard_volume_summary(config, snap, w)
+    } else {
+        let parts: Vec<String> = config
+            .input_volume
+            .iter()
+            .map(|(entry, wanted)| {
+                match snap.device_matching(entry, true).and_then(|d| snap.input_volumes.get(&d.id)) {
+                    Some(&cur) => format!("{entry} {wanted:.0}% (now {:.0}%)", cur as f64 * 100.0),
+                    None => format!("{entry} {wanted:.0}% (absent)"),
+                }
+            })
+            .collect();
+        format!("on ({})", parts.join(", "))
+    };
+    rules.insert("inputVolume".into(), volume);
+    rules
+}
+
+pub fn headphones_summary(config: &Config) -> String {
+    if !config.headphones_take_over {
+        return "off".into();
+    }
+    let mut s = "on (bluetooth output takes over when it connects".to_string();
+    if !config.blocked_output.is_empty() {
+        s += &format!("; blocked from taking over: {}", config.blocked_output.join(", "));
+    }
+    s + ")"
+}
+
+pub fn pin_summary(priority: &[String], blocked: &[String]) -> String {
+    if priority.is_empty() {
+        return if blocked.is_empty() { "off".into() } else { "off (no priority list)".into() };
+    }
+    let mut s = format!("on ({})", priority.join(", "));
+    if !blocked.is_empty() {
+        s += &format!(", blocked: {}", blocked.join(", "));
+    }
+    s
+}
+
+pub fn wildcard_volume_summary(config: &Config, snap: &DeviceSnapshot, wildcard: f64) -> String {
+    let mut devices: Vec<&AudioDevice> = snap.devices.iter().filter(|d| d.has_input).collect();
+    devices.sort_by(|a, b| AudioDevice::by_name(a, b));
+    let mut parts: Vec<String> = devices
+        .into_iter()
+        .filter_map(|d| {
+            let wanted = config.input_volume_target(d)?;
+            Some(match snap.input_volumes.get(&d.id) {
+                Some(&cur) => format!("{} {wanted:.0}% (now {:.0}%)", d.name, cur as f64 * 100.0),
+                None => format!("{} {wanted:.0}% (unreadable)", d.name),
+            })
+        })
+        .collect();
+    parts.extend(
+        config
+            .input_volume
+            .iter()
+            .filter(|(k, _)| k.as_str() != INPUT_VOLUME_WILDCARD && snap.device_matching(k, true).is_none())
+            .map(|(k, v)| format!("{k} {v:.0}% (absent)")),
+    );
+    if parts.is_empty() {
+        format!("on (default {wildcard:.0}%)")
+    } else {
+        format!("on (default {wildcard:.0}%; {})", parts.join(", "))
+    }
+}
+
+pub fn liveness_summaries(config: &Config, snap: &DeviceSnapshot) -> BTreeMap<String, String> {
+    config
+        .liveness
+        .keys()
+        .map(|entry| {
+            let v = if snap.device_matching(entry, true).is_some() {
+                "disabled (stage 1: no microphone measurement)"
+            } else {
+                "absent"
+            };
+            (entry.clone(), v.to_string())
+        })
+        .collect()
+}
