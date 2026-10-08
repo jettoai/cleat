@@ -8,7 +8,7 @@
 
 use super::headphones_takeover::owns;
 use crate::config::Config;
-use crate::model::{Action, AudioDevice, DeviceSnapshot, Liveness};
+use crate::model::{Action, AudioDevice, DeviceSnapshot, Liveness, TRANSPORT_UNKNOWN};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
@@ -93,9 +93,11 @@ pub fn reconcile(side: Side, snapshot: &DeviceSnapshot, config: &Config) -> Verd
         Side::Output => snapshot.default_output,
     };
     let Some(current) = current_id.and_then(|id| snapshot.device(id)) else { return Verdict::Clear };
-    // A blocked virtual device (a meeting app's own) is only never chosen: an app that switches
-    // to it itself is not overruled, as in the Swift version (PM ruling 2026-10-09, B-1287).
-    if !is_blocked(current, side, config) || !current.is_physical() {
+    // A blocked virtual, aggregate, Continuity or AirPlay device (a meeting app's own) is only
+    // never chosen: an app that switches to it itself is not overruled, as in the Swift version
+    // (PM ruling 2026-10-09, B-1287). An unknown transport (the HAL failed to say) is still moved
+    // off, so a headset that once reads as unknown is not left silently in place.
+    if !is_blocked(current, side, config) || (!current.is_physical() && current.transport != TRANSPORT_UNKNOWN) {
         return Verdict::Clear;
     }
     match escape(side, snapshot, config) {

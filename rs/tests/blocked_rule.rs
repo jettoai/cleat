@@ -389,6 +389,15 @@ fn a_blocked_virtual_or_continuity_default_is_left_to_the_app() {
     assert_eq!(input(&snap, &config), Verdict::Clear);
 }
 
+/// PM ruling on B-1287: an unknown transport is not one of the app-owned kinds, so a blocked
+/// default whose transport the HAL could not read is still moved off.
+#[test]
+fn a_blocked_default_with_an_unknown_transport_is_still_moved_off() {
+    let unread = AudioDevice::new(30, "AirPods Max", "AirPodsMax-UID", true, true);
+    let snap = snapshot(vec![unread.clone(), brio()], Some(&unread), &[]);
+    assert_eq!(input(&snap, &pinned_input()), to_in(brio().id, "AirPods Max -> Brio 100 (blocked)"));
+}
+
 #[test]
 fn an_unblocked_default_is_clear() {
     let snap = snapshot(vec![wireless(), brio()], Some(&brio()), &[]);
