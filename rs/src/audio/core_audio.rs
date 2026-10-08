@@ -21,6 +21,7 @@ use crate::engine::Event;
 use crate::app::presence;
 use crate::model::presence::{PresenceFacts, USER_ACTIVE_WINDOW_S};
 use crate::model::{AudioDevice, DeviceSnapshot};
+use crate::rules::output_volume_hold::level;
 
 pub struct CoreAudioSystem {
     contexts: Contexts,
@@ -39,11 +40,11 @@ fn output_volume_address(element: u32) -> AudioObjectPropertyAddress {
 }
 
 /// Main element alone when it answers, otherwise channels 1 and 2 (Swift `volumes`).
-fn output_volumes(id: u32) -> Vec<f32> {
-    if let Some(v) = property::get::<f32>(id, output_volume_address(kAudioObjectPropertyElementMain)) {
+fn volumes(id: u32, addr: fn(u32) -> AudioObjectPropertyAddress) -> Vec<f32> {
+    if let Some(v) = property::get::<f32>(id, addr(kAudioObjectPropertyElementMain)) {
         return vec![v];
     }
-    [1, 2].iter().filter_map(|&e| property::get::<f32>(id, output_volume_address(e))).collect()
+    [1, 2].iter().filter_map(|&e| property::get::<f32>(id, addr(e))).collect()
 }
 
 /// Main element when settable, otherwise each settable channel.
@@ -85,7 +86,7 @@ impl CoreAudioSystem {
         ))
     }
 
-    fn default_device(selector: AudioObjectPropertySelector) -> Option<u32> {
+    pub(crate) fn default_device(selector: AudioObjectPropertySelector) -> Option<u32> {
         property::get::<u32>(SYSTEM_OBJECT, global(selector)).filter(|&id| id != kAudioObjectUnknown)
     }
 
@@ -95,14 +96,7 @@ impl CoreAudioSystem {
 
     /// Main element first; otherwise the mean of channels 1 and 2.
     fn input_volume(id: u32) -> Option<f32> {
-        if let Some(v) = property::get::<f32>(id, volume_address(kAudioObjectPropertyElementMain)) {
-            return Some(v);
-        }
-        let channels: Vec<f32> = [1, 2].iter().filter_map(|&e| property::get::<f32>(id, volume_address(e))).collect();
-        if channels.is_empty() {
-            return None;
-        }
-        Some(channels.iter().sum::<f32>() / channels.len() as f32)
+        level(&volumes(id, volume_address))
     }
 }
 
@@ -167,7 +161,7 @@ impl AudioSystem for CoreAudioSystem {
             output_volumes: if config.hold_against_active().is_empty() {
                 vec![]
             } else {
-                default_output.map(output_volumes).unwrap_or_default()
+                default_output.map(|id| volumes(id, output_volume_address)).unwrap_or_default()
             },
             ..Default::default()
         }

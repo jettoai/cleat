@@ -56,11 +56,11 @@ fn opened_by_hand() -> bool {
 
 fn daemon(mode: Mode, trace: bool) -> ExitCode {
     let (tx, rx) = mpsc::channel();
-    if mode == Mode::Observe {
-        println!("cleat-rs observing (pid {}, log {})", std::process::id(), paths::log_path().display());
-    }
     // Observe mode asks for nothing and reports nothing (D6).
     let observe = mode == Mode::Observe;
+    if observe {
+        println!("cleat-rs observing (pid {}, log {})", std::process::id(), paths::log_path().display());
+    }
     let reporter = (!observe).then(make_reporter);
     if let Some(r) = &reporter {
         r.install_panic_hook();
@@ -101,13 +101,11 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
         eprintln!("cleat: could not start the engine thread: {e}");
         return ExitCode::FAILURE;
     }
-    if !observe {
-        microphone::request(microphone_tx);
-    }
     if observe {
         // The HAL delivers listener callbacks through the main run loop.
         CFRunLoop::run();
     } else {
+        microphone::request(microphone_tx);
         // NSApplication runs the same main run loop, plus the menu bar item.
         let mtm = objc2::MainThreadMarker::new().expect("the daemon runs on the main thread");
         cleat_rs::app::menubar::run(mtm);
@@ -118,13 +116,10 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
 /// The routing SPI, answering onto the engine's channel.
 fn routing_client(tx: mpsc::Sender<engine::Event>) -> SmartRoutingClient {
     let bundle_id = Identity::current().bundle_id.unwrap_or_else(|| "ai.jetto.cleat".into());
-    let tx = std::sync::Mutex::new(tx);
     SmartRoutingClient::new(
         bundle_id,
         std::sync::Arc::new(move |name, address, response| {
-            if let Ok(tx) = tx.lock() {
-                let _ = tx.send(engine::Event::RouteAnswered { name, address, response });
-            }
+            let _ = tx.send(engine::Event::RouteAnswered { name, address, response });
         }),
     )
 }

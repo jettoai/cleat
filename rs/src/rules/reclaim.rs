@@ -51,8 +51,5 @@ pub fn is_audio_device(headset: &BluetoothHeadset, snapshot: &DeviceSnapshot) ->
 }
 
 pub fn is_default_output(headset: &BluetoothHeadset, snapshot: &DeviceSnapshot) -> bool {
-    match snapshot.default_output.and_then(|id| snapshot.device(id)) {
-        Some(d) => device_name::matches(&headset.name, &d.name, &d.uid),
-        None => false,
-    }
+    snapshot.output_device().is_some_and(|d| device_name::matches(&headset.name, &d.name, &d.uid))
 }

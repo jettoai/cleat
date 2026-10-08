@@ -32,6 +32,6 @@ pub fn reconcile(snapshot: &DeviceSnapshot, config: &Config) -> Vec<Action> {
     if snapshot.default_output == Some(target.id) {
         return vec![];
     }
-    let current = snapshot.default_output.and_then(|id| snapshot.device(id)).map_or("-", |d| d.name.as_str());
+    let current = snapshot.output_device().map_or("-", |d| d.name.as_str());
     vec![Action::SetDefaultOutput(target.id, format!("{} -> {} (headphones connected)", current, target.name))]
 }

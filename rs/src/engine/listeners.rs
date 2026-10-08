@@ -44,8 +44,6 @@ impl Engine {
             if !self.config.reclaim_active().is_empty() {
                 targets.push(ListenTarget::Device { device: out, kind: ListenerKind::Running, element: 0 });
             }
-        }
-        if let Some(out) = snap.default_output {
             // AirPods Max have no main volume element and report each channel instead.
             if !self.config.hold_against_active().is_empty() {
                 for element in [0, 1, 2] {

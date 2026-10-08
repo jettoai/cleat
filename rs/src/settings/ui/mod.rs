@@ -140,22 +140,21 @@ impl App {
     /// The 1 Hz tick: rebuild only when a reading on screen changed and no button is held down.
     pub fn tick(&self) {
         self.store.borrow_mut().refresh_live();
-        let key = {
-            let s = self.store.borrow();
-            format!("{:?}{:?}{:?}", s.live, s.last_revert, s.vitals)
-        };
-        if *self.live_key.borrow() != key && NSEvent::pressedMouseButtons() == 0 {
+        if *self.live_key.borrow() != self.live_reading() && NSEvent::pressedMouseButtons() == 0 {
             self.render();
         }
+    }
+
+    /// The readings on screen that the tick watches.
+    fn live_reading(&self) -> String {
+        let s = self.store.borrow();
+        format!("{:?}{:?}{:?}", s.live, s.last_revert, s.vitals)
     }
 
     /// Rebuilds the detail pane, keeping the scroll position.
     pub fn render(&self) {
         let Some(scroll) = self.detail.borrow().clone() else { return };
-        {
-            let s = self.store.borrow();
-            *self.live_key.borrow_mut() = format!("{:?}{:?}{:?}", s.live, s.last_revert, s.vitals);
-        }
+        *self.live_key.borrow_mut() = self.live_reading();
         // Jetto voice `SettingsPageBackground`: #F3F3F5 light, #1C1C1E dark, so the cards lift off it.
         let v = if widgets::is_dark(self.mtm) { (0x1C, 0x1E) } else { (0xF3, 0xF5) };
         let (g, b) = (f64::from(v.0) / 255.0, f64::from(v.1) / 255.0);

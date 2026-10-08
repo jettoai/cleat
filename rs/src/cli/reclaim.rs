@@ -3,7 +3,7 @@
 //! because this is a button someone pressed.
 
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::fail;
@@ -28,14 +28,11 @@ pub fn verdict(outcome: &Outcome) -> String {
 
 pub fn reclaim(args: &[String]) -> i32 {
     let (tx, rx) = mpsc::channel();
-    let tx = Mutex::new(tx);
     let bundle_id = Identity::current().bundle_id.unwrap_or_else(|| "ai.jetto.cleat".into());
     let mut client = SmartRoutingClient::new(
         bundle_id,
         Arc::new(move |_name, _address, response| {
-            if let Ok(tx) = tx.lock() {
-                let _ = tx.send(response);
-            }
+            let _ = tx.send(response);
         }),
     );
     if !client.is_available() {

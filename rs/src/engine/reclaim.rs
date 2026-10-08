@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 
-use super::Engine;
+use super::{Engine, RETRY_MS};
 use crate::model::presence::judge;
 use crate::model::{Action, AudioDevice, BluetoothHeadset, DeviceSnapshot};
 use crate::reclaim::{Outcome, RouteResponse};
@@ -31,8 +31,6 @@ pub const OWN_OUTPUT_WRITE_WINDOW: Duration = Duration::from_secs(10);
 pub const RETURN_TIMEOUT: Duration = Duration::from_secs(10);
 /// A macOS switch back slower than this is a headset taken out of its case, not a return.
 pub const MACOS_RETURN_LIMIT: Duration = Duration::from_secs(30);
-/// The beats a device change schedules; a granted hijack schedules the same ones.
-const RETRY_BEATS_MS: [u64; 3] = [1000, 3000, 6000];
 
 /// A request on its way: when it went out, whether it was accepted, when the headset arrived.
 struct Return {
@@ -112,7 +110,7 @@ impl Engine {
         let settled = self.present_headsets(&self.reclaim.asked_this_playback, snap);
         let Some(next) = candidates.iter().find(|h| !chose.contains(&h.address) && !settled.contains(&h.address)).cloned()
         else {
-            let output = snap.default_output.and_then(|id| snap.device(id)).map_or("another output", |d| d.name.as_str());
+            let output = snap.output_device().map_or("another output", |d| d.name.as_str());
             let reason = if chose.contains(&first.address) {
                 format!("the user picked {output}")
             } else {
@@ -140,7 +138,7 @@ impl Engine {
     /// The output moving off a listed headset that is still in CoreAudio, by hand and not by
     /// Cleat: the user chose, and the rest of this playback leaves that alone.
     fn note_output_departure(&mut self, snap: &DeviceSnapshot) {
-        let current = snap.default_output.and_then(|id| snap.device(id)).cloned();
+        let current = snap.output_device().cloned();
         let left = std::mem::replace(&mut self.reclaim.last_output, current.clone());
         let Some(left) = left else { return };
         if current.as_ref().map(|c| &c.uid) == Some(&left.uid) {
@@ -248,7 +246,8 @@ impl Engine {
                 self.reclaim.asked_this_playback.insert(address.into());
                 self.note(&format!("reclaim: {name} <- remote device (hijack accepted)"));
                 self.accept_return(address);
-                for d in RETRY_BEATS_MS {
+                // The beats a device change schedules.
+                for d in RETRY_MS {
                     self.schedule_reconcile(d);
                 }
             }
@@ -334,7 +333,7 @@ impl Engine {
                 _ if now.saturating_sub(r.sent) >= RETURN_TIMEOUT => {
                     if r.accepted {
                         let where_ = if reclaim::is_audio_device(&headset(&r.name, address), snap) {
-                            let output = snap.default_output.and_then(|id| snap.device(id)).map_or("nothing", |d| d.name.as_str());
+                            let output = snap.output_device().map_or("nothing", |d| d.name.as_str());
                             format!("in CoreAudio, the output is {output}")
                         } else {
                             "not in CoreAudio".to_string()

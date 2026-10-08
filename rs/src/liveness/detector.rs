@@ -138,14 +138,14 @@ impl LivenessDetecting for ZeroSignalDetector {
             )
         };
         if status != 0 || proc_id.is_none() {
-            shared.source.cancel();
+            shared.cancel();
             return false;
         }
         // SAFETY: proc_id was just created on this device.
         if unsafe { AudioDeviceStart(self.device_id, proc_id) } != 0 {
             // SAFETY: as above.
             unsafe { AudioDeviceDestroyIOProcID(self.device_id, proc_id) };
-            shared.source.cancel();
+            shared.cancel();
             return false;
         }
         self.running = Some(Running { shared, proc_id });
@@ -160,7 +160,7 @@ impl LivenessDetecting for ZeroSignalDetector {
             AudioDeviceStop(self.device_id, running.proc_id);
             AudioDeviceDestroyIOProcID(self.device_id, running.proc_id);
         }
-        running.shared.source.cancel();
+        running.shared.cancel();
     }
 }
 

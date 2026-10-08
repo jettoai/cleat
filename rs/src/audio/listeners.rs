@@ -98,7 +98,7 @@ struct ListenerCtx {
 pub(super) struct Contexts([&'static ListenerCtx; 7]);
 
 impl Contexts {
-    /// Leaks six small contexts for the life of the process.
+    /// Leaks one small context per kind for the life of the process.
     pub(super) fn new(tx: &Sender<Event>) -> Self {
         Self(ListenerKind::ALL.map(|kind| &*Box::leak(Box::new(ListenerCtx { kind, tx: tx.clone() }))))
     }

@@ -84,16 +84,12 @@ pub fn render_status(
     if alive {
         line(reaction_line(s.performance.as_ref()));
     }
-    if !s.rules.is_empty() {
-        line("rules:".into());
-        for (k, v) in &s.rules {
-            line(format!("  {} {v}", pad(k)));
-        }
-    }
-    if !s.liveness.is_empty() {
-        line("liveness:".into());
-        for (k, v) in &s.liveness {
-            line(format!("  {} {v}", pad(k)));
+    for (title, section) in [("rules:", &s.rules), ("liveness:", &s.liveness)] {
+        if !section.is_empty() {
+            line(title.into());
+            for (k, v) in section {
+                line(format!("  {} {v}", pad(k)));
+            }
         }
     }
     if !s.recent_events.is_empty() {

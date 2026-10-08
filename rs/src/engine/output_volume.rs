@@ -142,7 +142,7 @@ impl Engine {
 
     fn current_output_uid(&self) -> Option<String> {
         let snap = self.system.snapshot(&self.config);
-        snap.default_output.and_then(|id| snap.device(id)).map(|d| d.uid.clone())
+        snap.output_device().map(|d| d.uid.clone())
     }
 
     /// The volume listener: record the reading and judge once it settles. A reading from a
@@ -163,7 +163,7 @@ impl Engine {
         if self.config.hold_against_active().is_empty() {
             return vec![];
         }
-        let Some(device) = snap.default_output.and_then(|id| snap.device(id)).cloned() else { return vec![] };
+        let Some(device) = snap.output_device().cloned() else { return vec![] };
         self.outvol.output_uid = Some(device.uid.clone());
         let now = self.wall();
         self.outvol.ledger.observe(&snap.output_volumes, &device.uid, now);

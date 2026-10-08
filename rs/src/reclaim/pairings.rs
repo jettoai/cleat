@@ -69,28 +69,34 @@ impl BluetoothInventory for SystemProfilerPairings {
 
 /// One reading of the pairing list, or None when the tool failed or did not answer in time.
 pub fn query() -> Option<Vec<BluetoothHeadset>> {
-    let data = run_with_deadline("/usr/sbin/system_profiler", &["SPBluetoothDataType", "-json"], TIMEOUT)?;
-    Some(parse(&data))
+    Some(parse(&profiler_output()?))
+}
+
+/// `system_profiler SPBluetoothDataType -json`, or None when it failed or did not answer in time.
+pub fn profiler_output() -> Option<Vec<u8>> {
+    run_with_deadline("/usr/sbin/system_profiler", &["SPBluetoothDataType", "-json"], TIMEOUT)
 }
 
 /// One `system_profiler SPBluetoothDataType -json` document, as headsets. A device without an
 /// address is skipped: the address is what a request is addressed to.
 pub fn parse(data: &[u8]) -> Vec<BluetoothHeadset> {
+    parse_with(data, |name, address, is_connected, _| BluetoothHeadset { name, address, is_connected })
+}
+
+/// Every paired device with an address, connected ones first: `make` gets the name, the canonical
+/// address, whether it is connected, and the device's own fields.
+pub fn parse_with<T>(data: &[u8], make: impl Fn(String, String, bool, &Value) -> T) -> Vec<T> {
     let Ok(root) = serde_json::from_slice::<Value>(data) else { return vec![] };
     let Some(report) = root.get("SPBluetoothDataType").and_then(|v| v.get(0)) else { return vec![] };
-    let mut headsets = vec![];
+    let mut out = vec![];
     for (key, is_connected) in [("device_connected", true), ("device_not_connected", false)] {
         let Some(entries) = report.get(key).and_then(Value::as_array) else { continue };
         for entry in entries {
             // Each entry is a one-key object: the device name maps to its fields.
             let Some((name, fields)) = entry.as_object().and_then(|o| o.iter().next()) else { continue };
             let Some(address) = fields.get("device_address").and_then(Value::as_str) else { continue };
-            headsets.push(BluetoothHeadset {
-                name: name.clone(),
-                address: BluetoothHeadset::canonical_address(address),
-                is_connected,
-            });
+            out.push(make(name.clone(), BluetoothHeadset::canonical_address(address), is_connected, fields));
         }
     }
-    headsets
+    out
 }

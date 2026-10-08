@@ -102,4 +102,9 @@ impl DeviceSnapshot {
     pub fn device(&self, id: AudioDeviceId) -> Option<&AudioDevice> {
         self.devices.iter().find(|d| d.id == id)
     }
+
+    /// The default output, when it is among the present devices.
+    pub fn output_device(&self) -> Option<&AudioDevice> {
+        self.default_output.and_then(|id| self.device(id))
+    }
 }
