@@ -1,5 +1,6 @@
 //! Rule 4: the priority list for outputs. A Bluetooth output is outside this rule while headphone
 //! takeover is on; a blocked current output is evicted even when the list has run out.
+//! A blocked device is never the target, even when it is also on the priority list.
 
 use super::headphones_takeover::owns;
 use crate::config::Config;
@@ -14,7 +15,7 @@ pub fn reconcile(snapshot: &DeviceSnapshot, config: &Config) -> Vec<Action> {
     let Some(current_id) = snapshot.default_output else { return vec![] };
     let Some(current) = snapshot.device(current_id) else { return vec![] };
 
-    let Some(target) = listed.iter().find(|d| !owns(d, config)) else {
+    let Some(target) = listed.iter().find(|d| !owns(d, config) && !d.is_listed(&config.blocked_output)) else {
         return evict_blocked(current, snapshot, config, !listed.is_empty());
     };
     if current_id == target.id || owns(current, config) {

@@ -139,3 +139,38 @@ fn canonical_address_normalises_what_the_bluetooth_pane_shows() {
     assert_eq!(BluetoothHeadset::canonical_address("70-f9-4a-b6-0c-c9"), AIR_PODS_ADDRESS);
     assert_eq!(BluetoothHeadset::canonical_address(AIR_PODS_ADDRESS), AIR_PODS_ADDRESS);
 }
+
+// A headset on blockedOutput is "never this one" for the output: it is not asked back either.
+
+fn blocked_headset_config(blocked: &[&str]) -> Config {
+    Config {
+        output: s(&["MacBook Pro Speakers"]),
+        blocked_output: s(blocked),
+        reclaim: s(&["AirPods Max"]),
+        ..Config::default()
+    }
+}
+
+#[test]
+fn headset_blocked_by_name_is_not_asked_back() {
+    let snap = playing(vec![mac_speakers()]);
+    assert_eq!(reconcile(&snap, &[connected_air_pods()], &blocked_headset_config(&["AirPods Max"]), &none()), vec![]);
+}
+
+#[test]
+fn headset_blocked_by_address_is_not_asked_back() {
+    let snap = playing(vec![mac_speakers()]);
+    let config = blocked_headset_config(&["70-f9-4a-b6-0c-c9"]);
+    assert_eq!(reconcile(&snap, &[connected_air_pods()], &config, &none()), vec![]);
+}
+
+#[test]
+fn blocking_one_headset_still_asks_for_the_other() {
+    let snap = playing(vec![mac_speakers()]);
+    let mut config = blocked_headset_config(&["AirPods Max"]);
+    config.reclaim = s(&["AirPods Max", "AirPods Pro"]);
+    assert_eq!(
+        reconcile(&snap, &[connected_air_pods(), connected_air_pods_pro()], &config, &none()),
+        vec![request(&connected_air_pods_pro())]
+    );
+}

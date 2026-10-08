@@ -1,5 +1,6 @@
 //! Rule 1 (with the rule 2 gate): keep the default input on the most preferred microphone that is
 //! plugged in and sending signal, but only move off a device that is itself listed or blocked.
+//! A blocked device is never the target, even when it is also on the priority list.
 
 use crate::config::Config;
 use crate::model::{Action, DeviceSnapshot, Liveness};
@@ -12,6 +13,7 @@ pub fn reconcile(snapshot: &DeviceSnapshot, config: &Config) -> Vec<Action> {
         .input
         .iter()
         .filter_map(|e| snapshot.device_matching(e, true))
+        .filter(|c| !c.is_listed(&config.blocked_input))
         .find(|c| match snapshot.liveness.get(&c.uid) {
             Some(Liveness::Silent) => false,
             Some(Liveness::Measuring) => Some(c.id) == snapshot.default_input,
