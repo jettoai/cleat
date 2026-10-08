@@ -15,7 +15,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSEdgeInsets, NSIndexSet, NSInteger, NSNotification, NSNotificationCenter, NSPoint, NSRange, NSRect, NSSize};
 
 use super::super::text::Page;
-use super::widgets::{to_view, body, ns, overflowing_icon, stack};
+use super::widgets::{to_view, body, label, ns, overflowing_icon, regular, stack};
 use super::{app, App};
 
 pub struct SidebarIvars {
@@ -116,6 +116,24 @@ fn scroll(mtm: MainThreadMarker) -> Retained<NSScrollView> {
     s
 }
 
+/// The sidebar list with the attribution line under it, 11 pt secondary (Tally's settings About row).
+fn with_byline(mtm: MainThreadMarker, list: &NSScrollView) -> Retained<NSView> {
+    let version = crate::identity::Identity::current().version();
+    let byline = label(mtm, &super::super::text::byline(&version), 11.0, regular(), &NSColor::secondaryLabelColor());
+    let side = NSView::new(mtm);
+    for v in [to_view(list), to_view(&byline)] {
+        v.setTranslatesAutoresizingMaskIntoConstraints(false);
+        side.addSubview(&v);
+    }
+    list.topAnchor().constraintEqualToAnchor(&side.topAnchor()).setActive(true);
+    list.leadingAnchor().constraintEqualToAnchor(&side.leadingAnchor()).setActive(true);
+    list.trailingAnchor().constraintEqualToAnchor(&side.trailingAnchor()).setActive(true);
+    list.bottomAnchor().constraintEqualToAnchor_constant(&byline.topAnchor(), -8.0).setActive(true);
+    byline.leadingAnchor().constraintEqualToAnchor_constant(&side.leadingAnchor(), 16.0).setActive(true);
+    byline.bottomAnchor().constraintEqualToAnchor_constant(&side.bottomAnchor(), -12.0).setActive(true);
+    side
+}
+
 /// Builds the window and keeps the sidebar's delegate alive in the returned tuple.
 pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     let mtm = app.mtm;
@@ -167,9 +185,10 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     table.selectRowIndexes_byExtendingSelection(&NSIndexSet::indexSetWithIndex(index as _), false);
     let side_scroll = scroll(mtm);
     side_scroll.setDocumentView(Some(&table));
+    let side = with_byline(mtm, &side_scroll);
 
     let split = NSSplitViewController::new(mtm);
-    let side_item = NSSplitViewItem::sidebarWithViewController(&controller(mtm, &side_scroll));
+    let side_item = NSSplitViewItem::sidebarWithViewController(&controller(mtm, &side));
     side_item.setMinimumThickness(140.0);
     side_item.setMaximumThickness(240.0);
     side_item.setCanCollapse(false);

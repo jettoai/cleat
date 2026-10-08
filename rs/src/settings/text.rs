@@ -196,3 +196,11 @@ pub fn device_symbol(name: &str, transport: Option<u32>, side: Side) -> &'static
         "hifispeaker"
     }
 }
+
+/// The attribution line under the settings sidebar.
+pub fn byline(version: &str) -> String {
+    format!("Cleat {version} · {BYLINE_CREDIT}")
+}
+
+/// The attribution, also the About panel's credits.
+pub const BYLINE_CREDIT: &str = "by Jetto";

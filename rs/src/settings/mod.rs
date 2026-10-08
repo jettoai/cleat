@@ -3,6 +3,7 @@
 
 pub mod document;
 pub mod draft;
+pub mod single;
 pub mod sources;
 pub mod store;
 pub mod text;
@@ -15,7 +16,10 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSMenu, NSMenuItem};
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy, NSApplicationDelegate, NSMenu,
+    NSMenuItem, NSRunningApplication,
+};
 use objc2_foundation::{NSNotification, NSTimer};
 
 use ui::widgets::ns;
@@ -63,6 +67,21 @@ pub fn run(args: &[String]) -> i32 {
         return 2;
     }
     let mtm = MainThreadMarker::new().expect("settings must run on the main thread");
+    // Held until `run` returns, i.e. for the life of the window. No lock (I/O error) opens anyway:
+    // two windows beat a settings window that will not open.
+    let _lock = match single::acquire(&crate::config::paths::support_dir().join("settings.lock")) {
+        Ok(single::Lock::Held(f)) => Some(f),
+        Ok(single::Lock::TakenBy(pid)) => {
+            if let Some(app) = pid.and_then(NSRunningApplication::runningApplicationWithProcessIdentifier) {
+                app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
+            }
+            return 0;
+        }
+        Err(e) => {
+            eprintln!("cleat settings: no lock ({e}), opening anyway");
+            None
+        }
+    };
     App::install(mtm);
     let application = NSApplication::sharedApplication(mtm);
     application.setActivationPolicy(NSApplicationActivationPolicy::Regular);
@@ -84,13 +103,12 @@ fn open_window() {
     window.makeKeyAndOrderFront(None);
     let application = NSApplication::sharedApplication(a.mtm);
     application.activate();
-    // Screenshot runs start from a shell that is not frontmost, where `activate` is only a
-    // request; a debug build asked for a page takes the front so controls draw as key.
-    if ui::window::debug_env("CLEAT_SETTINGS_PAGE").is_some() {
-        #[allow(deprecated)]
-        application.activateIgnoringOtherApps(true);
-        window.makeKeyAndOrderFront(None);
-    }
+    // `activate` is only a request since macOS 14, and the daemon's menu (an accessory app that is
+    // never active) cannot yield the front to us: opened from the menu, the window landed behind
+    // the frontmost app (B-1222). Take the front, as a window a person just asked for should.
+    #[allow(deprecated)]
+    application.activateIgnoringOtherApps(true);
+    window.makeKeyAndOrderFront(None);
     // Swift opens with the window itself focused (grey selection); AppKit would hand the list,
     // the first key view, focus at once. A click on the list still takes it, for ↑/↓.
     window.makeFirstResponder(None);

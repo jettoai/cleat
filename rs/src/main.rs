@@ -1,7 +1,8 @@
 //! One binary, two jobs (Swift `main.swift`). A bare launch, or one with flag-shaped arguments only
 //! (LaunchServices passes `-psn_...`), is the daemon, unless a person opened the app while the
 //! launchd daemon exists: that opens the settings window (`opened_by_hand`). A first argument that
-//! is a word is a CLI subcommand. `run --observe [--trace]` is the observe-only daemon.
+//! is a word is a CLI subcommand. `run --observe [--trace]` is the observe-only daemon. The enforcing
+//! daemon shows a menu bar item.
 
 use std::process::ExitCode;
 use std::sync::mpsc;
@@ -103,8 +104,14 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
     if !observe {
         microphone::request(microphone_tx);
     }
-    // The HAL delivers listener callbacks through the main run loop.
-    CFRunLoop::run();
+    if observe {
+        // The HAL delivers listener callbacks through the main run loop.
+        CFRunLoop::run();
+    } else {
+        // NSApplication runs the same main run loop, plus the menu bar item.
+        let mtm = objc2::MainThreadMarker::new().expect("the daemon runs on the main thread");
+        cleat_rs::app::menubar::run(mtm);
+    }
     ExitCode::SUCCESS
 }
 

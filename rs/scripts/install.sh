@@ -26,6 +26,9 @@ codesign --verify --strict "$DEST"
 
 plutil -remove Program "$PLIST" 2>/dev/null || true
 plutil -replace ProgramArguments -json "[\"$DEST/Contents/MacOS/Cleat-rs\"]" "$PLIST"
+# A clean quit (the menu's 結束 Cleat) stays down, anything else is restarted: the same KeepAlive as
+# bundle/LaunchAgent.plist.in.
+plutil -replace KeepAlive -json '{"SuccessfulExit":false}' "$PLIST"
 plutil -lint "$PLIST"
 
 # bootout returns before the job is gone; bootstrap on a job still unloading fails with

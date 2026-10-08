@@ -27,6 +27,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/
 
 cp "$RS/target/release/cleat-rs" "$APP/Contents/MacOS/$EXE"
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# The menu bar icon (src/app/menubar.rs ICON_RESOURCE): replace bundle/MenuBarIcon* to change it.
+for f in bundle/MenuBarIcon*; do
+    [ -f "$f" ] || continue
+    cp "$f" "$APP/Contents/Resources/"
+done
 sed -e "s/@LABEL@/$LABEL/" -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$BUILD/" \
     bundle/Info.plist.in > "$APP/Contents/Info.plist"
 sed -e "s/@LABEL@/$LABEL/" -e "s|@PROGRAM@|Contents/MacOS/$EXE|" \

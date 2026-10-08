@@ -1,7 +1,7 @@
 use cleat_rs::model::{TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN, TRANSPORT_DISPLAY_PORT};
 use cleat_rs::settings::draft::Side;
 use cleat_rs::settings::sources::{last_revert, parse_paired};
-use cleat_rs::settings::text::{balance_describe, cpu_text, device_symbol, memory_text, now_text};
+use cleat_rs::settings::text::{balance_describe, byline, cpu_text, device_symbol, memory_text, now_text};
 
 #[test]
 fn balance_in_words() {
@@ -46,4 +46,9 @@ fn paired_devices_carry_their_class() {
 fn last_revert_is_optional() {
     assert_eq!(last_revert(br#"{"outputVolume":{"lastRevert":"13:40 x"}}"#).as_deref(), Some("13:40 x"));
     assert_eq!(last_revert(br#"{"pid":1}"#), None);
+}
+
+#[test]
+fn byline_names_jetto() {
+    assert_eq!(byline("0.1.0"), "Cleat 0.1.0 · by Jetto");
 }

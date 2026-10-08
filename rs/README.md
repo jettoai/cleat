@@ -27,6 +27,12 @@ job, it starts the daemon. Launch that way with a clean environment
 (`env -i HOME="$HOME" PATH=/usr/bin:/bin open -g …`): `open` passes the caller's environment to
 the app.
 
+The daemon shows a menu bar item (icon: `bundle/MenuBarIcon.png` and `@2x`, copied into the bundle
+by `scripts/bundle.sh`; replace them to change it). Its menu shows the current devices, opens the
+settings window (one at a time), shows About, and quits. Quit stays down until the next login or
+until the app is opened again; install.sh sets the agent's `KeepAlive` to `SuccessfulExit` false
+for that.
+
 `bash scripts/install.sh` copies `target/bundle.noindex/Cleat-rs.app` to `/Applications/Cleat-rs.app` (beside the
 Swift `Cleat.app`), where Raycast finds it, points the existing `~/Library/LaunchAgents/ai.jetto.cleat.rs.plist` at that
 copy and restarts the daemon. The bundle is ad-hoc signed, so a rebuilt one may ask for the
