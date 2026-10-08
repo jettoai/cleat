@@ -216,7 +216,7 @@ final class ReclaimTests: XCTestCase {
     /// change what the rule does, because the same headset cannot be asked for again until the
     /// window is up.
     func testPairingListIsReusedForAsLongAsARequestIsThrottled() {
-        let clock = World.Clock()
+        let clock = ReclaimWorld.Clock()
         let reader = ListReader(answer: [connectedAirPods])
         let pairings = SystemProfilerPairings(now: { clock.now }, read: { reader.read() })
 
@@ -236,7 +236,7 @@ final class ReclaimTests: XCTestCase {
     /// A reading that failed is not an answer to hold on to: remembering it would tell the rule
     /// this Mac has no paired headsets for the next half minute.
     func testFailedPairingListIsNotRemembered() {
-        let clock = World.Clock()
+        let clock = ReclaimWorld.Clock()
         let reader = ListReader(answer: nil)
         let pairings = SystemProfilerPairings(now: { clock.now }, read: { reader.read() })
 
@@ -255,7 +255,7 @@ final class ReclaimTests: XCTestCase {
     /// pairings apart from a report Cleat could recognise nothing in, and the cheap direction to
     /// be wrong in is asking again on the next beat.
     func testEmptyPairingListIsNotRemembered() {
-        let clock = World.Clock()
+        let clock = ReclaimWorld.Clock()
         let reader = ListReader(answer: [])
         let pairings = SystemProfilerPairings(now: { clock.now }, read: { reader.read() })
 
@@ -320,7 +320,7 @@ final class ReclaimTests: XCTestCase {
     /// The whole life of one reclaim: the request goes out once, the answer is logged once, and
     /// the beats that follow do not ask again while the throttle holds.
     func testAcceptedHijackIsLoggedOnceAndThenThrottled() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
 
         world.start()
@@ -342,7 +342,7 @@ final class ReclaimTests: XCTestCase {
     /// anyway, and beats are frequent - every liveness flip is one. The cheap question is asked
     /// before the expensive one, and the moment the Mac plays, the next beat asks properly.
     func testSilentMacIsNotWorthReadingThePairingListFor() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.system.snapshotValue.outputRunning = false
 
         world.start()
@@ -363,7 +363,7 @@ final class ReclaimTests: XCTestCase {
     /// (301) or on a call (501). Raising it to 301 would win the headset off a phone that is
     /// playing and lose it again the moment that phone asks back.
     func testRequestCarriesTheHijackScoreAndReason() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
 
         world.start()
@@ -378,7 +378,7 @@ final class ReclaimTests: XCTestCase {
     /// The phone is playing and wins. One line, not one per beat, and a full backoff before the
     /// next attempt - and when the phone finally lets go, the line is worth writing again.
     func testRemoteHoldIsLoggedOncePerSpellAndBacksOff() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(
             action: 0, reason: "Rejected, Remote Category 301 > Local Category 200, audio streaming"
         )
@@ -416,7 +416,7 @@ final class ReclaimTests: XCTestCase {
     /// "It was already here" is the answer on every machine where nothing is wrong, so it must be
     /// silent: a line every time the Mac starts playing would be a log nobody reads.
     func testAlreadyRoutedIsNotLogged() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(action: 1, reason: "Device already routed")
 
         world.start()
@@ -427,7 +427,7 @@ final class ReclaimTests: XCTestCase {
     /// A request of ours that is still running is not a reason to wait: the throttle is dropped so
     /// the next beat asks again, and nothing is written about it.
     func testBusyAnswerClearsTheThrottleAndSaysNothing() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(action: 0, reason: "Previous hijack hasn't finished")
 
         world.start()
@@ -441,7 +441,7 @@ final class ReclaimTests: XCTestCase {
     /// A request the daemon never answers is a request that must expire. The reply is an XPC
     /// message like any other; if it is lost, the headset was blocked until the next restart.
     func testUnansweredRequestStopsBlockingAfterTheInterval() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         // No answer at all - the routing daemon takes the request and says nothing.
         world.routing.answer = nil
 
@@ -463,7 +463,7 @@ final class ReclaimTests: XCTestCase {
     func testBackedOffHeadsetDoesNotStarveTheOtherOne() throws {
         var config = self.config
         config.reclaim = ["AirPods Max", "AirPods Pro"]
-        let world = try World(config: config, headsets: [connectedAirPodsPro, connectedAirPods])
+        let world = try ReclaimWorld(config: config, headsets: [connectedAirPodsPro, connectedAirPods])
         world.routing.answer = RouteResponse(
             action: 0, reason: "Rejected, Remote Category 301 > Local Category 200, audio streaming"
         )
@@ -480,7 +480,7 @@ final class ReclaimTests: XCTestCase {
     /// A macOS without the routing class turns the rule off: one line, and nothing is ever asked.
     /// The status line says so too, so `cleat status` does not read as "on" while it is inert.
     func testUnavailableRoutingIsReportedOnceAndNeverAsks() throws {
-        let world = try World(config: config, routing: FakeRouting(available: false))
+        let world = try ReclaimWorld(config: config, routing: FakeRouting(available: false))
 
         world.start()
         world.reconcile()
@@ -497,7 +497,7 @@ final class ReclaimTests: XCTestCase {
     /// With no `reclaim` list the rule costs nothing: the pairing list is not even read, and the
     /// status line says off rather than naming a device.
     func testRuleOffDoesNotTouchBluetooth() throws {
-        let world = try World(config: Config(launchAtLogin: false))
+        let world = try ReclaimWorld(config: Config(launchAtLogin: false))
 
         world.start()
 
@@ -509,7 +509,7 @@ final class ReclaimTests: XCTestCase {
     func testStatusNamesTheListedHeadsets() throws {
         var config = self.config
         config.reclaim = ["AirPods Max", "70:F9:4A:B6:0C:C9"]
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(action: 1, reason: "Device already routed")
 
         world.start()
@@ -525,7 +525,7 @@ final class ReclaimTests: XCTestCase {
     /// A new reason is a new line; the same reason again is not. The first refusal used to mute
     /// every later one until the headset came back, so an evening of refusals left no trace.
     func testChangedReasonIsLoggedAgain() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = Self.outOfEar
 
         world.start()
@@ -545,7 +545,7 @@ final class ReclaimTests: XCTestCase {
     /// Buds out of ear is over the moment they go back in, and that is not a CoreAudio event:
     /// the retry schedules its own beat, every few seconds, for a few minutes and no longer.
     func testOutOfEarRetriesSoonForAWhileThenBacksOff() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = Self.outOfEar
 
         world.start()
@@ -578,7 +578,7 @@ final class ReclaimTests: XCTestCase {
 
     /// The Mac going quiet ends the run; the next refusal after it starts a fresh window.
     func testStoppingPlaybackReopensTheRetryWindow() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = Self.outOfEar
 
         world.start()
@@ -598,7 +598,7 @@ final class ReclaimTests: XCTestCase {
     /// macOS moving the headset back by itself sends no `routed` answer; the headset turning up in
     /// CoreAudio has to end the spell anyway, or the evening's refusal reads as the morning's.
     func testHeadsetComingBackOnItsOwnEndsTheSpell() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = Self.outOfEar
 
         world.start()
@@ -616,7 +616,7 @@ final class ReclaimTests: XCTestCase {
     /// The same, hours apart and with the Mac playing throughout: the old retry window is spent,
     /// and the headset having been back is what opens a new one.
     func testHeadsetComingBackOnItsOwnReopensTheRetryWindow() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = Self.outOfEar
 
         world.start()
@@ -637,7 +637,7 @@ final class ReclaimTests: XCTestCase {
 
     /// A call outranks this Mac by design, and the log says so rather than leaving it to guess.
     func testCallHoldSaysCleatYieldsByDesign() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = Self.onACall
 
         world.start()
@@ -652,17 +652,15 @@ final class ReclaimTests: XCTestCase {
     // MARK: - A headset that is here but not the output
 
     /// 2026-10-07: music on the external headphones, AirPods Max in CoreAudio and connected, and
-    /// nothing asked for them. The first beat of a playback asks; whatever the answer, the rest of
-    /// that playback leaves the user's choice of output alone.
+    /// nothing asked for them. The first beat of a playback asks; once the daemon says the Mac has
+    /// the headset, the rest of that playback leaves the user's choice of output alone.
     func testHeadsetHereButNotChosenIsAskedOncePerPlayback() throws {
         let answers: [RouteResponse] = [
             RouteResponse(action: 1, reason: "Tipi device hijack was successful"),
             RouteResponse(action: 1, reason: "Device already routed"),
-            Self.onACall,
-            RouteResponse(action: 0, reason: "Something final"),
         ]
         for answer in answers {
-            let world = try World(config: config)
+            let world = try ReclaimWorld(config: config)
             world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
             world.routing.answer = answer
 
@@ -676,9 +674,45 @@ final class ReclaimTests: XCTestCase {
         }
     }
 
+    /// A phone that keeps the headset (media, a call) or a refusal that is not about to change is
+    /// not the Mac having it: the headset is asked for again once the backoff is over, and the
+    /// reason is said once.
+    func testHeadsetHereAndHeldOrRefusedIsAskedAgainAfterTheBackoff() throws {
+        for answer in [Self.onACall, RouteResponse(action: 0, reason: "Something final")] {
+            let world = try ReclaimWorld(config: config)
+            world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
+            world.routing.answer = answer
+
+            world.start()
+            for _ in 0..<10 {
+                world.advance(Engine.reclaimBackoff + 1)
+                world.reconcile()
+            }
+            XCTAssertEqual(world.routing.addresses.count, 11, "\(answer)")
+            XCTAssertEqual(world.lines { $0.contains("reclaim:") }, 1, "\(answer)")
+        }
+    }
+
+    /// The daemon refusing because someone routed the headset by hand a moment ago. Cleat cannot
+    /// tell whether that someone was the user at this Mac, so it does not retry soon to win it
+    /// back: the ordinary backoff applies.
+    func testTooSoonAfterAManualRouteBacksOff() throws {
+        let world = try ReclaimWorld(config: config)
+        world.routing.answer = RouteResponse(action: 0, reason: "Too soon since last manual route")
+
+        world.start()
+        XCTAssertEqual(world.routing.addresses.count, 1)
+        world.advance(Engine.reclaimRetryDelay + 1)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 1)
+        world.advance(Engine.reclaimBackoff)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, 2)
+    }
+
     /// Playback stops and starts again: a new playback is a new chance to switch over.
     func testHeadsetHereButNotChosenIsAskedAgainNextPlayback() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
         world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
 
@@ -694,11 +728,11 @@ final class ReclaimTests: XCTestCase {
         XCTAssertEqual(world.routing.addresses.count, 2)
     }
 
-    /// Out of ear on a headset that is here: the short retries still run, and stop when the window
-    /// is spent. Every beat in between sees the headset in CoreAudio, and none of them may reset
-    /// the window, or the retries never end.
-    func testHeadsetHereButNotChosenRetriesShortRefusalsWithinTheWindowOnly() throws {
-        let world = try World(config: config)
+    /// Out of ear on a headset that is here: the short retries still run, and once the window is
+    /// spent the refusal waits out the ordinary backoff. Every beat in between sees the headset in
+    /// CoreAudio, and none of them may reset the window, or the retries never end.
+    func testHeadsetHereButNotChosenRetriesShortRefusalsWithinTheWindowThenBacksOff() throws {
+        let world = try ReclaimWorld(config: config)
         world.system.snapshotValue.devices = [Fixture.macStudioSpeakers, Fixture.airPods]
         world.routing.answer = Self.outOfEar
 
@@ -710,23 +744,26 @@ final class ReclaimTests: XCTestCase {
         world.reconcile()
         XCTAssertEqual(world.routing.addresses.count, 2)
 
-        for _ in 0..<60 {
+        for _ in 0..<Int(Engine.reclaimRetrySpan / (Engine.reclaimRetryDelay + 0.5)) + 1 {
             world.advance(Engine.reclaimRetryDelay + 0.5)
             world.reconcile()
         }
         let windowRetries = Int(Engine.reclaimRetrySpan / Engine.reclaimRetryDelay) + 2
         XCTAssertLessThanOrEqual(world.routing.addresses.count, windowRetries)
         let spent = world.routing.addresses.count
-        world.advance(600)
+        world.advance(Engine.reclaimRetryDelay + 1)
         world.reconcile()
         XCTAssertEqual(world.routing.addresses.count, spent)
+        world.advance(Engine.reclaimBackoff)
+        world.reconcile()
+        XCTAssertEqual(world.routing.addresses.count, spent + 1)
         XCTAssertEqual(world.lines { $0.contains("out of ear") }, 1)
     }
 
     /// The headset becoming the output ends the spell even while playback goes on: no request,
     /// and the next refusal is a new one with a fresh window and its own log line.
     func testHeadsetBecomingTheOutputIsNotAskedForAndEndsTheSpell() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = Self.outOfEar
 
         world.start()
@@ -750,7 +787,7 @@ final class ReclaimTests: XCTestCase {
     /// Playback starts on the headset and the user moves the output to the speakers: the headset
     /// was never asked for, but it was in use, so the rest of that playback leaves the choice alone.
     func testHeadsetSwitchedAwayFromMidPlaybackIsNotAskedFor() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
         world.system.snapshotValue.devices = [Fixture.airPods, Fixture.macStudioSpeakers]
         world.system.snapshotValue.defaultOutput = Fixture.airPods.id
@@ -767,7 +804,7 @@ final class ReclaimTests: XCTestCase {
     /// Playback starts on the headset and the phone takes it: the headset leaves CoreAudio, and
     /// the Mac, still playing, asks for it back on the usual cadence.
     func testHeadsetTakenByThePhoneMidPlaybackIsStillAskedFor() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = nil
         world.system.snapshotValue.devices = [Fixture.airPods, Fixture.macStudioSpeakers]
         world.system.snapshotValue.defaultOutput = Fixture.airPods.id
@@ -784,7 +821,7 @@ final class ReclaimTests: XCTestCase {
 
     /// The user's switch away from the headset lasts one playback: the next one asks again.
     func testHeadsetSwitchedAwayFromIsAskedAgainNextPlayback() throws {
-        let world = try World(config: config)
+        let world = try ReclaimWorld(config: config)
         world.routing.answer = RouteResponse(action: 1, reason: "Tipi device hijack was successful")
         world.system.snapshotValue.devices = [Fixture.airPods, Fixture.macStudioSpeakers]
         world.system.snapshotValue.defaultOutput = Fixture.airPods.id
@@ -803,128 +840,6 @@ final class ReclaimTests: XCTestCase {
 
     // MARK: - Harness
 
-    /// An engine with every outside edge replaced: the audio system, the routing daemon, the
-    /// pairing list, the clock and all three files.
-    private final class World {
-
-        let routing: FakeRouting
-        let bluetooth: FakePairings
-        let system: FakeAudioSystem
-        let engine: Engine
-
-        private let directory: URL
-        private let statusURL: URL
-        private let logURL: URL
-        private let clock = Clock()
-
-        /// The engine reads the time through a closure, so the throttle and the backoff can be
-        /// walked forward a minute at a time without the test taking a minute.
-        final class Clock: @unchecked Sendable {
-            var now = Date(timeIntervalSince1970: 1_700_000_000)
-        }
-
-        init(
-            config: Config,
-            routing: FakeRouting = FakeRouting(available: true),
-            headsets: [BluetoothHeadset] = [
-                BluetoothHeadset(name: "AirPods Max", address: "70:F9:4A:B6:0C:C9", isConnected: true)
-            ]
-        ) throws {
-            directory = URL(fileURLWithPath: NSTemporaryDirectory())
-                .appendingPathComponent("cleat-reclaim-tests-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let configURL = directory.appendingPathComponent("config.json")
-            statusURL = directory.appendingPathComponent("status.json")
-            logURL = directory.appendingPathComponent("cleat.log")
-
-            var config = config
-            // The test host is a real app bundle; leaving this on would have the engine talk to
-            // SMAppService about it.
-            config.launchAtLogin = false
-            try JSONEncoder().encode(config).write(to: configURL)
-
-            self.routing = routing
-            bluetooth = FakePairings(headsets: headsets)
-            // Playing through the Mac's own speakers, with the headset absent from CoreAudio.
-            system = FakeAudioSystem(snapshot: DeviceSnapshot(
-                devices: [Fixture.macStudioSpeakers],
-                defaultOutput: Fixture.macStudioSpeakers.id,
-                outputRunning: true
-            ))
-
-            let clock = self.clock
-            engine = Engine(
-                system: system,
-                log: EventLog(
-                    url: logURL, rotatedURL: directory.appendingPathComponent("cleat.log.1")
-                ),
-                configURL: configURL,
-                statusURL: statusURL,
-                makeDetector: { device, _, zeroSeconds, _, _ in
-                    DetectorLog(startResults: [true]).make(device: device, zeroSeconds: zeroSeconds)
-                },
-                routing: routing,
-                bluetooth: bluetooth,
-                now: { clock.now }
-            )
-        }
-
-        deinit {
-            try? FileManager.default.removeItem(at: directory)
-        }
-
-        func start() {
-            engine.start(microphone: .denied("no microphone in tests"))
-            engine.queue.sync {}
-        }
-
-        func reconcile() {
-            engine.queue.sync { engine.reconcile() }
-        }
-
-        func advance(_ seconds: TimeInterval) {
-            clock.now = clock.now.addingTimeInterval(seconds)
-        }
-
-        func lines(_ matching: (String) -> Bool) -> Int {
-            EventLog.tail(1_000, url: logURL).filter(matching).count
-        }
-
-        func status() -> Status? {
-            StatusStore.read(from: statusURL)
-        }
-    }
-
-    /// The routing daemon as one canned answer, delivered synchronously on the caller's queue -
-    /// which is the engine queue, exactly where the real client delivers it.
-    private final class FakeRouting: RouteRequesting, @unchecked Sendable {
-
-        let isAvailable: Bool
-        /// nil means the request is never answered, which is how a lost reply is tested.
-        var answer: RouteResponse?
-        private(set) var addresses: [String] = []
-        private(set) var scores: [Int32] = []
-        private(set) var reasons: [String] = []
-
-        init(available: Bool) {
-            isAvailable = available
-        }
-
-        func request(
-            address: String,
-            score: Int32,
-            reason: String,
-            queue: DispatchQueue,
-            completion: @escaping @Sendable (RouteResponse) -> Void
-        ) {
-            addresses.append(address)
-            scores.append(score)
-            reasons.append(reason)
-            guard let answer else { return }
-            completion(answer)
-        }
-    }
-
     /// One reading of the pairing list, counted. `answer` is what the tool would have printed,
     /// and nil is a tool that failed.
     private final class ListReader: @unchecked Sendable {
@@ -939,21 +854,6 @@ final class ReclaimTests: XCTestCase {
         func read() -> [BluetoothHeadset]? {
             reads += 1
             return answer
-        }
-    }
-
-    private final class FakePairings: BluetoothInventory, @unchecked Sendable {
-
-        var headsets: [BluetoothHeadset]
-        private(set) var reads = 0
-
-        init(headsets: [BluetoothHeadset]) {
-            self.headsets = headsets
-        }
-
-        func pairedHeadsets() -> [BluetoothHeadset] {
-            reads += 1
-            return headsets
         }
     }
 }

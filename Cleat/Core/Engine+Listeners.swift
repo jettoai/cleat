@@ -26,6 +26,7 @@ extension Engine {
 
     private func devicesChanged() {
         note("devices: list changed")
+        checkReturnsNow()
         rebindDevices()
         scheduleReconcile(after: Engine.settleBeat)
         Engine.retryBeats.forEach(scheduleReconcile(after:))
@@ -38,6 +39,7 @@ extension Engine {
     }
 
     private func defaultOutputChanged() {
+        checkReturnsNow()
         // The balance listener is bound to a specific device, so it moves with the default output.
         rebindDevices()
         Engine.retryBeats.forEach(scheduleReconcile(after:))
@@ -54,6 +56,7 @@ extension Engine {
         let snapshot = system.snapshot(config: config)
         attachDeviceListeners(snapshot)
         syncLivenessDetectors(snapshot)
+        syncOutputVolumeSource()
     }
 
     private func attachDeviceListeners(_ snapshot: DeviceSnapshot) {
@@ -67,7 +70,10 @@ extension Engine {
                 scope: kAudioObjectPropertyScopeOutput,
                 element: kAudioObjectPropertyElementMain,
                 queue: queue
-            ) { [weak self] in self?.scheduleReconcile(after: 0) })
+            ) { [weak self] in
+                self?.balanceChangedAt = .now()
+                self?.scheduleReconcile(after: Engine.balanceSettle)
+            })
         }
 
         // "Is anything playing" is a property of whichever device holds the output, so this
@@ -82,6 +88,20 @@ extension Engine {
                 element: kAudioObjectPropertyElementMain,
                 queue: queue
             ) { [weak self] in self?.scheduleReconcile(after: 0) })
+        }
+
+        // The output volume hold judges a change once it has settled, so a listener per element:
+        // AirPods Max have no main volume element and report each channel instead.
+        if !config.outputVolumeHoldAgainst.isEmpty, let output = snapshot.defaultOutput {
+            for element in [kAudioObjectPropertyElementMain, 1, 2] {
+                deviceTokens.append(system.addDeviceListener(
+                    device: output,
+                    selector: kAudioDevicePropertyVolumeScalar,
+                    scope: kAudioObjectPropertyScopeOutput,
+                    element: AudioObjectPropertyElement(element),
+                    queue: queue
+                ) { [weak self] in self?.outputVolumeChanged(output) })
+            }
         }
 
         // Every device the volume rule has a target for, which with a `"*"` wildcard is every

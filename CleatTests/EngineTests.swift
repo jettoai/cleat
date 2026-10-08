@@ -1,3 +1,4 @@
+import AudioToolbox
 import CoreAudio
 import XCTest
 @testable import Cleat
@@ -335,6 +336,7 @@ final class EngineTests: XCTestCase {
     /// without being the only attempt; the settle beat and everything after it consume.
     func testOnlyTheSettleBeatAndLaterConsumeArrivals() {
         XCTAssertFalse(Engine.consumesArrivals(after: 0))
+        XCTAssertFalse(Engine.consumesArrivals(after: Engine.balanceSettle))
         XCTAssertTrue(Engine.consumesArrivals(after: Engine.settleBeat))
         for beat in Engine.retryBeats {
             XCTAssertTrue(Engine.consumesArrivals(after: beat), "beat \(beat)")
@@ -717,6 +719,86 @@ final class EngineTests: XCTestCase {
         return engine
     }
 
+    // MARK: - Balance settle
+
+    /// AirPods Max have no main volume element, so their balance is read off the two channel
+    /// volumes, and an app changing the volume writes left and right separately - Parallels was
+    /// seen 238ms apart. Judged between the two writes the balance looks off; a beat that waits
+    /// for the second write sees a volume change and leaves it alone.
+    func testVolumeWrittenOneChannelAtATimeIsNotTakenForABalanceShift() throws {
+        let (system, engine) = try startBalanceLock()
+
+        engine.queue.async {
+            system.snapshotValue.outputBalance = 0.36
+            system.fire(kAudioHardwareServiceDeviceProperty_VirtualMainBalance)
+        }
+        engine.queue.asyncAfter(deadline: .now() + 0.24) {
+            system.snapshotValue.outputBalance = 0.5
+            system.fire(kAudioHardwareServiceDeviceProperty_VirtualMainBalance)
+        }
+        waitOnQueue(engine, seconds: 1)
+
+        XCTAssertEqual(system.writes, [])
+        XCTAssertEqual(logLines().filter { $0.contains("balance:") }, [])
+    }
+
+    /// The settle beat is not the only pass that reads the balance: the input volume and "is
+    /// anything playing" listeners ask for a zero-delay pass, and one landing between the two
+    /// channel writes must not correct the half-written balance either.
+    func testUnrelatedBeatBetweenTheChannelWritesLeavesTheBalanceAlone() throws {
+        let (system, engine) = try startBalanceLock()
+
+        engine.queue.async {
+            system.snapshotValue.outputBalance = 0.36
+            system.fire(kAudioHardwareServiceDeviceProperty_VirtualMainBalance)
+        }
+        engine.queue.asyncAfter(deadline: .now() + 0.1) { engine.scheduleReconcile(after: 0) }
+        engine.queue.asyncAfter(deadline: .now() + 0.24) {
+            system.snapshotValue.outputBalance = 0.5
+            system.fire(kAudioHardwareServiceDeviceProperty_VirtualMainBalance)
+        }
+        waitOnQueue(engine, seconds: 1)
+
+        XCTAssertEqual(system.writes, [])
+        XCTAssertEqual(logLines().filter { $0.contains("balance:") }, [])
+    }
+
+    /// The other half: a balance that is still off once things settle is put back.
+    func testBalanceThatStaysOffIsStillCorrected() throws {
+        let (system, engine) = try startBalanceLock()
+
+        engine.queue.async {
+            system.snapshotValue.outputBalance = 0.36
+            system.fire(kAudioHardwareServiceDeviceProperty_VirtualMainBalance)
+        }
+        waitOnQueue(engine, seconds: 1)
+
+        XCTAssertEqual(system.writes, ["balance:\(Fixture.displaySpeakers.id):0.50"])
+    }
+
+    private func startBalanceLock() throws -> (FakeAudioSystem, Engine) {
+        var config = Config(launchAtLogin: false)
+        config.balance = 0.5
+        let system = FakeAudioSystem(snapshot: DeviceSnapshot(
+            devices: [Fixture.displaySpeakers],
+            defaultOutput: Fixture.displaySpeakers.id,
+            outputBalance: 0.5
+        ))
+        let engine = try makeEngine(
+            config: config, system: system, detectors: DetectorLog(startResults: [true])
+        )
+        engine.start(microphone: .granted)
+        drain(engine)
+        XCTAssertEqual(system.writes, [])
+        return (system, engine)
+    }
+
+    private func waitOnQueue(_ engine: Engine, seconds: TimeInterval) {
+        let done = expectation(description: "engine queue after \(seconds)s")
+        engine.queue.asyncAfter(deadline: .now() + seconds) { done.fulfill() }
+        wait(for: [done], timeout: seconds + 2)
+    }
+
     // MARK: - Error reports
 
     func testErrorReportsOffNeverReachesTheReporter() throws {
@@ -784,131 +866,4 @@ final class EngineTests: XCTestCase {
     private func logLines() -> [String] {
         EventLog.tail(1_000, url: logURL)
     }
-}
-
-// MARK: - Doubles
-
-/// Every value the engine passed to its error-reporting callback, in order. Written on the engine
-/// queue and read after `drain`, like `DetectorLog`, so it needs no lock.
-final class ReportLog: @unchecked Sendable {
-    private(set) var values: [Bool] = []
-    func append(_ value: Bool) { values.append(value) }
-}
-
-/// The audio system as a value. Writes land back in the snapshot, so a second reconcile finds the
-/// state already held - the same reason the real engine converges instead of writing every beat.
-final class FakeAudioSystem: AudioSystem, @unchecked Sendable {
-
-    var snapshotValue: DeviceSnapshot
-    var sampleRate: Double? = 48_000
-    /// CoreAudio answers `noErr` for a default-output write against a device that has just
-    /// appeared and then quietly does not move the output. Setting this to false is that device.
-    var outputWritesStick = true
-    private(set) var writes: [String] = []
-
-    init(snapshot: DeviceSnapshot) {
-        self.snapshotValue = snapshot
-    }
-
-    func snapshot(config: Config) -> DeviceSnapshot { snapshotValue }
-
-    func setDefaultInput(_ device: AudioDeviceID) -> OSStatus {
-        writes.append("input:\(device)")
-        snapshotValue.defaultInput = device
-        return noErr
-    }
-
-    func setDefaultOutput(_ device: AudioDeviceID) -> OSStatus {
-        writes.append("output:\(device)")
-        if outputWritesStick { snapshotValue.defaultOutput = device }
-        return noErr
-    }
-
-    func setBalance(_ device: AudioDeviceID, _ value: Float) -> OSStatus {
-        writes.append("balance:\(device):\(String(format: "%.2f", value))")
-        snapshotValue.outputBalance = value
-        return noErr
-    }
-
-    func setInputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus {
-        writes.append("volume:\(device):\(String(format: "%.2f", value))")
-        snapshotValue.inputVolumes[device] = value
-        return noErr
-    }
-
-    func nominalSampleRate(_ device: AudioDeviceID) -> Double? { sampleRate }
-
-    func addSystemListener(
-        selector: AudioObjectPropertySelector,
-        queue: DispatchQueue,
-        block: @escaping () -> Void
-    ) -> ListenerToken {
-        ListenerToken(
-            object: 0, address: AudioProperty.address(selector), queue: queue, block: { _, _ in }
-        )
-    }
-
-    func addDeviceListener(
-        device: AudioDeviceID,
-        selector: AudioObjectPropertySelector,
-        scope: AudioObjectPropertyScope,
-        element: AudioObjectPropertyElement,
-        queue: DispatchQueue,
-        block: @escaping () -> Void
-    ) -> ListenerToken {
-        ListenerToken(
-            object: device,
-            address: AudioProperty.address(selector, scope: scope, element: element),
-            queue: queue,
-            block: { _, _ in }
-        )
-    }
-
-    func removeListener(_ token: ListenerToken) {}
-}
-
-/// The HAL side of silence detection, as a script. "The device cannot be opened yet" is a value
-/// here rather than a state of the machine, which is the whole point of injecting the factory.
-final class DetectorLog: @unchecked Sendable {
-
-    /// Answers for successive `start()` calls. The last one repeats once the script runs out.
-    private let startResults: [Bool]
-    private(set) var startCount = 0
-    private(set) var stopCount = 0
-
-    init(startResults: [Bool]) {
-        self.startResults = startResults
-    }
-
-    func make(device: AudioDevice, zeroSeconds: Double) -> LivenessDetecting {
-        FakeDetector(device: device, zeroSeconds: zeroSeconds, log: self)
-    }
-
-    fileprivate func nextStartResult() -> Bool {
-        defer { startCount += 1 }
-        guard startCount < startResults.count else { return startResults.last ?? true }
-        return startResults[startCount]
-    }
-
-    fileprivate func recordStop() {
-        stopCount += 1
-    }
-}
-
-final class FakeDetector: LivenessDetecting, @unchecked Sendable {
-
-    let deviceID: AudioDeviceID
-    let name: String
-    let zeroSeconds: Double
-    private let log: DetectorLog
-
-    init(device: AudioDevice, zeroSeconds: Double, log: DetectorLog) {
-        self.deviceID = device.id
-        self.name = device.name
-        self.zeroSeconds = zeroSeconds
-        self.log = log
-    }
-
-    func start() -> Bool { log.nextStartResult() }
-    func stop() { log.recordStop() }
 }

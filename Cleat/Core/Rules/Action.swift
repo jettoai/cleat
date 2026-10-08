@@ -15,6 +15,8 @@ enum Action: Equatable, Sendable {
     case setDefaultOutput(AudioDeviceID, reason: String)
     case setBalance(AudioDeviceID, Float, reason: String)
     case setInputVolume(AudioDeviceID, Float, reason: String)
+    /// Both channels to the same value: the output volume hold undoing a listed program's write.
+    case setOutputVolume(AudioDeviceID, Float, reason: String)
     case requestRoute(name: String, address: String, reason: String)
 
     var reason: String {
@@ -23,6 +25,7 @@ enum Action: Equatable, Sendable {
              .setDefaultOutput(_, let reason),
              .setBalance(_, _, let reason),
              .setInputVolume(_, _, let reason),
+             .setOutputVolume(_, _, let reason),
              .requestRoute(_, _, let reason):
             return reason
         }
@@ -35,6 +38,7 @@ enum Action: Equatable, Sendable {
         case .setDefaultOutput: return "pinOutput"
         case .setBalance: return "balance"
         case .setInputVolume: return "inputVolume"
+        case .setOutputVolume: return "outputVolume"
         case .requestRoute: return "reclaim"
         }
     }

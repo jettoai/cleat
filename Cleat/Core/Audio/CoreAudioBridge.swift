@@ -15,6 +15,7 @@ protocol AudioSystem: AnyObject {
     func setDefaultOutput(_ device: AudioDeviceID) -> OSStatus
     func setBalance(_ device: AudioDeviceID, _ value: Float) -> OSStatus
     func setInputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus
+    func setOutputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus
 
     func nominalSampleRate(_ device: AudioDeviceID) -> Double?
 
@@ -68,13 +69,23 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         // pays for the read.
         let outputRunning = !config.reclaim.isEmpty
             && (defaultOutput.map(isRunningSomewhere) ?? false)
+        // Only the reclaim rule asks whether anyone is at the Mac, and only while it is playing.
+        let inputIdle = outputRunning ? UserActivity.inputIdleSeconds() : nil
+        let displayHeldAwake = outputRunning && UserActivity.displayHeldAwake()
+
+        // Only the output volume hold reads the output volume.
+        let outputVolumes = config.outputVolumeHoldAgainst.isEmpty
+            ? [] : (defaultOutput.map { volumes($0, address: Self.outputVolumeAddress) } ?? [])
 
         return DeviceSnapshot(
             devices: devices,
             defaultInput: defaultInput,
             defaultOutput: defaultOutput,
             outputBalance: defaultOutput.flatMap(balance),
+            outputVolumes: outputVolumes,
             outputRunning: outputRunning,
+            inputIdle: inputIdle,
+            displayHeldAwake: displayHeldAwake,
             inputVolumes: inputVolumes,
             liveness: [:],  // filled in by the engine, which owns the detectors
             arrived: []     // and so is this: only the engine remembers the previous pass
@@ -131,14 +142,27 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
     /// Main element first; devices that expose no main volume are read as the mean of the two
     /// channels, which is what System Settings shows for them.
     private func inputVolume(_ device: AudioDeviceID) -> Float? {
-        if let value = AudioProperty.value(device, Self.volumeAddress(element: kAudioObjectPropertyElementMain), as: Float32.self) {
-            return value
-        }
-        let channels = [AudioObjectPropertyElement(1), AudioObjectPropertyElement(2)].compactMap {
-            AudioProperty.value(device, Self.volumeAddress(element: $0), as: Float32.self)
-        }
+        let channels = volumes(device, address: Self.volumeAddress)
         guard !channels.isEmpty else { return nil }
         return channels.reduce(0, +) / Float(channels.count)
+    }
+
+    /// Main element when the device has one, otherwise each channel that answers.
+    private func volumes(
+        _ device: AudioDeviceID, address: (AudioObjectPropertyElement) -> AudioObjectPropertyAddress
+    ) -> [Float] {
+        if let main = AudioProperty.value(device, address(kAudioObjectPropertyElementMain), as: Float32.self) {
+            return [main]
+        }
+        return [AudioObjectPropertyElement(1), AudioObjectPropertyElement(2)].compactMap {
+            AudioProperty.value(device, address($0), as: Float32.self)
+        }
+    }
+
+    private static func outputVolumeAddress(element: AudioObjectPropertyElement) -> AudioObjectPropertyAddress {
+        AudioProperty.address(
+            kAudioDevicePropertyVolumeScalar, scope: kAudioObjectPropertyScopeOutput, element: element
+        )
     }
 
     private static let balanceAddress = AudioProperty.address(
@@ -173,7 +197,19 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
     /// Main element when the device has one, otherwise both channels. Writing channels separately
     /// is what keeps a two-channel USB mic from ending up with one side at the old gain.
     func setInputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus {
-        let main = Self.volumeAddress(element: kAudioObjectPropertyElementMain)
+        setVolume(device, value, address: Self.volumeAddress)
+    }
+
+    /// Same shape as the input side: the main element, or left and right to the same value.
+    func setOutputVolume(_ device: AudioDeviceID, _ value: Float) -> OSStatus {
+        setVolume(device, value, address: Self.outputVolumeAddress)
+    }
+
+    private func setVolume(
+        _ device: AudioDeviceID, _ value: Float,
+        address: (AudioObjectPropertyElement) -> AudioObjectPropertyAddress
+    ) -> OSStatus {
+        let main = address(kAudioObjectPropertyElementMain)
         if AudioProperty.isSettable(device, main) {
             return AudioProperty.setValue(device, main, Float32(value))
         }
@@ -181,9 +217,9 @@ final class CoreAudioSystem: AudioSystem, @unchecked Sendable {
         var lastError: OSStatus = kAudioHardwareUnknownPropertyError
         var wroteOne = false
         for channel in [AudioObjectPropertyElement(1), AudioObjectPropertyElement(2)] {
-            let address = Self.volumeAddress(element: channel)
-            guard AudioProperty.isSettable(device, address) else { continue }
-            let status = AudioProperty.setValue(device, address, Float32(value))
+            let channelAddress = address(channel)
+            guard AudioProperty.isSettable(device, channelAddress) else { continue }
+            let status = AudioProperty.setValue(device, channelAddress, Float32(value))
             if status == noErr { wroteOne = true } else { lastError = status }
         }
         return wroteOne ? noErr : lastError

@@ -14,6 +14,12 @@ final class ConfigTests: XCTestCase {
         XCTAssertThrowsError(try decode(#"{"errorReports": "yes"}"#))
     }
 
+    func testOutputVolumeHoldIsOffUnlessAsked() throws {
+        XCTAssertEqual(try decode("{}").outputVolumeHoldAgainst, [])
+        XCTAssertEqual(try decode(#"{"outputVolumeHoldAgainst": ["prl_vm_app"]}"#).outputVolumeHoldAgainst, ["prl_vm_app"])
+        XCTAssertThrowsError(try decode(#"{"outputVolumeHoldAgainst": "prl_vm_app"}"#))
+    }
+
     func testFullConfigDecodes() throws {
         let config = try decode("""
         {

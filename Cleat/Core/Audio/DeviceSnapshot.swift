@@ -70,11 +70,22 @@ struct DeviceSnapshot: Equatable, Sendable {
     /// Virtual main balance of the default output, 0.0 (left) - 1.0 (right). `nil` when the device
     /// is not ready or does not support it.
     var outputBalance: Float?
+    /// The default output's volume scalars (0.0-1.0): the main element when the device has one,
+    /// otherwise each channel. Read only when the output volume hold is on; empty means not asked
+    /// or not readable, and the hold does nothing on such a pass.
+    var outputVolumes: [Float]
     /// Whether something is playing through the default output right now
     /// (`kAudioDevicePropertyDeviceIsRunningSomewhere`). Read only when the reclaim rule is on,
     /// and false when there is no default output at all, so a config that does not ask for
     /// reclaim behaves as it did before this field existed.
     var outputRunning: Bool
+    /// Seconds since the last keyboard, mouse or trackpad event (`HIDIdleTime`). Read only while
+    /// `outputRunning` is true, since only the reclaim rule asks; nil when not read or unreadable,
+    /// which the rule takes as someone being there - the behaviour before this field existed.
+    var inputIdle: TimeInterval?
+    /// Whether an app is holding the display awake (`PreventUserIdleDisplaySleep`), which is what a
+    /// video player does while someone watches without touching anything. Read with `inputIdle`.
+    var displayHeldAwake: Bool
     /// Input volume scalars (0.0-1.0) for the devices the config asks about.
     var inputVolumes: [AudioDeviceID: Float]
     /// Silence detection verdict per device UID. A missing key means "not tracked", which the
@@ -90,7 +101,10 @@ struct DeviceSnapshot: Equatable, Sendable {
         defaultInput: AudioDeviceID? = nil,
         defaultOutput: AudioDeviceID? = nil,
         outputBalance: Float? = nil,
+        outputVolumes: [Float] = [],
         outputRunning: Bool = false,
+        inputIdle: TimeInterval? = nil,
+        displayHeldAwake: Bool = false,
         inputVolumes: [AudioDeviceID: Float] = [:],
         liveness: [String: Liveness] = [:],
         arrived: Set<String> = []
@@ -99,7 +113,10 @@ struct DeviceSnapshot: Equatable, Sendable {
         self.defaultInput = defaultInput
         self.defaultOutput = defaultOutput
         self.outputBalance = outputBalance
+        self.outputVolumes = outputVolumes
         self.outputRunning = outputRunning
+        self.inputIdle = inputIdle
+        self.displayHeldAwake = displayHeldAwake
         self.inputVolumes = inputVolumes
         self.liveness = liveness
         self.arrived = arrived

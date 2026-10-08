@@ -1,3 +1,4 @@
+import CoreAudio
 import Foundation
 
 /// Rule 7's engine side: when to ask, how often, and what to do with the answer. Split out of
@@ -32,6 +33,21 @@ extension Engine {
     static let reclaimRetryDelay: TimeInterval = 8
     static let reclaimRetrySpan: TimeInterval = 180
 
+    /// Someone touched the keyboard, mouse or trackpad this recently: they are at the Mac, and the
+    /// Mac playing is them listening. Longer than this and they are looking at something else -
+    /// most likely the phone the headset went to.
+    static let userActiveWindow: TimeInterval = 30
+
+    /// An output change this close to the last input event was made by hand. It is judged on the
+    /// first pass after the change, which the default-output listener schedules a second later. A
+    /// phone taking the headset comes after the user has picked the phone up, unlocked it and
+    /// pressed play, which takes longer than this; misreading that as a choice would leave the
+    /// headset with the phone for the rest of the playback.
+    static let manualChoiceWindow: TimeInterval = 5
+
+    /// How long Cleat's own default-output write counts as the cause of the next output change.
+    static let ownOutputWriteWindow: TimeInterval = 10
+
     private static func isShortLivedRefusal(_ detail: String) -> Bool {
         let detail = detail.lowercased()
         return detail.contains("out of ear") || detail.contains("screen locked")
@@ -42,6 +58,7 @@ extension Engine {
     func reclaimRequests(_ snapshot: DeviceSnapshot) -> [Action] {
         guard !config.reclaim.isEmpty else { return [] }
         forgetHeadsetsThatCameBack(snapshot)
+        noteOutputDeparture(snapshot)
         guard routing.isAvailable else {
             // Fail closed and say so once. A macOS that has moved or renamed the routing class is
             // not an error to retry; it is this rule being off.
@@ -61,26 +78,93 @@ extension Engine {
             // the next playback asks again for a headset that is here but not chosen.
             reclaimRetryWindow.removeAll()
             reclaimAskedThisPlayback.removeAll()
+            reclaimWatch.userChose.removeAll()
             return []
         }
 
         let headsets = bluetooth.pairedHeadsets()
-        markHeadsetsInUse(snapshot, headsets)
+        learnNames(headsets)
+        let candidates = ReclaimRule.candidates(snapshot, headsets, config)
+        guard let first = candidates.first else {
+            // Nothing listed is away from the output: whatever was holding it back is over, and
+            // the next reason is news.
+            reclaimWatch.notAskingLogged = nil
+            return []
+        }
+
+        // What this playback has settled: the user moved the output off the headset by hand, or
+        // the daemon said the Mac already has it. Neither is asked for again until it ends.
+        let chose = presentHeadsets(reclaimWatch.userChose, snapshot)
+        let settled = presentHeadsets(reclaimAskedThisPlayback, snapshot)
+        guard let next = candidates.first(where: {
+            !chose.contains($0.address) && !settled.contains($0.address)
+        }) else {
+            let output = snapshot.defaultOutput.flatMap(snapshot.device(id:))?.name ?? "another output"
+            noteNotAsking(first, chose.contains(first.address)
+                ? "the user picked \(output)" : "already asked this playback")
+            return []
+        }
+
+        guard isUserActive(snapshot) else {
+            noteNotAsking(next, "nobody is using the Mac")
+            // Coming back to the keyboard is not a CoreAudio event, so nothing else would bring
+            // the next pass: one beat per retry delay, the cadence a short refusal already uses.
+            scheduleReconcile(after: Engine.reclaimRetryDelay)
+            return []
+        }
+
         return ReclaimRule.reconcile(
             snapshot, headsets, config,
-            excluding: heldDownHeadsets().union(presentHeadsetsAlreadyAsked(snapshot))
+            excluding: heldDownHeadsets().union(chose).union(settled)
         )
     }
 
-    /// A listed headset that is the output during this playback counts as asked for: the user has
-    /// it already, so moving the output elsewhere mid-playback is a choice that stands until the
-    /// next playback, the same as after a request.
-    private func markHeadsetsInUse(_ snapshot: DeviceSnapshot, _ headsets: [BluetoothHeadset]) {
-        for headset in headsets
-        where headset.isListed(in: config.reclaim) && ReclaimRule.isDefaultOutput(headset, in: snapshot) {
+    /// Remembers the name each listed headset goes by, so a pass can recognise it in CoreAudio
+    /// and in the default output before it has ever been asked for.
+    private func learnNames(_ headsets: [BluetoothHeadset]) {
+        for headset in headsets where headset.isListed(in: config.reclaim) {
             reclaimNames[headset.address] = headset.name
-            reclaimAskedThisPlayback.insert(headset.address)
         }
+    }
+
+    /// The output moving off a listed headset that is still in CoreAudio, by hand or not. By hand
+    /// is an input event a moment before and a move Cleat did not make itself; anything else - a
+    /// phone taking the headset while it stays listed, macOS falling back - leaves it wanted.
+    /// A headset that has left CoreAudio was taken, not passed over, and is not judged here.
+    private func noteOutputDeparture(_ snapshot: DeviceSnapshot) {
+        let current = snapshot.defaultOutput.flatMap(snapshot.device(id:))
+        defer { reclaimWatch.lastOutput = current }
+        guard let left = reclaimWatch.lastOutput, left.uid != current?.uid,
+              let entry = reclaimNames.first(where: {
+                  DeviceName.matches(entry: $0.value, name: left.name, uid: left.uid)
+              })
+        else { return }
+        let headset = BluetoothHeadset(name: entry.value, address: entry.key, isConnected: true)
+        guard ReclaimRule.isAudioDevice(headset, in: snapshot) else { return }
+
+        let byCleat = reclaimWatch.ownOutputWrite.map {
+            $0.device == current?.id && now().timeIntervalSince($0.at) < Engine.ownOutputWriteWindow
+        } ?? false
+        // No reading is the old behaviour: a switch away from a headset in use stood.
+        let byHand = snapshot.inputIdle.map { $0 < Engine.manualChoiceWindow } ?? true
+        if byHand && !byCleat { reclaimWatch.userChose.insert(entry.key) }
+    }
+
+    /// At the keyboard in the last half minute, or watching something that keeps the display on.
+    /// A reading that could not be taken counts as someone being there, so the rule then behaves
+    /// as it did before it knew about the user.
+    private func isUserActive(_ snapshot: DeviceSnapshot) -> Bool {
+        guard let idle = snapshot.inputIdle else { return true }
+        return idle < Engine.userActiveWindow || snapshot.displayHeldAwake
+    }
+
+    /// One line per reason, written when the reason changes: a Mac left playing to an empty room
+    /// is one line, not one every beat.
+    private func noteNotAsking(_ headset: BluetoothHeadset, _ reason: String) {
+        let message = "reclaim: \(headset.name) not asked (\(reason))"
+        guard reclaimWatch.notAskingLogged != message else { return }
+        reclaimWatch.notAskingLogged = message
+        note(message)
     }
 
     /// A headset macOS moved back by itself never gets a `routed` answer, so its becoming the
@@ -90,16 +174,21 @@ extension Engine {
     private func forgetHeadsetsThatCameBack(_ snapshot: DeviceSnapshot) {
         for (address, name) in reclaimNames {
             let headset = BluetoothHeadset(name: name, address: address, isConnected: true)
-            if ReclaimRule.isDefaultOutput(headset, in: snapshot) { endSpell(address) }
+            if ReclaimRule.isDefaultOutput(headset, in: snapshot) {
+                endSpell(address)
+                // Back as the output: whatever this playback had settled about it is over, and
+                // the next time it leaves, the leaving is judged afresh.
+                reclaimAskedThisPlayback.remove(address)
+                reclaimWatch.userChose.remove(address)
+            }
         }
     }
 
-    /// Headsets in CoreAudio, not the output, and already asked for (or already the output) in this
-    /// playback. Whatever the answer was, the user has had the chance to be switched over; if they
-    /// then pick another output, that choice stands until the next playback. A headset absent from CoreAudio keeps
-    /// the old cadence, since there is no device for anyone to have chosen.
-    private func presentHeadsetsAlreadyAsked(_ snapshot: DeviceSnapshot) -> Set<String> {
-        reclaimAskedThisPlayback.filter { address in
+    /// The headsets in this set that are in CoreAudio. A headset absent from CoreAudio keeps the
+    /// usual cadence whatever this playback has settled, since there is no device for anyone to
+    /// have chosen.
+    private func presentHeadsets(_ addresses: Set<String>, _ snapshot: DeviceSnapshot) -> Set<String> {
+        addresses.filter { address in
             guard let name = reclaimNames[address] else { return false }
             let headset = BluetoothHeadset(name: name, address: address, isConnected: true)
             return ReclaimRule.isAudioDevice(headset, in: snapshot)
@@ -124,7 +213,7 @@ extension Engine {
     func requestRoute(name: String, address: String, reason: String) {
         reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimInterval)
         reclaimNames[address] = name
-        reclaimAskedThisPlayback.insert(address)
+        noteRequestSent(name: name, address: address)
 
         routing.request(
             address: address, score: Engine.reclaimScore, reason: reason, queue: queue
@@ -138,18 +227,23 @@ extension Engine {
     /// output by itself, and if it does not, the device arriving is an ordinary arrival that
     /// `HeadphonesTakeoverRule` already knows what to do with.
     private func routeAnswered(name: String, address: String, response: RouteResponse) {
+        if response.outcome != .routed { forgetReturn(address) }
         switch response.outcome {
         case .routed:
             endSpell(address)
+            reclaimAskedThisPlayback.insert(address)
             note("reclaim: \(name) <- remote device (hijack accepted)")
+            acceptReturn(address)
             // The audio device appears a moment after the answer. These are the same beats a
             // device change would schedule, and they are what lets the takeover rule see the
             // arrival if macOS has not already moved the output itself.
             Engine.retryBeats.forEach(scheduleReconcile(after:))
 
         case .alreadyRouted:
-            // It was here all along. Nothing changed, so nothing is logged.
+            // It was here all along: nothing changed, nothing is logged, and nothing is asked
+            // again this playback.
             endSpell(address)
+            reclaimAskedThisPlayback.insert(address)
 
         case .heldByRemote(let detail):
             reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimBackoff)
@@ -162,12 +256,10 @@ extension Engine {
             // A previous hijack of ours is still running. Not news, and not a reason to wait: the
             // next beat is the retry.
             reclaimNextAttempt[address] = nil
-            reclaimAskedThisPlayback.remove(address)
 
         case .refused(let detail):
             if Engine.isShortLivedRefusal(detail), retryWindowOpen(address) {
                 reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimRetryDelay)
-                reclaimAskedThisPlayback.remove(address)
                 scheduleReconcile(after: Engine.reclaimRetryDelay)
             } else {
                 reclaimNextAttempt[address] = now().addingTimeInterval(Engine.reclaimBackoff)
@@ -206,4 +298,19 @@ extension Engine {
         }
         return "on (\(config.reclaim.joined(separator: ", ")))"
     }
+}
+
+/// What reclaim remembers between passes about the output and the person in front of the Mac.
+struct ReclaimWatch {
+    /// The default output the previous pass saw: how a pass tells the output just left a headset.
+    var lastOutput: AudioDevice?
+    /// Headsets the user moved the output off by hand during this playback, by address.
+    var userChose: Set<String> = []
+    /// Cleat's own last default-output write, so a pin moving the output is not read as the user's.
+    var ownOutputWrite: (device: AudioDeviceID, at: Date)?
+    /// The last "not asked" line, so a reason that has not changed is not written every beat.
+    var notAskingLogged: String?
+    /// Requests whose return is being timed, and macOS returns being timed (Engine+ReturnTiming.swift).
+    var returns: [String: ReturnTiming] = [:]
+    var macosReturn: [String: Date] = [:]
 }

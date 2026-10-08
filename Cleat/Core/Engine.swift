@@ -14,6 +14,12 @@ final class Engine: @unchecked Sendable {
     /// over from the Hammerspoon version, where they were measured rather than guessed.
     static let settleBeat: TimeInterval = 0.5
     static let retryBeats: [TimeInterval] = [1, 3, 6]
+    /// How long a balance change is left to settle before it is judged. A device with no main
+    /// volume element reports balance from its two channel volumes, and apps change the volume one
+    /// channel at a time (Parallels 238ms apart), so an immediate read sees half a volume change as
+    /// a balance shift. Each change restarts the wait. Below `settleBeat` so it never spends an
+    /// arrival. `outputVolumeSettle` (0.3) is kept below this so a volume revert lands first.
+    static let balanceSettle: TimeInterval = 0.4
 
     /// How many log lines `cleat status` shows.
     private static let recentEventLimit = 20
@@ -39,10 +45,14 @@ final class Engine: @unchecked Sendable {
     var systemTokens: [ListenerToken] = []
     var deviceTokens: [ListenerToken] = []
     var pendingReconciles: [TimeInterval: DispatchWorkItem] = [:]
+    /// When the balance listener last fired. On the uptime clock `asyncAfter` uses, so the settle
+    /// beat it schedules is never itself inside the window.
+    var balanceChangedAt: DispatchTime?
     private var recentEvents: [String] = []
     private var watcher: ConfigWatcher?
     /// The value last passed to `errorReportsChanged`. Starts off, the same as the SDK.
     private var errorReportsApplied = false
+    var outputVolume = OutputVolumeHold()
 
     // Reclaim bookkeeping, all keyed by Bluetooth address. It lives here rather than in the rule
     // because it is memory of what was asked and when, which a pure function must not have.
@@ -57,12 +67,14 @@ final class Engine: @unchecked Sendable {
     var reclaimRetryWindow: [String: Date] = [:]
     /// The name each headset was asked for under, so a beat can tell it has turned up in CoreAudio.
     var reclaimNames: [String: String] = [:]
-    /// Headsets asked for, or already the output, during the current playback. One that is in
-    /// CoreAudio but not the output is not asked for again until the Mac stops and starts playing,
-    /// apart from short retries.
+    /// Headsets the daemon said this Mac already has (routed, or already routed) during the
+    /// current playback. One that is in CoreAudio but not the output is not asked for again until
+    /// the playback ends or it becomes the output.
     var reclaimAskedThisPlayback: Set<String> = []
     /// Whether the "no routing service" line has been written. Once is enough.
     var reclaimUnavailableLogged = false
+    /// The output and the user's hand on it, as reclaim last saw them (Engine+Reclaim.swift).
+    var reclaimWatch = ReclaimWatch()
 
     private let configURL: URL
     private let statusURL: URL
@@ -201,7 +213,7 @@ final class Engine: @unchecked Sendable {
     // MARK: - Reconcile
 
     /// `consumingArrivals` is what keeps a device arrival from being spent before the device can
-    /// be selected. A zero-delay beat - the volume and balance listeners ask for one - can land
+    /// be selected. An early beat - the volume and balance listeners ask for one - can land
     /// while a device that has just appeared is still not selectable, and `setDefaultOutput` on
     /// such a device returns success without sticking. Those beats see the arrival and may act on
     /// it, but do not mark it as seen, so the 0.5s settle beat gets the same arrival and the same
@@ -235,16 +247,22 @@ final class Engine: @unchecked Sendable {
         // Balance belongs to a specific device, and this pass may be about to move the default
         // output somewhere else. Writing it now would set the balance of the device being left;
         // the 'dOut' listener brings us straight back here against the new one.
-        let balanceActions = outputActions.isEmpty ? BalanceRule.reconcile(snapshot, config) : []
+        // Nor while a balance change is still settling: an app may have written one channel and
+        // not yet the other. Any pass can land in that window; the settle beat judges it.
+        let holdActions = outputActions.isEmpty ? outputVolumeActions(snapshot) : []
+        let balanceSettling = balanceChangedAt.map { .now() < $0 + Engine.balanceSettle } ?? false
+        let balanceActions = outputActions.isEmpty && holdActions.isEmpty && !balanceSettling
+            ? BalanceRule.reconcile(snapshot, config) : []
         let volumeActions = InputVolumeRule.reconcile(snapshot, config)
         // Last, and not a CoreAudio write at all: a headset that is not in the device list cannot
         // be pinned, taken over or balanced, so this is the one rule with nothing to say about the
         // devices the four above just decided on.
         let reclaimActions = reclaimRequests(snapshot)
 
-        for action in inputActions + outputActions + balanceActions + volumeActions + reclaimActions {
+        for action in inputActions + outputActions + holdActions + balanceActions + volumeActions + reclaimActions {
             apply(action)
         }
+        checkReclaimReturns(snapshot)
         writeStatus(snapshot)
     }
 
@@ -269,7 +287,7 @@ final class Engine: @unchecked Sendable {
     }
 
     /// Whether a scheduled beat is late enough to spend an arrival. The settle beat is defined as
-    /// "the device list has settled", so it and everything after it consume; the zero-delay beats
+    /// "the device list has settled", so it and everything after it consume; the earlier beats
     /// the volume and balance listeners ask for come too early to be the only attempt.
     static func consumesArrivals(after delay: TimeInterval) -> Bool { delay >= settleBeat }
 
@@ -303,10 +321,13 @@ final class Engine: @unchecked Sendable {
             status = system.setDefaultInput(device)
         case .setDefaultOutput(let device, _):
             status = system.setDefaultOutput(device)
+            reclaimWatch.ownOutputWrite = (device, now())
         case .setBalance(let device, let value, _):
             status = system.setBalance(device, value)
         case .setInputVolume(let device, let value, _):
             status = system.setInputVolume(device, value)
+        case .setOutputVolume(let device, let value, _):
+            status = system.setOutputVolume(device, value)
 
         case .requestRoute(let name, let address, let reason):
             // The one action that is not a write: it is a question for another daemon, and what
@@ -343,7 +364,8 @@ final class Engine: @unchecked Sendable {
             defaultOutput: snapshot.defaultOutput.flatMap { snapshot.device(id: $0)?.name },
             rules: ruleSummaries(snapshot),
             liveness: livenessSummaries(snapshot),
-            recentEvents: recentEvents
+            recentEvents: recentEvents,
+            outputVolume: outputVolumeStatus()
         ), to: statusURL)
     }
 
@@ -356,6 +378,7 @@ final class Engine: @unchecked Sendable {
         rules["headphones"] = Self.headphonesSummary(config)
 
         rules["reclaim"] = reclaimSummary()
+        rules["outputVolume"] = outputVolumeSummary()
 
         if let balance = config.balance {
             let current = snapshot.outputBalance.map { String(format: "%.2f", $0) } ?? "unreadable"
