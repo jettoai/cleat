@@ -50,15 +50,22 @@ pub struct DeviceList {
 
 impl DeviceList {
     /// Priority entries (config order), blocked-only entries (config order), then present devices
-    /// no entry names (by name). Duplicate entries collapse to the first.
+    /// no entry names (by name). Entries naming the same device collapse to the first.
     /// An entry in both lists reads as blocked: "not used" outranks the order.
     pub fn make(priority: &[String], blocked: &[String], present: &[AudioDevice], input: bool) -> Self {
         let side: Vec<&AudioDevice> = present.iter().filter(|d| if input { d.has_input } else { d.has_output }).collect();
         let mut rows = vec![];
         let mut seen = HashSet::new();
         let entries: Vec<String> = priority.iter().chain(blocked).cloned().collect();
+        // Entries that name the same thing the way the daemon matches them (a present device by
+        // name or UID, or the same normalised name) are one row.
+        let identity = |entry: &str| match side.iter().find(|d| device_name::matches(entry, &d.name, &d.uid)) {
+            Some(d) => format!("device:{}", d.uid),
+            None => format!("name:{}", device_name::normalize(entry)),
+        };
         for entry in &entries {
-            if !seen.insert(entry.clone()) {
+            let id = identity(entry);
+            if !seen.insert(id.clone()) {
                 continue;
             }
             let found = side.iter().find(|d| device_name::matches(entry, &d.name, &d.uid));
@@ -66,9 +73,9 @@ impl DeviceList {
                 entry: entry.clone(),
                 display_name: found.map_or_else(|| entry.clone(), |d| d.name.clone()),
                 is_connected: found.is_some(),
-                stance: if blocked.contains(entry) {
+                stance: if blocked.iter().any(|b| identity(b) == id) {
                     Stance::Blocked
-                } else if priority.contains(entry) {
+                } else if priority.iter().any(|p| identity(p) == id) {
                     Stance::Listed
                 } else {
                     Stance::Neutral
@@ -82,7 +89,7 @@ impl DeviceList {
             if device.is_listed(&entries) {
                 continue;
             }
-            if !seen_names.insert(device_name::normalize(&device.name)) || seen.contains(&device.name) {
+            if !seen_names.insert(device_name::normalize(&device.name)) {
                 continue;
             }
             rows.push(DeviceRow {
@@ -366,6 +373,14 @@ impl SettingsDraft {
             self.headsets[i].is_selected = true;
         }
         self.reclaim_enabled = on;
+    }
+
+    /// The daemon never asks back a headset whose output is "not used" (`rules::reclaim::candidates`,
+    /// same match), so the window shows it greyed out. Read from the current output stances, which
+    /// can change while the window is open.
+    pub fn headset_blocked(&self, h: &HeadsetOption) -> bool {
+        let address = if h.entry == h.display_name { String::new() } else { BluetoothHeadset::canonical_address(&h.entry) };
+        BluetoothHeadset { name: h.display_name.clone(), address, is_connected: h.is_connected }.is_listed(&self.output.blocked())
     }
 
     /// Ignored while reclaim is off. Unticking the last headset turns reclaim off.

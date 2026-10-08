@@ -73,7 +73,7 @@ fn blocked_current_output_is_replaced_by_the_first_listed_device() {
 }
 
 #[test]
-fn blocked_current_output_with_no_listed_device_present_does_nothing() {
+fn blocked_current_output_without_a_built_in_escape_stays() {
     let mut config = config();
     config.blocked_output = s(&["Maono AI Microphone"]);
     let snap = snapshot(vec![maono_speakers()], Some(&maono_speakers()));
@@ -135,11 +135,11 @@ fn headset_only_config() -> Config {
 }
 
 #[test]
-fn blocked_current_output_is_evicted_when_every_listed_output_is_a_headset() {
-    let snap = snapshot(vec![maono_speakers(), air_pods(), display_speakers()], Some(&maono_speakers()));
+fn blocked_current_output_is_evicted_to_the_built_in_output_when_every_listed_output_is_a_headset() {
+    let snap = snapshot(vec![maono_speakers(), air_pods(), display_speakers(), mac_speakers()], Some(&maono_speakers()));
     assert_eq!(
         reconcile(&snap, &headset_only_config()),
-        out(display_speakers().id, "Maono\u{00A0}AI Microphone -> Studio Display Speakers (blocked)")
+        out(mac_speakers().id, "Maono\u{00A0}AI Microphone -> MacBook Pro Speakers (blocked)")
     );
 }
 
@@ -224,5 +224,37 @@ fn blocked_listed_device_is_skipped_with_takeover_off() {
     assert_eq!(
         reconcile(&snap, &config),
         out(display_speakers().id, "MacBook Pro Speakers -> Studio Display Speakers (higher priority present)")
+    );
+}
+
+// B-1283 return: an empty or exhausted list still evicts a blocked current output, to the Mac's
+// built-in output only.
+
+/// Albert's replay (b): only the wired headphones were listed, then marked "not used".
+#[test]
+fn blocked_current_output_is_evicted_with_an_empty_list() {
+    let config = Config { blocked_output: s(&["外接耳機"]), ..Config::default() };
+    let snap = snapshot(vec![wired_headphones(), mac_speakers(), display_speakers()], Some(&wired_headphones()));
+    assert_eq!(reconcile(&snap, &config), out(mac_speakers().id, "外接耳機 -> MacBook Pro Speakers (blocked)"));
+}
+
+#[test]
+fn blocked_output_falls_back_to_the_built_in_output_only() {
+    let config = overlap(&["Studio Display Speakers"], &["AirPods Max"]);
+    let snap = snapshot(vec![air_pods(), maono_speakers(), mac_speakers()], Some(&air_pods()));
+    assert_eq!(reconcile(&snap, &config), out(mac_speakers().id, "AirPods Max -> MacBook Pro Speakers (blocked)"));
+    let snap = snapshot(vec![air_pods(), maono_speakers()], Some(&air_pods()));
+    assert_eq!(reconcile(&snap, &config), vec![]);
+}
+
+#[test]
+fn placed_output_gives_way_to_a_returning_listed_device() {
+    let mut snap = snapshot(vec![display_speakers(), mac_speakers()], Some(&mac_speakers()));
+    let config = overlap(&["Studio Display Speakers"], &["AirPods Max"]);
+    assert_eq!(reconcile(&snap, &config), vec![]);
+    snap.placed_output = Some(mac_speakers().uid);
+    assert_eq!(
+        reconcile(&snap, &config),
+        out(display_speakers().id, "MacBook Pro Speakers -> Studio Display Speakers (listed device back)")
     );
 }

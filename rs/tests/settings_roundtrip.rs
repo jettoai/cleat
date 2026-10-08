@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use cleat_rs::config::Config;
-use cleat_rs::model::{Action, AudioDevice, DeviceSnapshot, Liveness, TRANSPORT_BLUETOOTH};
+use cleat_rs::model::{device_name, Action, AudioDevice, DeviceSnapshot, Liveness, TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN};
 use cleat_rs::rules::{headphones_takeover, input_pin, output_pin};
 use cleat_rs::settings::document::{merged_from, Managed, Origin, Unit, UNITS};
 use cleat_rs::settings::draft::{DeviceList, LiveLevels, PairedDevice, SettingsDraft, Stance};
@@ -19,7 +19,9 @@ fn present() -> Vec<AudioDevice> {
         AudioDevice::new(2, "Brio 100", "uid-2", true, false),
         // Bluetooth, so headphone takeover has something to act on in the rule check.
         AudioDevice::with_transport(3, "AirPods Max", "uid-3", true, true, TRANSPORT_BLUETOOTH),
-        AudioDevice::new(4, "MacBook Pro Speakers", "uid-4", false, true),
+        // Built in and never blocked by any variant, so every blocked current default has somewhere to go.
+        AudioDevice::with_transport(4, "MacBook Pro Speakers", "uid-4", false, true, TRANSPORT_BUILT_IN),
+        AudioDevice::with_transport(5, "MacBook Pro Microphone", "uid-5", true, false, TRANSPORT_BUILT_IN),
     ]
 }
 
@@ -76,6 +78,10 @@ fn single_unit_variants() -> Vec<(Unit, Vec<Variant>)> {
         vec![("input", json!(["Brio 100"])), ("blockedInput", json!(["Brio 100"]))],
         vec![("input", json!(["Brio 100"])), ("blockedInput", json!(["uid-2"]))],
         vec![("input", json!(["Wireless microphone", "Brio 100", "AirPods Max"])), ("blockedInput", json!(["AirPods Max"]))],
+        vec![("blockedInput", json!(["AirPods\u{00A0}Max"]))],
+        vec![("blockedInput", json!(["uid-3"]))],
+        vec![("input", json!(["Wireless microphone", "AirPods Max"])), ("blockedInput", json!(["AirPods\u{00A0}Max"]))],
+        vec![("input", json!(["AirPods Max", "Brio 100"])), ("blockedInput", json!(["uid-3"]))],
     ];
     let output = vec![
         vec![],
@@ -83,6 +89,10 @@ fn single_unit_variants() -> Vec<(Unit, Vec<Variant>)> {
         vec![("blockedOutput", json!(["AirPods Max"]))],
         vec![("output", json!(["AirPods Max"])), ("blockedOutput", json!(["AirPods Max"]))],
         vec![("output", json!(["MacBook Pro Speakers", "MacBook Pro Speakers"]))],
+        vec![("blockedOutput", json!(["AirPods\u{00A0}Max"]))],
+        vec![("blockedOutput", json!(["uid-3"]))],
+        vec![("output", json!(["AirPods Max", "MacBook Pro Speakers"])), ("blockedOutput", json!(["AirPods\u{00A0}Max"]))],
+        vec![("output", json!(["uid-3"])), ("blockedOutput", json!(["AirPods Max"]))],
     ];
     let takeover = vec![vec![], vec![("headphonesTakeOver", json!(true))], vec![("headphonesTakeOver", json!(false))]];
     let volume = [json!({}), json!({"Brio 100": 33}), json!({"Brio 100": 33.5}), json!({"*": 72.4}), json!({"*": 72, "Brio 100": 33.5})];
@@ -210,25 +220,40 @@ fn strings(v: &Value) -> Vec<String> {
     v.as_array().map_or(vec![], |a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
 }
 
+/// Two entries name the same thing the way the daemon matches them: one present device, or the
+/// same normalised name.
+fn same(a: &str, b: &str) -> bool {
+    device_name::normalize(a) == device_name::normalize(b)
+        || present().iter().any(|d| device_name::matches(a, &d.name, &d.uid) && device_name::matches(b, &d.name, &d.uid))
+}
+
+fn names(list: &[String], entry: &str) -> bool {
+    list.iter().any(|e| same(e, entry))
+}
+
 fn check_stance(list: &DeviceList, priority: &[String], blocked: &[String], written: bool, side: &str) -> Vec<String> {
     let mut out = vec![];
-    for r in &list.rows {
+    for (i, r) in list.rows.iter().enumerate() {
         match r.stance {
-            Stance::Listed if !priority.contains(&r.entry) || blocked.contains(&r.entry) => {
+            Stance::Listed if !names(priority, &r.entry) || names(blocked, &r.entry) => {
                 out.push(format!("{side} listed row {} not in order alone", r.entry))
             }
-            Stance::Blocked if !blocked.contains(&r.entry) => out.push(format!("{side} blocked row {} not written", r.entry)),
+            Stance::Blocked if !names(blocked, &r.entry) => out.push(format!("{side} blocked row {} not written", r.entry)),
             _ => {}
         }
+        if list.rows[..i].iter().any(|o| same(&o.entry, &r.entry)) {
+            out.push(format!("{side} two rows for {}", r.entry));
+        }
     }
-    if written && priority.iter().any(|e| blocked.contains(e)) {
+    if written && priority.iter().any(|e| names(blocked, e)) {
         out.push(format!("{side} both preferred and not used: {priority:?} / {blocked:?}"));
     }
     out
 }
 
 /// Every action a pin rule takes on this config, with every device present and live and each one
-/// in turn the current default, must target a device outside the blocked list of its side.
+/// in turn the current default, must target a device outside the blocked list of its side, and a
+/// current default on the blocked list of its side must be moved off.
 fn rule_violations(config: &Config) -> Vec<String> {
     let devices = present();
     let mut out = vec![];
@@ -255,6 +280,14 @@ fn rule_violations(config: &Config) -> Vec<String> {
             if devices.iter().any(|d| d.id == id && d.is_listed(blocked)) {
                 out.push(format!("rule picked a not-used device: {}", action.reason()));
             }
+        }
+        let moved_input = actions.iter().flatten().any(|a| matches!(a, Action::SetDefaultInput(..)));
+        let moved_output = actions.iter().flatten().any(|a| matches!(a, Action::SetDefaultOutput(..)));
+        if current.has_input && current.is_listed(&config.blocked_input) && !moved_input {
+            out.push(format!("blocked current input {} left in place", current.name));
+        }
+        if current.has_output && current.is_listed(&config.blocked_output) && !moved_output {
+            out.push(format!("blocked current output {} left in place", current.name));
         }
     }
     out

@@ -1,6 +1,7 @@
 //! The one place decisions are made. Every listener and the config watcher deliver `Event`s to the
 //! engine thread, and nothing touches engine state from anywhere else (Swift `Engine.swift`).
 
+mod eviction;
 mod launch;
 mod listeners;
 mod liveness;
@@ -9,6 +10,7 @@ mod reclaim;
 mod run_loop;
 mod status;
 
+pub use eviction::{EVICTION_LIMIT, EVICTION_WINDOW};
 pub use listeners::{consumes_arrivals, BALANCE_SETTLE_MS, RETRY_MS, SETTLE_MS};
 pub use reclaim::{
     RECLAIM_BACKOFF, RECLAIM_INTERVAL, RECLAIM_RETRY_DELAY, RECLAIM_RETRY_SPAN, RECLAIM_SCORE, RETURN_TIMEOUT,
@@ -91,6 +93,7 @@ pub struct Engine {
     routing: Box<dyn RouteRequesting>,
     inventory: Box<dyn BluetoothInventory>,
     reclaim: reclaim::ReclaimBook,
+    eviction: eviction::EvictionBook,
     writer_source: WriterSourceFactory,
     outvol: output_volume::OutputVolumeHold,
     events: Option<Sender<Event>>,
@@ -134,6 +137,7 @@ impl Engine {
             routing: deps.routing,
             inventory: deps.inventory,
             reclaim: reclaim::ReclaimBook::default(),
+            eviction: eviction::EvictionBook::default(),
             writer_source: deps.writer_source,
             outvol: output_volume::OutputVolumeHold::default(),
             events: deps.events,
@@ -216,6 +220,7 @@ impl Engine {
             return;
         }
         self.note(&format!("config: reloaded ({})", self.config_state));
+        self.eviction.config_changed();
         self.sync_side_effects();
         self.rebind_devices();
         self.reconcile(false, Some(origin));
@@ -240,14 +245,19 @@ impl Engine {
         // Also the retry for a detector whose start failed on a device not yet ready.
         self.sync_liveness_detectors(&snap);
         snap.liveness = self.liveness_for_rules(&snap);
+        self.eviction.observe(&mut snap);
+        let now = self.clock.mono();
         let t1 = SystemTime::now();
 
-        let mut actions = input_pin::reconcile(&snap, &self.config);
+        let input = input_pin::reconcile(&snap, &self.config);
+        let (mut actions, mut held) = self.eviction.gate(eviction::Side::Input, input, &snap, &self.config, now);
         let output = if headphones_takeover::has_eligible_arrival(&snap, &self.config) {
             headphones_takeover::reconcile(&snap, &self.config)
         } else {
             output_pin::reconcile(&snap, &self.config)
         };
+        let (output, held_out) = self.eviction.gate(eviction::Side::Output, output, &snap, &self.config, now);
+        held.extend(held_out);
         // A revert waits while the output itself is being moved, and goes before the balance.
         let hold = if output.is_empty() { self.output_volume_actions(&snap) } else { vec![] };
         let config = &self.config;
@@ -287,6 +297,9 @@ impl Engine {
                 actions.len(),
                 if actions.is_empty() { " (nothing to do)" } else { "" }
             ));
+        }
+        for line in &held {
+            self.note(line);
         }
         for a in &actions {
             self.apply(a);

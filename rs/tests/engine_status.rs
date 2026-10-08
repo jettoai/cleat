@@ -22,7 +22,7 @@ fn input_snapshot(devices: Vec<cleat_rs::model::AudioDevice>, volumes: &[(u32, f
 }
 
 #[test]
-fn blocked_list_without_a_priority_list_says_why_it_is_off() {
+fn blocked_list_without_a_priority_list_is_on_for_eviction() {
     let config = Config {
         output: vec![],
         blocked_output: s(&["Maono AI Microphone"]),
@@ -34,7 +34,7 @@ fn blocked_list_without_a_priority_list_says_why_it_is_off() {
     let snap = DeviceSnapshot { devices: vec![speakers.clone()], default_output: Some(speakers.id), ..Default::default() };
     let h = Harness::new(&config, snap, Opts::default());
 
-    assert_eq!(h.rule("outputPin"), "off (no priority list)");
+    assert_eq!(h.rule("outputPin"), "on (no priority list, blocked: Maono AI Microphone)");
     assert_eq!(h.rule("inputPin"), "off");
     assert_eq!(
         h.rule("headphones"),

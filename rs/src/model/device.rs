@@ -49,6 +49,11 @@ impl AudioDevice {
         self.transport == TRANSPORT_BLUETOOTH || self.transport == TRANSPORT_BLUETOOTH_LE
     }
 
+    /// The Mac's own microphone, speakers or headphone jack, by `kAudioDevicePropertyTransportType`.
+    pub fn is_built_in(&self) -> bool {
+        self.transport == TRANSPORT_BUILT_IN
+    }
+
     /// True when any of these config entries names this device.
     pub fn is_listed(&self, entries: &[String]) -> bool {
         entries.iter().any(|e| device_name::matches(e, &self.name, &self.uid))
@@ -88,6 +93,12 @@ pub struct DeviceSnapshot {
     pub arrived: HashSet<String>,
     /// Who is at the Mac; read only while reclaim is on and the Mac is playing.
     pub presence: PresenceFacts,
+    /// UID of the input cleat itself moved to when it evicted a blocked one. Filled by the engine,
+    /// like `liveness`: that device is cleat's choice, not the user's, so a listed device that comes
+    /// back takes over from it (B-1283).
+    pub placed_input: Option<String>,
+    /// The same for the output.
+    pub placed_output: Option<String>,
 }
 
 impl DeviceSnapshot {

@@ -3,7 +3,7 @@ mod common;
 use std::collections::HashMap;
 
 use cleat_rs::config::Config;
-use cleat_rs::model::{Action, AudioDevice, DeviceSnapshot, Liveness};
+use cleat_rs::model::{Action, AudioDevice, DeviceSnapshot, Liveness, TRANSPORT_BUILT_IN};
 use cleat_rs::rules::input_pin::reconcile;
 use common::*;
 
@@ -219,24 +219,26 @@ fn albert_config_evicts_air_pods_to_the_silent_wireless_microphone() {
 }
 
 #[test]
-fn blocked_current_input_falls_back_to_an_unlisted_device() {
-    let snap = snapshot(vec![air_pods(), maono()], Some(&air_pods()), &[]);
+fn blocked_current_input_falls_back_to_the_built_in_microphone_not_an_unlisted_one() {
+    let snap = snapshot(vec![air_pods(), maono(), mac_mic()], Some(&air_pods()), &[]);
     assert_eq!(
         reconcile(&snap, &pinned_input()),
-        vec![Action::SetDefaultInput(maono().id, format!("AirPods Max -> {} (blocked)", maono().name))]
+        vec![Action::SetDefaultInput(mac_mic().id, "AirPods Max -> MacBook Pro Microphone (blocked)".into())]
     );
+    let snap = snapshot(vec![air_pods(), maono()], Some(&air_pods()), &[]);
+    assert_eq!(reconcile(&snap, &pinned_input()), vec![]);
 }
 
 #[test]
-fn unlisted_fallback_skips_blocked_and_output_only_devices() {
-    let speakers = AudioDevice::new(70, "Aaa Speakers", "Aaa-UID", false, true);
-    let config = overlap(&["Wireless microphone"], &["AirPods Max", "Brio 100"]);
-    let snap = snapshot(vec![air_pods(), brio(), speakers.clone(), maono()], Some(&air_pods()), &[]);
+fn built_in_fallback_skips_blocked_and_output_only_devices() {
+    let config = overlap(&["Wireless microphone"], &["AirPods Max", "Brio 100", "MacBook Pro Microphone"]);
+    let other_mic = AudioDevice::with_transport(84, "Aaa Microphone", "Aaa-UID", true, false, TRANSPORT_BUILT_IN);
+    let snap = snapshot(vec![air_pods(), brio(), mac_speakers(), mac_mic(), other_mic.clone()], Some(&air_pods()), &[]);
     assert_eq!(
         reconcile(&snap, &config),
-        vec![Action::SetDefaultInput(maono().id, format!("AirPods Max -> {} (blocked)", maono().name))]
+        vec![Action::SetDefaultInput(other_mic.id, "AirPods Max -> Aaa Microphone (blocked)".into())]
     );
-    let snap = snapshot(vec![air_pods(), brio(), speakers], Some(&air_pods()), &[]);
+    let snap = snapshot(vec![air_pods(), brio(), mac_speakers(), mac_mic()], Some(&air_pods()), &[]);
     assert_eq!(reconcile(&snap, &config), vec![]);
 }
 
@@ -248,4 +250,72 @@ fn unblocked_current_input_is_not_evicted_without_a_candidate() {
         &[(&wireless(), Liveness::Silent), (&brio(), Liveness::Silent)],
     );
     assert_eq!(reconcile(&snap, &pinned_input()), vec![]);
+}
+
+// B-1283 return: outside the list only the built-in microphone is a fallback, an empty list still
+// evicts, and a device cleat placed there gives way to a returning listed device.
+
+fn albert_extras() -> Vec<AudioDevice> {
+    vec![air_pods(), zoom(), black_hole(), iphone_mic()]
+}
+
+/// Albert's replay (a1): AirPods Max current, wireless microphone and Brio absent.
+#[test]
+fn blocked_input_falls_back_to_the_built_in_microphone_only() {
+    let mut devices = albert_extras();
+    devices.push(mac_mic());
+    let snap = snapshot(devices, Some(&air_pods()), &[]);
+    assert_eq!(
+        reconcile(&snap, &albert_input()),
+        vec![Action::SetDefaultInput(mac_mic().id, "AirPods Max -> MacBook Pro Microphone (blocked)".into())]
+    );
+}
+
+#[test]
+fn blocked_input_without_a_built_in_microphone_stays() {
+    let snap = snapshot(albert_extras(), Some(&air_pods()), &[]);
+    assert_eq!(reconcile(&snap, &albert_input()), vec![]);
+}
+
+#[test]
+fn only_virtual_inputs_are_never_a_fallback() {
+    let snap = snapshot(vec![air_pods(), zoom()], Some(&air_pods()), &[]);
+    assert_eq!(reconcile(&snap, &pinned_input()), vec![]);
+}
+
+/// Albert's replay (a2): the wireless microphone is there but silent; the existing contract moves
+/// AirPods Max to it, ahead of the built-in microphone.
+#[test]
+fn albert_replay_silent_wireless_microphone_still_wins_over_the_built_in() {
+    let mut devices = albert_extras();
+    devices.extend([mac_mic(), wireless()]);
+    let snap = snapshot(devices, Some(&air_pods()), &[(&wireless(), Liveness::Silent)]);
+    assert_eq!(
+        reconcile(&snap, &albert_input()),
+        vec![Action::SetDefaultInput(wireless().id, "AirPods Max -> Wireless microphone (blocked)".into())]
+    );
+}
+
+#[test]
+fn placed_device_gives_way_to_a_returning_listed_device() {
+    let mut snap = snapshot(vec![mac_mic(), wireless()], Some(&mac_mic()), &[(&wireless(), Liveness::Live)]);
+    assert_eq!(reconcile(&snap, &pinned_input()), vec![]);
+    snap.placed_input = Some(mac_mic().uid);
+    assert_eq!(
+        reconcile(&snap, &pinned_input()),
+        vec![Action::SetDefaultInput(
+            wireless().id,
+            "MacBook Pro Microphone -> Wireless microphone (listed device back)".into()
+        )]
+    );
+}
+
+#[test]
+fn blocked_current_input_is_evicted_with_an_empty_list() {
+    let config = Config { blocked_input: s(&["AirPods Max"]), ..Config::default() };
+    let snap = snapshot(vec![air_pods(), mac_mic()], Some(&air_pods()), &[]);
+    assert_eq!(
+        reconcile(&snap, &config),
+        vec![Action::SetDefaultInput(mac_mic().id, "AirPods Max -> MacBook Pro Microphone (blocked)".into())]
+    );
 }

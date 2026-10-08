@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 
 use cleat_rs::config::{Config, LivenessConfig};
 use cleat_rs::model::{
-    AudioDevice, TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN, TRANSPORT_DISPLAY_PORT, TRANSPORT_USB, TRANSPORT_VIRTUAL,
+    AudioDevice, TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN, TRANSPORT_DISPLAY_PORT, TRANSPORT_UNKNOWN, TRANSPORT_USB,
+    TRANSPORT_VIRTUAL,
 };
 
 pub fn s(v: &[&str]) -> Vec<String> {
@@ -57,6 +58,16 @@ pub fn wired_headphones() -> AudioDevice {
     AudioDevice::with_transport(90, "外接耳機", "BuiltInHeadphoneOutputDevice", false, true, TRANSPORT_BUILT_IN)
 }
 
+pub fn mac_mic() -> AudioDevice {
+    AudioDevice::with_transport(81, "MacBook Pro Microphone", "BuiltInMicrophoneDevice", true, false, TRANSPORT_BUILT_IN)
+}
+pub fn black_hole() -> AudioDevice {
+    AudioDevice::with_transport(82, "BlackHole 2ch", "BlackHole2ch_UID", true, true, TRANSPORT_VIRTUAL)
+}
+pub fn iphone_mic() -> AudioDevice {
+    AudioDevice::with_transport(83, "Albert\u{2019}s iPhone Microphone", "iPhone-UID", true, false, TRANSPORT_UNKNOWN)
+}
+
 /// The config Albert actually runs.
 pub fn pinned_input() -> Config {
     Config {
@@ -65,4 +76,9 @@ pub fn pinned_input() -> Config {
         liveness: [("Wireless microphone".to_string(), LivenessConfig { zero_seconds: 3.0 })].into_iter().collect(),
         ..Config::default()
     }
+}
+
+/// Albert's real input list: AirPods Max is listed and blocked at once.
+pub fn albert_input() -> Config {
+    Config { input: s(&["Wireless microphone", "Brio 100", "AirPods Max"]), ..pinned_input() }
 }

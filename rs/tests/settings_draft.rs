@@ -120,3 +120,31 @@ fn a_rust_only_switch_left_off_reads_as_off() {
     let d = SettingsDraft::make(&config, &[], &[], &LiveLevels::default());
     assert!(!d.reclaim_enabled);
 }
+
+#[test]
+fn entries_naming_one_device_are_one_row_the_way_the_daemon_matches() {
+    let present = [AudioDevice::new(3, "AirPods Max", "uid-3", true, true)];
+    for blocked in ["AirPods\u{00A0}Max", "uid-3"] {
+        let list = DeviceList::make(&s(&["AirPods Max"]), &s(&[blocked]), &present, true);
+        assert_eq!(entries(&list), s(&["AirPods Max"]), "{blocked}");
+        assert_eq!(list.rows[0].stance, Stance::Blocked, "{blocked}");
+        assert!(list.priority().is_empty(), "{blocked}");
+    }
+}
+
+#[test]
+fn a_headset_whose_output_is_not_used_reads_as_blocked() {
+    let config = Config {
+        reclaim: s(&["AirPods Max"]),
+        reclaim_enabled: true,
+        blocked_output: s(&["AirPods\u{00A0}Max"]),
+        ..Config::disabled()
+    };
+    let p = [paired("AirPods Max", true, Some("Headphones")), paired("Bose", true, Some("Headphones"))];
+    let present = [out(3, "AirPods Max")];
+    let mut d = SettingsDraft::make(&config, &present, &p, &LiveLevels::default());
+    let blocked: Vec<_> = d.headsets.iter().map(|h| (h.entry.clone(), d.headset_blocked(h))).collect();
+    assert_eq!(blocked, [("AirPods Max".to_string(), true), ("Bose".to_string(), false)]);
+    d.output.set_blocked("AirPods\u{00A0}Max", false);
+    assert!(!d.headset_blocked(&d.headsets[0].clone()));
+}

@@ -1,16 +1,15 @@
 //! Rule 1 (with the rule 2 gate): keep the default input on the most preferred microphone that is
-//! plugged in and sending signal, but only move off a device that is itself listed or blocked.
+//! plugged in and sending signal, but only move off a device that is itself listed or blocked, or
+//! that cleat itself moved to when it evicted a blocked one.
 //! A blocked device is never the target, even when it is also on the priority list.
-//! A blocked current input is evicted even without a live candidate: first to a present listed
-//! device regardless of liveness, then to any other non-blocked input, as rule 4 does for outputs.
+//! A blocked current input is evicted even without a live candidate and even with an empty
+//! priority list: first to a present listed device regardless of liveness, then to the built-in
+//! microphone. Nothing else outside the list is a fallback; without one the device stays.
 
 use crate::config::Config;
 use crate::model::{Action, AudioDevice, AudioDeviceId, DeviceSnapshot, Liveness};
 
 pub fn reconcile(snapshot: &DeviceSnapshot, config: &Config) -> Vec<Action> {
-    if config.input.is_empty() {
-        return vec![];
-    }
     let target = config
         .input
         .iter()
@@ -30,11 +29,14 @@ pub fn reconcile(snapshot: &DeviceSnapshot, config: &Config) -> Vec<Action> {
 
     let is_pinned = current.is_listed(&config.input);
     let is_blocked = current.is_listed(&config.blocked_input);
-    if !is_pinned && !is_blocked {
+    let is_placed = snapshot.placed_input.as_deref() == Some(current.uid.as_str());
+    if !is_pinned && !is_blocked && !is_placed {
         return vec![];
     }
     let cause = if is_blocked {
         "blocked".to_string()
+    } else if !is_pinned {
+        "listed device back".to_string()
     } else if snapshot.liveness.get(&current.uid) == Some(&Liveness::Silent) {
         format!("{} silent", current.name)
     } else {
@@ -54,7 +56,14 @@ fn evict_blocked(current_id: AudioDeviceId, snapshot: &DeviceSnapshot, config: &
         .iter()
         .filter_map(|e| snapshot.device_matching(e, true))
         .find(usable)
-        .or_else(|| snapshot.devices.iter().filter(|d| d.has_input).filter(usable).min_by(|a, b| AudioDevice::by_name(a, b)));
+        .or_else(|| {
+            snapshot
+                .devices
+                .iter()
+                .filter(|d| d.has_input && d.is_built_in())
+                .filter(usable)
+                .min_by(|a, b| AudioDevice::by_name(a, b))
+        });
     match escape {
         Some(e) => vec![Action::SetDefaultInput(e.id, format!("{} -> {} (blocked)", current.name, e.name))],
         None => vec![],

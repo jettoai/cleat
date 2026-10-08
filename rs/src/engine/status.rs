@@ -133,7 +133,11 @@ pub fn headphones_summary(config: &Config) -> String {
 
 pub fn pin_summary(priority: &[String], blocked: &[String]) -> String {
     if priority.is_empty() {
-        return if blocked.is_empty() { "off".into() } else { "off (no priority list)".into() };
+        return if blocked.is_empty() {
+            "off".into()
+        } else {
+            format!("on (no priority list, blocked: {})", blocked.join(", "))
+        };
     }
     let mut s = format!("on ({})", priority.join(", "));
     if !blocked.is_empty() {
