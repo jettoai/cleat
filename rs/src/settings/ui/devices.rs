@@ -110,9 +110,16 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
             views.push(t);
         }
         views.push(spacer(mtm));
+        let entry = r.entry.clone();
+        let act = ctx.act(move |_| {
+            let entry = entry.clone();
+            app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, false))
+        });
+        views.push(order_button(mtm, &act, "minus.circle", "移出順序"));
         views.push(to_view(&block_toggle(mtm, ctx, side, r)));
         let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
         let line = row(mtm, &refs);
+        line.setCustomSpacing_afterView(18.0, &views[views.len() - 2]);
         let menu = NSMenu::new(mtm);
         menu.setAutoenablesItems(false);
         menu.addItem(&menu_item(ctx, "上移", i > 0, move || app().edit(move |s| s.draft.list_mut(side).move_listed(i, i.wrapping_sub(1)))));
@@ -143,13 +150,13 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
             let entry = entry.clone();
             app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, true))
         });
-        let add = add_to_order(mtm, &act);
+        let add = order_button(mtm, &act, "plus.circle", "加入順序");
         let mut views: Vec<Retained<NSView>> = vec![device_icon(a, mtm, side, r), label_view(mtm, r)];
         if let Some(t) = tags(a, mtm, side, r) {
             views.push(t);
         }
         views.push(spacer(mtm));
-        views.push(to_view(&add));
+        views.push(add);
         views.push(to_view(&block_toggle(mtm, ctx, side, r)));
         let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
         let line = row(mtm, &refs);
@@ -160,11 +167,11 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
     Some(section(mtm, Some(&header), &rows, None))
 }
 
-/// Swift's "加入順序": a caption `Label` in a borderless button, icon and words 13.5 pt apart,
-/// drawn as faint as tertiary text so five of them in a column stay quiet.
-fn add_to_order(mtm: MainThreadMarker, act: &Action) -> Retained<NSView> {
+/// Swift's "加入順序" (and its mirror "移出順序"): a caption `Label` in a borderless button, icon
+/// and words 13.5 pt apart, drawn as faint as tertiary text so five of them in a column stay quiet.
+fn order_button(mtm: MainThreadMarker, act: &Action, symbol: &str, title: &str) -> Retained<NSView> {
     let tint = NSColor::tertiaryLabelColor();
-    let words = stack(mtm, false, 11.5, &[&icon(mtm, "plus.circle", 13.0, &tint), &label(mtm, "加入順序", 10.0, regular(), &tint)]);
+    let words = stack(mtm, false, 11.5, &[&icon(mtm, symbol, 13.0, &tint), &label(mtm, title, 10.0, regular(), &tint)]);
     // SAFETY: target and selector match `Action::fire:`.
     let hit = unsafe { NSButton::buttonWithTitle_target_action(&ns(""), Some(act), Some(sel!(fire:)), mtm) };
     hit.setBordered(false);
