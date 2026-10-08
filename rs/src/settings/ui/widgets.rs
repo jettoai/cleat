@@ -181,6 +181,17 @@ pub fn secondary(mtm: MainThreadMarker, text: &str, size_pt: f64) -> Retained<NS
     label(mtm, text, size_pt, regular(), &NSColor::secondaryLabelColor())
 }
 
+/// Jetto voice `SettingsRow` title: 15 pt medium.
+pub fn row_title(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
+    // SAFETY: an AppKit constant.
+    label(mtm, text, 15.0, unsafe { objc2_app_kit::NSFontWeightMedium }, &NSColor::labelColor())
+}
+
+/// Jetto voice `SettingsRow` description: 13 pt secondary.
+pub fn row_note(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
+    secondary(mtm, text, 13.0)
+}
+
 /// A label that wraps to whatever width its container gives it.
 pub fn wrapping(mtm: MainThreadMarker, text: &str, size_pt: f64, color: &NSColor) -> Retained<NSTextField> {
     let l = NSTextField::wrappingLabelWithString(&ns(text), mtm);
@@ -271,31 +282,31 @@ pub fn fill(parent: &NSView, child: &NSView, inset: f64) {
     child.trailingAnchor().constraintEqualToAnchor_constant(&parent.trailingAnchor(), -inset).setActive(true);
 }
 
-/// One plain Form row: content padded 10 all round, as tall as its content.
+/// One plain card row: 10 top and bottom, 20 each side (Jetto voice `SettingsRow`), as tall as its content.
 pub fn plain_row(mtm: MainThreadMarker, views: &[&NSView]) -> Retained<NSStackView> {
     let s = stack(mtm, false, 8.0, views);
-    s.setEdgeInsets(NSEdgeInsets { top: 10.0, left: 10.0, bottom: 10.0, right: 10.0 });
+    s.setEdgeInsets(NSEdgeInsets { top: 10.0, left: 20.0, bottom: 10.0, right: 20.0 });
     s
 }
 
-/// Swift `.settingsRow()`: a plain row whose content is at least 24 tall.
+/// Jetto voice `SettingsRow`: a plain row at least 52 tall.
 pub fn row(mtm: MainThreadMarker, views: &[&NSView]) -> Retained<NSStackView> {
     let s = plain_row(mtm, views);
-    s.heightAnchor().constraintGreaterThanOrEqualToConstant(44.0).setActive(true);
+    s.heightAnchor().constraintGreaterThanOrEqualToConstant(52.0).setActive(true);
     s
 }
 
-/// A Form row holding a column; `vpad` is the row's 10 plus any `.padding(.vertical)` inside it.
+/// A card row holding a column, 20 each side; `vpad` is the row's 10 plus any `.padding(.vertical)` inside it.
 pub fn padded_column(mtm: MainThreadMarker, spacing: f64, vpad: f64, views: &[&NSView]) -> Retained<NSStackView> {
     let s = stack(mtm, true, spacing, views);
-    s.setEdgeInsets(NSEdgeInsets { top: vpad, left: 10.0, bottom: vpad, right: 10.0 });
+    s.setEdgeInsets(NSEdgeInsets { top: vpad, left: 20.0, bottom: vpad, right: 20.0 });
     for v in views {
-        fill(&s, v, 10.0);
+        fill(&s, v, 20.0);
     }
     s
 }
 
-fn rounded_box(mtm: MainThreadMarker, radius: f64, fill_color: &NSColor, border: Option<&NSColor>) -> Retained<NSBox> {
+pub fn rounded_box(mtm: MainThreadMarker, radius: f64, fill_color: &NSColor, border: Option<&NSColor>) -> Retained<NSBox> {
     let b = NSBox::new(mtm);
     b.setBoxType(NSBoxType::Custom);
     b.setTitlePosition(NSTitlePosition::NoTitle);
@@ -326,7 +337,18 @@ pub fn card(mtm: MainThreadMarker, rows: &[Retained<NSView>]) -> Retained<NSView
         inner.addArrangedSubview(r);
         fill(&inner, r, 0.0);
     }
-    let b = rounded_box(mtm, 12.0, &NSColor::quaternarySystemFillColor(), None);
+    // Jetto voice `SettingsCardSurface`: white card (dark: white 6%) with a 0.5 hairline.
+    let fill_color = if is_dark(mtm) { NSColor::whiteColor().colorWithAlphaComponent(0.06) } else { NSColor::whiteColor() };
+    let border = NSColor::labelColor().colorWithAlphaComponent(0.09);
+    let b = rounded_box(mtm, 12.0, &fill_color, Some(&border));
+    if !is_dark(mtm) {
+        // Light only: black 5%, radius 3, 1 pt down.
+        let shadow = objc2_app_kit::NSShadow::new();
+        shadow.setShadowColor(Some(&NSColor::blackColor().colorWithAlphaComponent(0.05)));
+        shadow.setShadowBlurRadius(3.0);
+        shadow.setShadowOffset(NSSize::new(0.0, -1.0));
+        b.setShadow(Some(&shadow));
+    }
     b.setContentView(Some(&inner));
     inner.topAnchor().constraintEqualToAnchor(&b.topAnchor()).setActive(true);
     inner.bottomAnchor().constraintEqualToAnchor(&b.bottomAnchor()).setActive(true);
@@ -334,21 +356,36 @@ pub fn card(mtm: MainThreadMarker, rows: &[Retained<NSView>]) -> Retained<NSView
     to_view(&b)
 }
 
-/// Header, card, footer: one Form Section.
-pub fn section(mtm: MainThreadMarker, header: Option<&str>, rows: &[Retained<NSView>], footer: Option<&str>) -> Retained<NSView> {
+// ponytail: read once per render; an appearance switch shows on the next rebuild (1 Hz tick or page change).
+pub fn is_dark(mtm: MainThreadMarker) -> bool {
+    let name = objc2_app_kit::NSApplication::sharedApplication(mtm).effectiveAppearance().name();
+    name.to_string().contains("Dark")
+}
+
+/// Header, card, footer: one Form Section. `header` is (SF Symbol, title).
+pub fn section(mtm: MainThreadMarker, header: Option<(&str, &str)>, rows: &[Retained<NSView>], footer: Option<&str>) -> Retained<NSView> {
     let s = stack(mtm, true, 10.0, &[]);
-    if let Some(h) = header {
-        let l = label(mtm, h, 13.0, semibold(), &NSColor::labelColor());
-        s.addArrangedSubview(&l);
-        fill(&s, &l, 10.0);
+    if let Some((symbol, h)) = header {
+        // Jetto voice `SettingsSectionHeader`: a 14 pt line glyph, 15 pt semibold secondary, a hairline to the right.
+        let glyph = overflowing_icon(mtm, symbol, 18.0, 14.0, &NSColor::secondaryLabelColor());
+        let l = label(mtm, h, 15.0, semibold(), &NSColor::secondaryLabelColor());
+        hug(&l);
+        let line = NSBox::new(mtm);
+        line.setBoxType(NSBoxType::Separator);
+        line.setContentHuggingPriority_forOrientation(1.0, NSLayoutConstraintOrientation::Horizontal);
+        let head = stack(mtm, false, 8.0, &[&glyph, &l, &line]);
+        head.setCustomSpacing_afterView(10.0, &l);
+        head.setEdgeInsets(NSEdgeInsets { top: 0.0, left: 4.0, bottom: 0.0, right: 0.0 });
+        s.addArrangedSubview(&head);
+        fill(&s, &head, 0.0);
     }
     let c = card(mtm, rows);
     s.addArrangedSubview(&c);
     fill(&s, &c, 0.0);
     if let Some(f) = footer {
-        let l = wrapping(mtm, f, 10.0, &NSColor::secondaryLabelColor());
+        let l = wrapping(mtm, f, 13.0, &NSColor::secondaryLabelColor());
         s.addArrangedSubview(&l);
-        fill(&s, &l, 10.0);
+        fill(&s, &l, 20.0);
     }
     to_view(&s)
 }

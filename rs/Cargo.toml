@@ -17,7 +17,7 @@ objc2-core-audio = { version = "0.3.2", default-features = false, features = ["s
 objc2-core-audio-types = { version = "0.3.2", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFRunLoop", "CFBundle"] }
 objc2 = "0.6.5"
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSArray", "NSAttributedString", "NSDictionary", "NSGeometry", "NSObjCRuntime", "NSURL", "NSPathUtilities", "NSBundle", "NSTimer", "NSDate", "NSRunLoop", "NSValue", "NSIndexSet", "NSNotification", "NSEnumerator", "NSRange", "NSThread", "block2", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSArray", "NSAttributedString", "NSDictionary", "NSData", "NSGeometry", "NSObjCRuntime", "NSURL", "NSPathUtilities", "NSBundle", "NSTimer", "NSDate", "NSRunLoop", "NSValue", "NSIndexSet", "NSNotification", "NSEnumerator", "NSRange", "NSThread", "block2", "objc2-core-foundation"] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "std", "objc2-core-foundation", "objc2-uniform-type-identifiers", "block2", "libc",
   "NSApplication", "NSResponder", "NSRunningApplication", "NSWindow", "NSView", "NSViewController",
@@ -25,12 +25,12 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "NSTextField", "NSTextFieldCell", "NSText", "NSStackView", "NSScrollView", "NSClipView", "NSScroller",
   "NSImage", "NSImageView", "NSImageCell", "NSTableView", "NSTableColumn", "NSTableHeaderView", "NSTableCellView", "NSTableRowView",
   "NSSplitView", "NSSplitViewController", "NSSplitViewItem", "NSMenu", "NSMenuItem",
-  "NSOpenPanel", "NSSavePanel", "NSPanel", "NSColor", "NSColorSpace", "NSFont", "NSFontDescriptor", "NSBox",
+  "NSOpenPanel", "NSSavePanel", "NSPanel", "NSColor", "NSColorList", "NSColorSpace", "NSFont", "NSFontDescriptor", "NSBox",
   "NSLayoutConstraint", "NSLayoutAnchor", "NSUserInterfaceLayout", "NSGraphics", "NSGraphicsContext",
   "NSBezierPath", "NSEvent", "NSAppearance", "NSToolbar", "NSAttributedString", "NSStringDrawing",
   "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSAccessibilityProtocols",
   "NSBitmapImageRep", "NSImageRep", "NSShadow", "NSWindowController", "NSAccessibilityConstants",
-  "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSWorkspace",
+  "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSWorkspace", "NSTextAttachment", "NSParagraphStyle",
 ] }
 objc2-uniform-type-identifiers = { version = "0.3.2", default-features = false, features = ["std", "UTType", "UTCoreTypes"] }
 objc2-service-management = { version = "0.3.2", default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }

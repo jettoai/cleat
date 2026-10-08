@@ -13,10 +13,12 @@ use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel}
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSAboutPanelOptionCredits, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate,
-    NSBundleImageExtension, NSImage, NSMenu, NSMenuDelegate, NSMenuItem, NSSquareStatusItemLength, NSStatusBar, NSStatusItem,
+    NSBundleImageExtension, NSColor, NSImage, NSMenu, NSMenuDelegate, NSMenuItem, NSMutableParagraphStyle, NSParagraphStyleAttributeName,
+    NSAttributedStringAttachmentConveniences, NSSquareStatusItemLength, NSStatusBar, NSStatusItem, NSTextAlignment,
+    NSTextAttachment,
 };
 use objc2_foundation::{
-    NSAttributedString, NSBundle, NSDictionary, NSPoint, NSRunLoop, NSRunLoopCommonModes, NSSize, NSString, NSTimer,
+    NSAttributedString, NSBundle, NSDictionary, NSMutableAttributedString, NSPoint, NSRange, NSRect, NSRunLoop, NSRunLoopCommonModes, NSSize, NSString, NSTimer,
 };
 
 use crate::config::paths;
@@ -200,11 +202,30 @@ fn item(mtm: MainThreadMarker, title: &str, action: Option<Sel>, key: &str) -> R
     }
 }
 
+/// "by" and the Jetto wordmark, as the settings sidebar shows it; the words alone without it.
+fn about_credits() -> Retained<NSAttributedString> {
+    let Some(image) = crate::settings::jetto::wordmark(crate::settings::jetto::ABOUT, NSColor::labelColor) else {
+        return NSAttributedString::from_nsstring(&NSString::from_str(BYLINE_CREDIT));
+    };
+    let (w, h) = crate::settings::jetto::ABOUT;
+    let mark = NSTextAttachment::new();
+    mark.setImage(Some(&image));
+    // 2 pt below the baseline: the wordmark's foot sits where the words' descenders start.
+    mark.setBounds(NSRect::new(NSPoint::new(0.0, -2.0), NSSize::new(w, h)));
+    let s = NSMutableAttributedString::from_nsstring(&NSString::from_str("by "));
+    s.appendAttributedString(&NSAttributedString::attributedStringWithAttachment(&mark));
+    let paragraph = NSMutableParagraphStyle::new();
+    paragraph.setAlignment(NSTextAlignment::Center);
+    // SAFETY: an AppKit constant key with the NSParagraphStyle value it documents.
+    unsafe { s.addAttribute_value_range(NSParagraphStyleAttributeName, &paragraph, NSRange::new(0, s.length())) };
+    Retained::into_super(s)
+}
+
 /// The standard About panel; its Credits carry the attribution, as the settings sidebar does.
 fn show_about_panel() {
     let Some(mtm) = MainThreadMarker::new() else { return };
     let app = NSApplication::sharedApplication(mtm);
-    let credits = NSAttributedString::from_nsstring(&NSString::from_str(BYLINE_CREDIT));
+    let credits = about_credits();
     let value: &AnyObject = &credits;
     // SAFETY: an AppKit constant key, with the NSAttributedString value the key documents.
     unsafe {

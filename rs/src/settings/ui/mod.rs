@@ -156,22 +156,31 @@ impl App {
             let s = self.store.borrow();
             *self.live_key.borrow_mut() = format!("{:?}{:?}{:?}", s.live, s.last_revert, s.vitals);
         }
+        // Jetto voice `SettingsPageBackground`: #F3F3F5 light, #1C1C1E dark, so the cards lift off it.
+        let v = if widgets::is_dark(self.mtm) { (0x1C, 0x1E) } else { (0xF3, 0xF5) };
+        let (g, b) = (f64::from(v.0) / 255.0, f64::from(v.1) / 255.0);
+        scroll.setBackgroundColor(&objc2_app_kit::NSColor::colorWithSRGBRed_green_blue_alpha(g, g, b, 1.0));
+        scroll.setDrawsBackground(true);
         let mut ctx = Ctx { mtm: self.mtm, targets: vec![] };
         let content = pages::page(self, &mut ctx);
         let clip = scroll.contentView();
-        let origin = clip.bounds().origin;
+        let mut origin = clip.bounds().origin;
         let doc = FlippedView::new(self.mtm);
         doc.setTranslatesAutoresizingMaskIntoConstraints(false);
         doc.addSubview(&content);
-        // 52 pt: where SwiftUI's grouped Form starts under the transparent title bar.
-        content.topAnchor().constraintEqualToAnchor_constant(&doc.topAnchor(), 52.0).setActive(true);
-        content.bottomAnchor().constraintEqualToAnchor_constant(&doc.bottomAnchor(), -20.0).setActive(true);
-        widgets::fill(&doc, &content, 20.0);
+        // Jetto voice `pageContentInsets`: 30 top, 28 each side, 32 bottom, from the window's top edge.
+        content.topAnchor().constraintEqualToAnchor_constant(&doc.topAnchor(), 30.0).setActive(true);
+        content.bottomAnchor().constraintEqualToAnchor_constant(&doc.bottomAnchor(), -32.0).setActive(true);
+        widgets::fill(&doc, &content, 28.0);
         scroll.setDocumentView(Some(&doc));
         doc.leadingAnchor().constraintEqualToAnchor(&clip.leadingAnchor()).setActive(true);
         doc.trailingAnchor().constraintEqualToAnchor(&clip.trailingAnchor()).setActive(true);
         doc.topAnchor().constraintEqualToAnchor(&clip.topAnchor()).setActive(true);
         scroll.layoutSubtreeIfNeeded();
+        // Screenshot hook: open scrolled to this offset, clamped to what the page can scroll.
+        if let Some(y) = window::debug_env("CLEAT_SETTINGS_SCROLL").and_then(|y| y.parse::<f64>().ok()) {
+            origin.y = y.min((doc.frame().size.height - clip.bounds().size.height).max(0.0));
+        }
         clip.scrollToPoint(origin);
         scroll.reflectScrolledClipView(&clip);
         // Old targets go only now: their controls are out of the window.

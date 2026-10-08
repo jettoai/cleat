@@ -3,6 +3,7 @@
 
 pub mod document;
 pub mod draft;
+pub mod jetto;
 pub mod single;
 pub mod sources;
 pub mod store;
@@ -100,8 +101,21 @@ fn open_window() {
     keep(Retained::into_super(sidebar));
     *a.window.borrow_mut() = Some(window.clone());
     a.load();
+    // Screenshot runs (debug builds): show the window without taking the front from whoever has it.
+    if ui::window::debug_env("CLEAT_SETTINGS_PAGE").is_some() {
+        window.orderFront(None);
+    } else {
+        take_front(&window, a.mtm);
+    }
+    let block = RcBlock::new(|_t: std::ptr::NonNull<NSTimer>| app().tick());
+    // SAFETY: as above, main run loop only.
+    let timer = unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(1.0, true, &block) };
+    keep(Retained::into_super(timer));
+}
+
+fn take_front(window: &objc2_app_kit::NSWindow, mtm: MainThreadMarker) {
     window.makeKeyAndOrderFront(None);
-    let application = NSApplication::sharedApplication(a.mtm);
+    let application = NSApplication::sharedApplication(mtm);
     application.activate();
     // `activate` is only a request since macOS 14, and the daemon's menu (an accessory app that is
     // never active) cannot yield the front to us: opened from the menu, the window landed behind
@@ -112,10 +126,6 @@ fn open_window() {
     // Swift opens with the window itself focused (grey selection); AppKit would hand the list,
     // the first key view, focus at once. A click on the list still takes it, for ↑/↓.
     window.makeFirstResponder(None);
-    let block = RcBlock::new(|_t: std::ptr::NonNull<NSTimer>| app().tick());
-    // SAFETY: as above, main run loop only.
-    let timer = unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(1.0, true, &block) };
-    keep(Retained::into_super(timer));
 }
 
 fn menu_item(mtm: MainThreadMarker, title: &str, action: objc2::runtime::Sel, key: &str) -> Retained<NSMenuItem> {

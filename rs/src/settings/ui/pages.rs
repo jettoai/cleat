@@ -11,7 +11,7 @@ use super::super::store::Phase;
 use super::super::text::{self, Page};
 use super::super::vitals::{DaemonVitals, VitalsState};
 use super::widgets::{to_view, 
-    attributed, body, fill, icon, label, ns, padded_column, plain_row, secondary, section, semibold, spacer, stack,
+    attributed, card, fill, icon, label, ns, padded_column, plain_row, row, row_note, row_title, secondary, section, semibold, spacer, stack,
     wrapping, AccentSwitch, Ctx,
 };
 use super::{app, devices, disable_tree, levels, App};
@@ -27,13 +27,14 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     if let Some(banner) = error_banner(a, ctx) {
         add(banner);
     }
-    // Swift grouped Form: 30 pt from one section to the next (measured side by side).
-    let content = stack(mtm, true, 30.0, &[]);
+    // Jetto voice settings page: 28 pt between the page header and each section.
+    let content = stack(mtm, true, 28.0, &[]);
     let put = |v: Retained<NSView>| {
         content.addArrangedSubview(&v);
         fill(&content, &v, 0.0);
     };
-    put(pane_header(a, mtm, page));
+    put(pane_header(mtm, page));
+    put(card(mtm, &[vitals_band(mtm, &a.store.borrow().vitals)]));
     match page {
         Page::Output => {
             put(devices::priority(a, ctx, Side::Output));
@@ -58,14 +59,14 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     to_view(&col)
 }
 
-fn pane_header(a: &App, mtm: MainThreadMarker, page: Page) -> Retained<NSView> {
-    let title = label(mtm, page.title(), 15.0, semibold(), &NSColor::labelColor());
-    let sub = secondary(mtm, page.subtitle(), 12.0);
-    let words = stack(mtm, true, 2.0, &[&title, &sub]);
-    let head = stack(mtm, false, 12.0, &[&icon(mtm, page.symbol(), 40.0, &NSColor::labelColor()), &words]);
-    let vitals = vitals_band(mtm, &a.store.borrow().vitals);
-    // Swift: `.padding(.vertical, 4)` on the header and on VitalsBand, inside the row's 10.
-    section(mtm, None, &[to_view(&padded_column(mtm, 8.0, 14.0, &[&head])), vitals], None)
+/// Jetto voice `PageHeader`: 26 pt bold title over a 13 pt secondary line, 2 pt in, no card.
+fn pane_header(mtm: MainThreadMarker, page: Page) -> Retained<NSView> {
+    // SAFETY: an AppKit constant.
+    let bold = unsafe { objc2_app_kit::NSFontWeightBold };
+    let title = label(mtm, page.title(), 26.0, bold, &NSColor::labelColor());
+    let words = stack(mtm, true, 4.0, &[&title, &secondary(mtm, page.subtitle(), 13.0)]);
+    words.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 0.0, left: 2.0, bottom: 0.0, right: 0.0 });
+    to_view(&words)
 }
 
 fn big_font() -> Retained<NSFont> {
@@ -146,17 +147,16 @@ fn error_banner(a: &App, ctx: &mut Ctx) -> Option<Retained<NSView>> {
 /// Label + switch. `spread`: switch at the trailing edge; otherwise right next to the words.
 pub fn switch_row(mtm: MainThreadMarker, title: &str, on: bool, enabled: bool, f: impl Fn(bool) + 'static) -> Retained<NSView> {
     let sw = AccentSwitch::new(mtm, on, enabled, f);
-    let r = plain_row(mtm, &[&body(mtm, title), &spacer(mtm), &sw]);
-    // Swift's Toggle row measures 38 pt tall side by side; AppKit's content alone gives 36.
-    r.heightAnchor().constraintGreaterThanOrEqualToConstant(38.0).setActive(true);
+    // Jetto voice `SettingsRow`: 15 pt title, at least 52 tall.
+    let r = row(mtm, &[&row_title(mtm, title), &spacer(mtm), &sw]);
     to_view(&r)
 }
 
 /// A device name with "未連線" after it when nothing present matches.
 pub fn device_label(mtm: MainThreadMarker, name: &str, connected: bool) -> Retained<NSView> {
-    let s = stack(mtm, false, 6.0, &[&body(mtm, name)]);
+    let s = stack(mtm, false, 6.0, &[&row_title(mtm, name)]);
     if !connected {
-        s.addArrangedSubview(&secondary(mtm, "未連線", 10.0));
+        s.addArrangedSubview(&row_note(mtm, "未連線"));
     }
     to_view(&s)
 }
@@ -170,10 +170,10 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
     });
     // SAFETY: target and selector match `Action::fire:`.
     let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns(&h.display_name), Some(&act), Some(sel!(fire:)), mtm) };
-    let title = attributed(&h.display_name, 13.0, &NSColor::labelColor());
+    let title = attributed(&h.display_name, 15.0, &NSColor::labelColor());
     if !h.is_connected {
         let full = objc2_foundation::NSMutableAttributedString::from_attributed_nsstring(&title);
-        full.appendAttributedString(&attributed(" 未連線", 10.0, &NSColor::secondaryLabelColor()));
+        full.appendAttributedString(&attributed(" 未連線", 13.0, &NSColor::secondaryLabelColor()));
         b.setAttributedTitle(&full);
     } else {
         b.setAttributedTitle(&title);
@@ -183,7 +183,7 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
         b.setEnabled(false);
     }
     let r = plain_row(mtm, &[&b, &spacer(mtm)]);
-    r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 26.0, bottom: 10.0, right: 10.0 });
+    r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 36.0, bottom: 10.0, right: 20.0 });
     if !reclaim {
         r.setAlphaValue(0.6);
     }
@@ -206,7 +206,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let others: Vec<&HeadsetOption> = d.headsets.iter().filter(|h| h.is_other).collect();
     if audio.is_empty() {
         let r = plain_row(mtm, &[&secondary(mtm, "沒有找到配對過的藍牙耳機", 13.0), &spacer(mtm)]);
-        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 26.0, bottom: 10.0, right: 10.0 });
+        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 36.0, bottom: 10.0, right: 20.0 });
         if !reclaim {
             r.setAlphaValue(0.6);
         }
@@ -223,16 +223,21 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
             App::render_later();
         });
         let chevron = icon(mtm, if expanded { "chevron.down" } else { "chevron.right" }, 14.0, &NSColor::secondaryLabelColor());
-        let words = stack(mtm, true, 2.0, &[&body(mtm, &format!("其他藍牙裝置（{}）", others.len())), &secondary(mtm, text::OTHERS_NOTE, 10.0)]);
+        let note = wrapping(mtm, text::OTHERS_NOTE, 13.0, &NSColor::secondaryLabelColor());
+        let words = stack(mtm, true, 2.0, &[&row_title(mtm, &format!("其他藍牙裝置（{}）", others.len())), &note]);
+        fill(&words, &note, 0.0);
         // SAFETY: target and selector match `Action::fire:`.
         let hit = unsafe { NSButton::buttonWithTitle_target_action(&ns(""), Some(&act), Some(sel!(fire:)), mtm) };
         hit.setBordered(false);
         hit.setTransparent(true);
-        let r = plain_row(mtm, &[&chevron, &words, &spacer(mtm)]);
+        let r = plain_row(mtm, &[&chevron, &words]);
         r.setAlignment(objc2_app_kit::NSLayoutAttribute::Top);
-        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 26.0, bottom: 10.0, right: 10.0 });
-        // Swift's two-line header row measures 51 pt side by side.
-        r.heightAnchor().constraintGreaterThanOrEqualToConstant(50.5).setActive(true);
+        r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 36.0, bottom: 10.0, right: 20.0 });
+        // Jetto voice `SettingsRow`: at least 52 tall, taller with the content, 10 above and below.
+        r.heightAnchor().constraintGreaterThanOrEqualToConstant(52.0).setActive(true);
+        // The tap target pinned to the row hugs it to the button's height; this keeps a two-line
+        // note's 10 pt below it.
+        r.bottomAnchor().constraintGreaterThanOrEqualToAnchor_constant(&note.bottomAnchor(), 10.0).setActive(true);
         r.addSubview(&hit);
         hit.setTranslatesAutoresizingMaskIntoConstraints(false);
         fill(&r, &hit, 0.0);
@@ -253,5 +258,5 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         let r = plain_row(mtm, &[&secondary(mtm, "請至少勾選一副耳機，否則不會有動作", 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
-    section(mtm, Some("耳機"), &rows, None)
+    section(mtm, Some(("headphones", "耳機")), &rows, None)
 }

@@ -134,7 +134,11 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
         rows.push(to_view(&line));
     }
     let header = format!("{}優先順序", noun(side));
-    section(mtm, Some(&header), &rows, Some(device_list_footer(side)))
+    let symbol = match side {
+        Side::Output => "speaker.wave.2",
+        Side::Input => "mic",
+    };
+    section(mtm, Some((symbol, &header)), &rows, Some(device_list_footer(side)))
 }
 
 pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
@@ -164,7 +168,7 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
         rows.push(to_view(&line));
     }
     let header = format!("其他{}裝置", noun(side));
-    Some(section(mtm, Some(&header), &rows, None))
+    Some(section(mtm, Some(("ellipsis.circle", &header)), &rows, None))
 }
 
 /// Swift's "加入順序" (and its mirror "移出順序"): a caption `Label` in a borderless button, icon

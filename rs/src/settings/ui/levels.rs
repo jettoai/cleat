@@ -11,7 +11,7 @@ use objc2_uniform_type_identifiers::UTTypeApplication;
 use super::super::store::Store;
 use super::super::text::{self, balance_describe, now_text, percent_text};
 use super::pages::device_label;
-use super::widgets::{to_view, body, icon, keycap, ns, padded_column, plain_button, row, secondary, section, spacer, stack, width, AccentSwitch, Ctx};
+use super::widgets::{to_view, body, icon, keycap, ns, padded_column, plain_button, row, row_note, row_title, secondary, section, spacer, stack, width, AccentSwitch, Ctx};
 use super::{app, App};
 
 fn view<T: AsRef<NSView>>(v: &T) -> &NSView {
@@ -28,7 +28,7 @@ fn pinned_row(
     now: &str,
 ) -> Retained<NSView> {
     let sw = AccentSwitch::new(mtm, fixed, true, on_fixed);
-    let top = stack(mtm, false, 6.0, &[&body(mtm, title), &spacer(mtm), &body(mtm, "固定"), &sw]);
+    let top = stack(mtm, false, 6.0, &[&row_title(mtm, title), &spacer(mtm), &body(mtm, "固定"), &sw]);
     let mut views: Vec<Retained<NSView>> = vec![to_view(&top)];
     if let Some(c) = control {
         if !fixed {
@@ -37,7 +37,7 @@ fn pinned_row(
         }
         views.push(c);
     }
-    views.push(to_view(&secondary(mtm, now, 10.0)));
+    views.push(to_view(&row_note(mtm, now)));
     let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
     let col = padded_column(mtm, 8.0, 12.0, &refs);
     to_view(&col)
@@ -122,7 +122,7 @@ pub fn output_levels(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     };
     let hold = d.hold_enabled;
     let sw = AccentSwitch::new(mtm, hold, true, |on| app().edit(move |s| s.draft.set_hold_enabled(on)));
-    let head = row(mtm, &[&body(mtm, "輸出音量"), &spacer(mtm), &body(mtm, "被其他程式改掉時拉回"), &sw]);
+    let head = row(mtm, &[&row_title(mtm, "輸出音量"), &spacer(mtm), &body(mtm, "被其他程式改掉時拉回"), &sw]);
     head.setCustomSpacing_afterView(6.0, &head.arrangedSubviews().objectAtIndex(2));
     let mut rows: Vec<Retained<NSView>> = vec![to_view(&head)];
     for name in &d.hold_against {
@@ -152,7 +152,7 @@ pub fn output_levels(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     }
     rows.push(to_view(&r));
     let revert = last_revert.map_or_else(|| "還沒有拉回紀錄".to_string(), |t| format!("最近一次：{t}"));
-    rows.push(to_view(&row(mtm, &[&secondary(mtm, &revert, 10.0), &spacer(mtm)])));
+    rows.push(to_view(&row(mtm, &[&row_note(mtm, &revert), &spacer(mtm)])));
 
     let no_balance = live.output_device.is_some() && live.balance.is_none();
     let now = if no_balance {
@@ -163,7 +163,7 @@ pub fn output_levels(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     };
     let control = (!no_balance).then(|| balance_slider(mtm, ctx, d.balance));
     rows.push(pinned_row(mtm, "左右平衡", d.balance_enabled, |on| app().edit(move |s| s.draft.balance_enabled = on), control, &now));
-    section(mtm, Some("輸出音量與平衡"), &rows, Some(text::OUTPUT_LEVELS_FOOTER))
+    section(mtm, Some(("slider.horizontal.3", "輸出音量與平衡")), &rows, Some(text::OUTPUT_LEVELS_FOOTER))
 }
 
 pub fn volumes(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
@@ -233,5 +233,5 @@ pub fn volumes(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         add.setEnabled(false);
     }
     rows.push(to_view(&row(mtm, &[view(&add), &spacer(mtm)])));
-    section(mtm, Some("輸入音量"), &rows, Some(text::VOLUMES_FOOTER))
+    section(mtm, Some(("slider.horizontal.3", "輸入音量")), &rows, Some(text::VOLUMES_FOOTER))
 }
