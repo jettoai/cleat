@@ -9,7 +9,7 @@ use super::super::draft::{DeviceRow, Side};
 use super::super::text::{self, device_list_footer, noun};
 use super::pages::device_label;
 use super::widgets::{
-    to_view, attributed, fill, icon, label, ns, plain_row, regular, row, secondary, section, spacer, stack, symbol_exists, tag,
+    to_view, attributed, fill, icon, label, lowered, ns, plain_row, regular, row, secondary, section, spacer, stack, symbol_exists, tag,
     width, Action, Ctx,
 };
 use super::{app, App};
@@ -43,6 +43,7 @@ fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Ret
     let wanted = text::device_symbol(&r.display_name, transport, side);
     let name = if symbol_exists(wanted) { wanted } else { "speaker.wave.2" };
     let v = icon(mtm, name, 20.0, &NSColor::secondaryLabelColor());
+    let v = if name == "mic" { lowered(mtm, &v, 1.0) } else { v };
     if r.is_blocked {
         v.setAlphaValue(0.4);
     }

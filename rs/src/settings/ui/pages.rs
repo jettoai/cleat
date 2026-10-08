@@ -11,7 +11,7 @@ use super::super::store::Phase;
 use super::super::text::{self, Page};
 use super::super::vitals::{DaemonVitals, VitalsState};
 use super::widgets::{to_view, 
-    attributed, card, fill, icon, label, ns, padded_column, plain_row, row, row_note, row_title, secondary, section, semibold, spacer, stack,
+    attributed, card, fill, icon, label, lowered, ns, padded_column, plain_row, row, row_note, row_title, secondary, section, semibold, spacer, stack,
     wrapping, AccentSwitch, Ctx,
 };
 use super::{app, devices, disable_tree, levels, App};
@@ -222,9 +222,12 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
             a.others_expanded.set(!a.others_expanded.get());
             App::render_later();
         });
+        let title = row_title(mtm, &format!("其他藍牙裝置（{}）", others.len()));
+        // The row is top-aligned for the two-line block; centre the chevron on the title line.
         let chevron = icon(mtm, if expanded { "chevron.down" } else { "chevron.right" }, 14.0, &NSColor::secondaryLabelColor());
+        let chevron = lowered(mtm, &chevron, (title.fittingSize().height - 14.0) / 2.0);
         let note = wrapping(mtm, text::OTHERS_NOTE, 13.0, &NSColor::secondaryLabelColor());
-        let words = stack(mtm, true, 2.0, &[&row_title(mtm, &format!("其他藍牙裝置（{}）", others.len())), &note]);
+        let words = stack(mtm, true, 2.0, &[&title, &note]);
         fill(&words, &note, 0.0);
         // SAFETY: target and selector match `Action::fire:`.
         let hit = unsafe { NSButton::buttonWithTitle_target_action(&ns(""), Some(&act), Some(sel!(fire:)), mtm) };

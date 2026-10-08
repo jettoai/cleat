@@ -238,6 +238,21 @@ fn icon_view(mtm: MainThreadMarker, name: &str, size_pt: f64, point: f64, color:
     to_view(&view)
 }
 
+/// `view` in a slot of its own size, drawn `dy` points lower. A stack aligns the slot, so this
+/// moves what the eye sees without moving the row: `mic` sits about 1 pt high in its square,
+/// and a chevron beside a two-line block belongs on the first line's centre.
+pub fn lowered(mtm: MainThreadMarker, view: &NSView, dy: f64) -> Retained<NSView> {
+    let slot = NSView::new(mtm);
+    slot.setTranslatesAutoresizingMaskIntoConstraints(false);
+    view.setTranslatesAutoresizingMaskIntoConstraints(false);
+    slot.addSubview(view);
+    view.leadingAnchor().constraintEqualToAnchor(&slot.leadingAnchor()).setActive(true);
+    view.trailingAnchor().constraintEqualToAnchor(&slot.trailingAnchor()).setActive(true);
+    view.topAnchor().constraintEqualToAnchor_constant(&slot.topAnchor(), dy).setActive(true);
+    slot.heightAnchor().constraintEqualToAnchor(&view.heightAnchor()).setActive(true);
+    slot
+}
+
 pub fn size(view: &NSView, w: f64, h: f64) {
     view.setTranslatesAutoresizingMaskIntoConstraints(false);
     view.widthAnchor().constraintEqualToConstant(w).setActive(true);
