@@ -8,13 +8,13 @@ use block2::RcBlock;
 
 use objc2::rc::Retained;
 use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
-use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2::{define_class, msg_send, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAppearance, NSBackingStoreType, NSColor, NSFont, NSImageView, NSTableViewSelectionHighlightStyle, NSControlTextEditingDelegate, NSScrollView, NSSplitViewController, NSSplitViewItem, NSTableColumn, NSTableView,
+    NSAppearance, NSBackingStoreType, NSColor, NSImageView, NSTableViewSelectionHighlightStyle, NSControlTextEditingDelegate, NSScrollView, NSSplitViewController, NSSplitViewItem, NSTableColumn, NSTableView,
     NSTableViewDataSource, NSTableViewDelegate, NSTableViewStyle, NSView, NSViewController, NSWindow,
     NSWindowStyleMask, NSWindowTitleVisibility,
 };
-use objc2_foundation::{NSEdgeInsets, NSIndexSet, NSInteger, NSNotification, NSPoint, NSRange, NSRect, NSSize};
+use objc2_foundation::{NSIndexSet, NSInteger, NSNotification, NSPoint, NSRange, NSRect, NSSize};
 
 use super::super::text::Page;
 use super::widgets::{to_view, label, ns, overflowing_icon, regular, rounded_box, size, stack};
@@ -128,50 +128,60 @@ fn sidebar_color() -> Retained<NSColor> {
     unsafe { NSColor::colorWithName_dynamicProvider(None, &pick) }
 }
 
-/// The sidebar: under the traffic lights, "Cleat by ⬢Jetto" (Tally's About row: "by" 11 pt,
-/// 6 pt apart, the wordmark 53 x 12) and a version capsule (Jetto voice `SidebarHeader`), then the list.
+/// Cleat's own mark ("優先排序", B-1222), the menu bar icon's SVG: drawn as a template, so it takes
+/// the label colour in light and dark.
+const CLEAT_MARK: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18"><mask id="m"><rect width="18" height="18" fill="#fff"/><circle cx="3.6" cy="3.6" r="1.1" fill="#000"/></mask><g mask="url(#m)"><rect x="1.0" y="1.60" width="16.0" height="4.0" rx="2.0" fill="#000"/><rect x="1.0" y="7.20" width="11.6" height="4.0" rx="2.0" fill="#000"/><rect x="1.0" y="12.80" width="7.2" height="4.0" rx="2.0" fill="#000"/></g></svg>"##;
+
+/// The sidebar, laid out as Tally's popover: on top, mark + "Cleat" + version on one line (Tally's
+/// header: a 13 pt mark, the word at 13 x 1.32 pt heavy, 6 pt apart, the version caption2 tertiary);
+/// at the foot, "by ⬢Jetto" (Tally's footer credit: caption2 tertiary "by", the 40 x 9 wordmark in
+/// secondary, 4 pt apart, the whole at 75%); the page list between them.
 fn with_brand(mtm: MainThreadMarker, list: &NSScrollView) -> Retained<NSView> {
-    // SAFETY: an AppKit constant.
-    let bold = unsafe { objc2_app_kit::NSFontWeightBold };
-    let name = label(mtm, "Cleat", 18.0, bold, &NSColor::labelColor());
-    let by = label(mtm, "by", 11.0, regular(), &NSColor::labelColor());
-    let brand = stack(mtm, false, 6.0, &[&name, &by]);
-    brand.setAlignment(objc2_app_kit::NSLayoutAttribute::FirstBaseline);
-    let mark_size = super::super::jetto::ABOUT;
-    if let Some(image) = super::super::jetto::wordmark(mark_size, NSColor::labelColor) {
-        let mark = NSImageView::imageViewWithImage(&image, mtm);
-        size(&mark, mark_size.0, mark_size.1);
-        brand.addArrangedSubview(&mark);
-    } else {
-        brand.addArrangedSubview(&label(mtm, "Jetto", 11.0, regular(), &NSColor::labelColor()));
+    let mark = NSImageView::new(mtm);
+    let data = objc2_foundation::NSData::with_bytes(CLEAT_MARK.as_bytes());
+    if let Some(image) = objc2_app_kit::NSImage::initWithData(objc2_app_kit::NSImage::alloc(), &data) {
+        image.setTemplate(true);
+        mark.setImage(Some(&image));
     }
-    let version = crate::identity::Identity::current().version();
-    let v = label(mtm, &format!("v{version}"), 9.0, regular(), &NSColor::secondaryLabelColor());
+    mark.setImageScaling(objc2_app_kit::NSImageScaling::ScaleProportionallyUpOrDown);
+    mark.setContentTintColor(Some(&NSColor::labelColor()));
+    size(&mark, 13.0, 13.0);
     // SAFETY: an AppKit constant.
-    v.setFont(Some(&NSFont::monospacedSystemFontOfSize_weight(9.0, unsafe { objc2_app_kit::NSFontWeightMedium })));
-    let pill = rounded_box(mtm, 7.5, &NSColor::labelColor().colorWithAlphaComponent(0.06), None);
-    let inner = stack(mtm, false, 0.0, &[&v]);
-    inner.setEdgeInsets(NSEdgeInsets { top: 2.0, left: 6.0, bottom: 2.0, right: 6.0 });
-    pill.setContentView(Some(&inner));
-    inner.topAnchor().constraintEqualToAnchor(&pill.topAnchor()).setActive(true);
-    inner.bottomAnchor().constraintEqualToAnchor(&pill.bottomAnchor()).setActive(true);
-    inner.leadingAnchor().constraintEqualToAnchor(&pill.leadingAnchor()).setActive(true);
-    inner.trailingAnchor().constraintEqualToAnchor(&pill.trailingAnchor()).setActive(true);
-    let head = stack(mtm, true, 6.0, &[&brand, &pill]);
+    let heavy = unsafe { objc2_app_kit::NSFontWeightHeavy };
+    let name = label(mtm, "Cleat", 13.0 * 1.32, heavy, &NSColor::labelColor());
+    let version = crate::identity::Identity::current().version();
+    let v = label(mtm, &version, 10.0, regular(), &NSColor::tertiaryLabelColor());
+    let head = stack(mtm, false, 6.0, &[&mark, &name, &v]);
+    head.setAlignment(objc2_app_kit::NSLayoutAttribute::CenterY);
+
+    let by = label(mtm, "by", 10.0, regular(), &NSColor::tertiaryLabelColor());
+    let foot = stack(mtm, false, 4.0, &[&by]);
+    let credit = super::super::jetto::FOOTER;
+    if let Some(image) = super::super::jetto::wordmark(credit, NSColor::secondaryLabelColor) {
+        let wordmark = NSImageView::imageViewWithImage(&image, mtm);
+        size(&wordmark, credit.0, credit.1);
+        foot.addArrangedSubview(&wordmark);
+    } else {
+        by.setStringValue(&ns("by Jetto"));
+    }
+    foot.setAlphaValue(0.75);
+
     let side = rounded_box(mtm, 0.0, &sidebar_color(), None);
     let body = NSView::new(mtm);
     side.setContentView(Some(&body));
-    for v in [to_view(list), to_view(&head)] {
+    for v in [to_view(list), to_view(&head), to_view(&foot)] {
         v.setTranslatesAutoresizingMaskIntoConstraints(false);
         body.addSubview(&v);
     }
-    // 52 pt: Jetto voice keeps the traffic-light row clear above its header.
+    // 52 pt: clear of the traffic-light row.
     head.topAnchor().constraintEqualToAnchor_constant(&body.topAnchor(), 52.0).setActive(true);
     head.leadingAnchor().constraintEqualToAnchor_constant(&body.leadingAnchor(), 20.0).setActive(true);
-    list.topAnchor().constraintEqualToAnchor_constant(&head.bottomAnchor(), 12.0).setActive(true);
+    list.topAnchor().constraintEqualToAnchor_constant(&head.bottomAnchor(), 16.0).setActive(true);
     list.leadingAnchor().constraintEqualToAnchor(&body.leadingAnchor()).setActive(true);
     list.trailingAnchor().constraintEqualToAnchor(&body.trailingAnchor()).setActive(true);
-    list.bottomAnchor().constraintEqualToAnchor(&body.bottomAnchor()).setActive(true);
+    list.bottomAnchor().constraintEqualToAnchor_constant(&foot.topAnchor(), -8.0).setActive(true);
+    foot.leadingAnchor().constraintEqualToAnchor_constant(&body.leadingAnchor(), 20.0).setActive(true);
+    foot.bottomAnchor().constraintEqualToAnchor_constant(&body.bottomAnchor(), -14.0).setActive(true);
     to_view(&side)
 }
 

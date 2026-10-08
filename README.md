@@ -1,5 +1,7 @@
 # Cleat
 
+<sub>by <a href="https://jetto.ai">Jetto</a></sub>
+
 A cleat is the fitting a rope gets tied to so the boat stops drifting. This one is for audio
 devices: you declare the state you want in a config file, and Cleat holds it, event driven, for
 about zero percent of a CPU.
