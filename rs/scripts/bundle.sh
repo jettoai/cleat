@@ -4,8 +4,9 @@
 # one entitlement the Swift build has (audio input), with bundle/AppIcon.icns as its icon. A
 # previous bundle is moved aside (old-*), never deleted. The .noindex directory keeps Spotlight,
 # and so Raycast, from listing build products beside the installed copy. CLEAT_LABEL / CLEAT_APP
-# build a copy under another bundle id or path (keep the label ending in .rs), so a test copy never
-# replaces the bundle launchd runs.
+# build a copy under another bundle id or path, so a test copy never replaces the bundle launchd
+# runs: development builds keep a label ending in .rs; build-release.sh passes ai.jetto.cleat.
+# CLEAT_BINARY bundles that binary (build-release.sh's universal one) instead of running cargo build.
 set -euo pipefail
 
 RS="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,7 +14,11 @@ cd "$RS"
 LABEL="${CLEAT_LABEL:-ai.jetto.cleat.rs}"
 EXE="Cleat"
 
-cargo build --release
+BINARY="${CLEAT_BINARY:-}"
+if [ -z "$BINARY" ]; then
+    cargo build --release
+    BINARY="${CARGO_TARGET_DIR:-$RS/target}/release/cleat-rs"
+fi
 
 VERSION="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
 BUILD="$(git rev-list --count HEAD)"
@@ -25,7 +30,7 @@ if [ -e "$APP" ]; then
 fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchAgents"
 
-cp "$RS/target/release/cleat-rs" "$APP/Contents/MacOS/$EXE"
+cp "$BINARY" "$APP/Contents/MacOS/$EXE"
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # README step 2 copies this to ~/.config/cleat/config.json; the Swift build ships it too.
 cp ../config.example.json "$APP/Contents/Resources/config.example.json"

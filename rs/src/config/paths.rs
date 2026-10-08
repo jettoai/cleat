@@ -1,14 +1,14 @@
-//! Every file cleat-rs reads or writes. Status and log live apart from the Swift build's so the
-//! two never overwrite each other; the config file is shared.
+//! Every file Cleat reads or writes. The paths are the Swift build's, so a Homebrew upgrade from
+//! 0.3.x keeps its status file and log history. A development build writes the same files: run it
+//! beside an installed Cleat with `run --observe` only.
 
 use std::path::{Path, PathBuf};
 
 pub const CONFIG_OVERRIDE_VARIABLE: &str = "CLEAT_CONFIG";
 
-/// The one switch for moving the Rust daemon onto the Swift build's files (`Cleat`, `cleat.log`).
-pub const SUPPORT_DIR_NAME: &str = "Cleat-rs";
-pub const LOG_DIR_NAME: &str = "Cleat-rs";
-pub const LOG_FILE: &str = "cleat-rs.log";
+pub const SUPPORT_DIR_NAME: &str = "Cleat";
+pub const LOG_DIR_NAME: &str = "Cleat";
+pub const LOG_FILE: &str = "cleat.log";
 
 pub fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))

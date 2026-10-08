@@ -217,7 +217,7 @@ fn config_path_honours_the_environment_override() {
     let home = Path::new("/Users/someone");
     assert_eq!(config_path_from(home, Some("/tmp/cleat-probe/config.json")), PathBuf::from("/tmp/cleat-probe/config.json"));
     assert_eq!(status_path(), support_dir().join("status.json"));
-    assert_eq!(log_path(), log_dir().join("cleat-rs.log"));
+    assert_eq!(log_path(), log_dir().join("cleat.log"));
 }
 
 #[test]

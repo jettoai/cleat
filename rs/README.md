@@ -1,12 +1,9 @@
 # Cleat, in Rust
 
-A port of the Swift daemon in `Cleat/`. Same config file (`~/.config/cleat/config.json`), its own
-status file and log (`~/Library/Application Support/Cleat-rs/status.json`,
-`~/Library/Logs/Cleat-rs/cleat-rs.log`) so it can run beside the Swift build.
-
-The settings window turns reclaim or the volume hold off by writing `reclaimEnabled: false` /
-`outputVolumeHoldEnabled: false` and keeping the list. The Swift daemon does not read those keys:
-beside it, a list switched off here still runs.
+A port of the Swift daemon in `Cleat/`, with the same config file (`~/.config/cleat/config.json`),
+status file (`~/Library/Application Support/Cleat/status.json`) and log
+(`~/Library/Logs/Cleat/cleat.log`). A development build writes those same files, so run it beside an
+installed Cleat with `run --observe` only.
 
 ```bash
 cargo test

@@ -157,7 +157,7 @@ impl Inner {
         }
         self.collect_crash_reports();
         if self.cfg.probe && self.token.is_enabled() && !self.probe_sent.swap(true, Ordering::SeqCst) {
-            let text = format!("cleat-rs sentry probe {}", iso8601_utc(std::time::SystemTime::now()));
+            let text = format!("cleat sentry probe {}", iso8601_utc(std::time::SystemTime::now()));
             let mut e = event::message(&self.cfg.meta, "info", spool::unix_now(), &text);
             event::scrub(&mut e, &self.cfg.home);
             self.spool(&e);

@@ -1,6 +1,6 @@
 [package]
 name = "cleat-rs"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
 publish = false
 
@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 objc2-core-audio = { version = "0.3.2", default-features = false, features = ["std", "AudioHardware", "objc2-core-audio-types"] }
 objc2-core-audio-types = { version = "0.3.2", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFRunLoop", "CFBundle"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFRunLoop", "CFBundle", "CFURL"] }
 objc2 = "0.6.5"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSArray", "NSAttributedString", "NSDictionary", "NSData", "NSGeometry", "NSObjCRuntime", "NSURL", "NSPathUtilities", "NSBundle", "NSTimer", "NSDate", "NSRunLoop", "NSValue", "NSIndexSet", "NSNotification", "NSEnumerator", "NSRange", "NSThread", "block2", "objc2-core-foundation"] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
@@ -46,3 +46,10 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Release builds for distribution (scripts/build-release.sh): keep the symbol table so crash
+# reports name functions, and line tables so dsymutil can produce a dSYM for atos.
+[profile.dist]
+inherits = "release"
+strip = "none"
+debug = "line-tables-only"

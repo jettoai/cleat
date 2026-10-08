@@ -59,7 +59,7 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
     // Observe mode asks for nothing and reports nothing (D6).
     let observe = mode == Mode::Observe;
     if observe {
-        println!("cleat-rs observing (pid {}, log {})", std::process::id(), paths::log_path().display());
+        println!("cleat observing (pid {}, log {})", std::process::id(), paths::log_path().display());
     }
     let reporter = (!observe).then(make_reporter);
     if let Some(r) = &reporter {
@@ -140,5 +140,5 @@ fn make_reporter() -> Reporter {
         },
         probe: std::env::var("CLEAT_SENTRY_TEST_EVENT").is_ok_and(|v| v == "1"),
     };
-    Reporter::new(cfg, Box::new(Curl { client: format!("cleat-rs/{version}") }))
+    Reporter::new(cfg, Box::new(Curl { client: format!("cleat/{version}") }))
 }

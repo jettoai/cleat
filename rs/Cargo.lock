@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "cleat-rs"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "block2",
  "dispatch2",

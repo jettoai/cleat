@@ -1,7 +1,7 @@
 //! Which build this is, read from the bundle's Info.plist. A bare executable (cargo run, cargo
 //! test) has no bundle and counts as a development build.
 
-use objc2_core_foundation::{CFBundle, CFRetained, CFString};
+use objc2_core_foundation::{CFBundle, CFRetained, CFString, CFURL};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Identity {
@@ -16,9 +16,20 @@ fn info_string(bundle: &CFBundle, key: &str) -> Option<String> {
     Some(s.to_string())
 }
 
+/// The `.app` this executable sits in, found from its resolved path. `CFBundle::main_bundle()` goes
+/// by the path the process was started through: run as Homebrew's `/opt/homebrew/bin/cleat`
+/// symlink it finds no bundle, and a release build would take itself for a development one.
+fn main_bundle() -> Option<CFRetained<CFBundle>> {
+    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    match exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")) {
+        Some(app) => CFBundle::new(None, Some(&*CFURL::from_directory_path(app)?)),
+        None => CFBundle::main_bundle(),
+    }
+}
+
 impl Identity {
     pub fn current() -> Self {
-        let Some(bundle) = CFBundle::main_bundle() else { return Self::default() };
+        let Some(bundle) = main_bundle() else { return Self::default() };
         Self {
             bundle_id: bundle.identifier().map(|s| s.to_string()),
             version: info_string(&bundle, "CFBundleShortVersionString"),
@@ -43,7 +54,7 @@ impl Identity {
 
 /// `CFBundleVersion` of the running bundle; None for a bare executable.
 pub fn build_number() -> Option<String> {
-    let bundle = CFBundle::main_bundle()?;
+    let bundle = main_bundle()?;
     info_string(&bundle, "CFBundleVersion")
 }
 
