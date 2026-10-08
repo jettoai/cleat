@@ -177,9 +177,9 @@ opens the settings window, so there is never a second daemon.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `input` | array of strings | `[]` | Input priority, most preferred first. Empty turns the rule off |
-| `blockedInput` | array of strings | `[]` | Never allowed to be the default input while a device on `input` is connected |
+| `blockedInput` | array of strings | `[]` | Never the default input. See [Not used](#not-used) for where Cleat moves it |
 | `output` | array of strings | `[]` | Output priority. Empty turns the rule off |
-| `blockedOutput` | array of strings | `[]` | Never allowed to be the default output while a device on `output` is connected |
+| `blockedOutput` | array of strings | `[]` | Never the default output. See [Not used](#not-used) for where Cleat moves it |
 | `headphonesTakeOver` | boolean | `false` | Bluetooth output devices take the output when they connect |
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
@@ -210,10 +210,24 @@ restarting Cleat never moves the output.
 
 `blockedOutput` is the other half of it. Some USB microphones carry a speaker end, and that is
 where macOS lands when the headphones leave. It is not on your priority list, so without the
-blocked list Cleat would read it as an output you picked yourself and leave it there. While a
-device on `output` is connected, a blocked device is moved off even when the priority list has nowhere to send the sound: when every device
-it names is a headset Cleat may not touch, the sound goes to the first output present that is
-neither blocked nor a headset, and only stays put when there is no such device.
+blocked list Cleat would read it as an output you picked yourself and leave it there.
+
+<a id="not-used"></a>**Not used.** A device on `blockedInput` or `blockedOutput` is never picked
+by Cleat, and when macOS makes it the default anyway, Cleat moves off it:
+
+- Input: to the first listed microphone with signal, else to the built-in microphone, else to a
+  listed microphone that is silent or still being measured (it gives way once a listed one has
+  signal). A microphone that is not on `input` is never used as the way out.
+- Output: to the first listed output, else to any physical output, built-in first, then by name.
+  Virtual, aggregate, Continuity and AirPlay devices, and a headset that `headphonesTakeOver`
+  owns, are never used as the way out.
+
+When there is nowhere to go, the device stays, `status.json` names it under `stuck`, and the
+settings window says so. A blocked device that is not physical (a meeting app's virtual
+microphone, an iPhone over Continuity) is only never picked: if an app switches to it itself,
+Cleat leaves it there. If macOS keeps putting a blocked device back, Cleat gives up after three
+moves in a minute and tries again once a device is added or removed, the config reloads, or a
+microphone's signal changes.
 
 **Reclaim.** AirPods paired to both a Mac and a phone belong to whichever one last asked for
 them. The phone asks by playing something; when it stops, nothing on the Mac asks again, so the

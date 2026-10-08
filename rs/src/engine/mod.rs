@@ -17,7 +17,7 @@ pub use reclaim::{
 };
 pub use output_volume::{OutputVolumeStatus, WriterSourceFactory, OUTPUT_VOLUME_SETTLE_MS};
 pub use run_loop::{run, Event, Origin, Timer};
-pub use status::Status;
+pub use status::{Status, StuckStatus};
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -33,7 +33,8 @@ use crate::launch::{AgentService, Launchd};
 use crate::liveness::{DetectorFactory, LivenessDetecting};
 use crate::model::{Action, DeviceSnapshot, Liveness, MicrophonePermission};
 use crate::reclaim::{BluetoothInventory, RouteRequesting};
-use crate::rules::{balance, headphones_takeover, input_pin, input_volume, output_pin};
+use crate::rules::blocked::Side;
+use crate::rules::{balance, headphones_takeover, input_volume};
 use crate::state::clock::{clock_ms, Clock};
 use crate::state::reaction_clock::ReactionClock;
 use crate::state::EventLog;
@@ -94,6 +95,8 @@ pub struct Engine {
     inventory: Box<dyn BluetoothInventory>,
     reclaim: reclaim::ReclaimBook,
     eviction: eviction::EvictionBook,
+    /// Sides left on a "not used" device because nothing else is usable (status.json `stuck`).
+    stuck: eviction::Stuck,
     writer_source: WriterSourceFactory,
     outvol: output_volume::OutputVolumeHold,
     events: Option<Sender<Event>>,
@@ -138,6 +141,7 @@ impl Engine {
             inventory: deps.inventory,
             reclaim: reclaim::ReclaimBook::default(),
             eviction: eviction::EvictionBook::default(),
+            stuck: eviction::Stuck::default(),
             writer_source: deps.writer_source,
             outvol: output_volume::OutputVolumeHold::default(),
             events: deps.events,
@@ -220,7 +224,7 @@ impl Engine {
             return;
         }
         self.note(&format!("config: reloaded ({})", self.config_state));
-        self.eviction.config_changed();
+        self.eviction.lift_all();
         self.sync_side_effects();
         self.rebind_devices();
         self.reconcile(false, Some(origin));
@@ -249,15 +253,15 @@ impl Engine {
         let now = self.clock.mono();
         let t1 = SystemTime::now();
 
-        let input = input_pin::reconcile(&snap, &self.config);
-        let (mut actions, mut held) = self.eviction.gate(eviction::Side::Input, input, &snap, &self.config, now);
+        let mut held = vec![];
+        let mut actions = self.pin_side(Side::Input, &snap, now, &mut held);
         let output = if headphones_takeover::has_eligible_arrival(&snap, &self.config) {
+            // 1. An arriving headset outranks everything else on the output side.
+            self.set_stuck(Side::Output, None, &mut held);
             headphones_takeover::reconcile(&snap, &self.config)
         } else {
-            output_pin::reconcile(&snap, &self.config)
+            self.pin_side(Side::Output, &snap, now, &mut held)
         };
-        let (output, held_out) = self.eviction.gate(eviction::Side::Output, output, &snap, &self.config, now);
-        held.extend(held_out);
         // A revert waits while the output itself is being moved, and goes before the balance.
         let hold = if output.is_empty() { self.output_volume_actions(&snap) } else { vec![] };
         let config = &self.config;

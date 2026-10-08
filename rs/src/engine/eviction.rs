@@ -2,22 +2,20 @@
 //! default (the rules see it as `placed_input`/`placed_output` and do not treat it as a hand
 //! pick), and the cooldown that ends a tug of war with macOS: a device evicted
 //! `EVICTION_LIMIT` times within `EVICTION_WINDOW` is left in place until a device is added or
-//! removed, or the config is reloaded.
+//! removed, the config is reloaded, or a microphone's signal flips (B-1287).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Duration;
 
-use crate::config::Config;
+use super::Engine;
 use crate::model::{Action, DeviceSnapshot};
+use crate::rules::blocked::{self, Verdict};
+use crate::rules::{input_pin, output_pin};
 
 pub const EVICTION_WINDOW: Duration = Duration::from_secs(60);
 pub const EVICTION_LIMIT: usize = 3;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Side {
-    Input,
-    Output,
-}
+pub(crate) use crate::rules::blocked::Side;
 
 #[derive(Default)]
 struct SideBook {
@@ -64,59 +62,105 @@ impl EvictionBook {
         snap.placed_output = self.output.placed.clone();
     }
 
-    /// The config changed: what the user asks for now is not held back by earlier evictions.
-    pub(crate) fn config_changed(&mut self) {
+    /// The config changed or a microphone's signal flipped: what the user asks for now is not
+    /// held back by earlier evictions.
+    pub(crate) fn lift_all(&mut self) {
         self.input.lift();
         self.output.lift();
     }
 
-    /// Lets through a move off a blocked default unless that device has been evicted
-    /// `EVICTION_LIMIT` times in `EVICTION_WINDOW`; records the ones let through. Returns the
-    /// actions kept and the log lines to write (one, the first time a device is held).
+    /// Lets one eviction through unless the device it leaves has been evicted `EVICTION_LIMIT`
+    /// times in `EVICTION_WINDOW`; records the ones let through. Returns the action if kept and
+    /// the log line to write (one, the first time a device is held).
     pub(crate) fn gate(
         &mut self,
         side: Side,
-        actions: Vec<Action>,
+        action: Action,
         snap: &DeviceSnapshot,
-        config: &Config,
         now: Duration,
-    ) -> (Vec<Action>, Vec<String>) {
-        let (book, current_id, blocked) = match side {
-            Side::Input => (&mut self.input, snap.default_input, &config.blocked_input),
-            Side::Output => (&mut self.output, snap.default_output, &config.blocked_output),
+    ) -> (Option<Action>, Option<String>) {
+        let (book, current_id) = match side {
+            Side::Input => (&mut self.input, snap.default_input),
+            Side::Output => (&mut self.output, snap.default_output),
         };
-        let Some(current) = current_id.and_then(|id| snap.device(id)).filter(|d| d.is_listed(blocked)) else {
-            return (actions, vec![]);
+        let Some(current) = current_id.and_then(|id| snap.device(id)) else { return (Some(action), None) };
+        let target = match &action {
+            Action::SetDefaultInput(id, _) | Action::SetDefaultOutput(id, _) => *id,
+            _ => return (Some(action), None),
         };
-        let mut kept = Vec::with_capacity(actions.len());
-        let mut notes = vec![];
-        for action in actions {
-            let target = match (&action, side) {
-                (Action::SetDefaultInput(id, _), Side::Input) | (Action::SetDefaultOutput(id, _), Side::Output) => *id,
-                _ => {
-                    kept.push(action);
-                    continue;
-                }
-            };
-            let times = book.strikes.entry(current.uid.clone()).or_default();
-            while times.front().is_some_and(|t| now.saturating_sub(*t) >= EVICTION_WINDOW) {
-                times.pop_front();
-            }
-            if book.paused.contains(&current.uid) || times.len() >= EVICTION_LIMIT {
-                if book.paused.insert(current.uid.clone()) {
-                    notes.push(format!(
-                        "{}: {} keeps coming back ({EVICTION_LIMIT} evictions in {} s), leaving it until a device is added or removed",
-                        action.label(),
-                        current.name,
-                        EVICTION_WINDOW.as_secs()
-                    ));
-                }
-                continue;
-            }
-            times.push_back(now);
-            book.placed = snap.device(target).map(|d| d.uid.clone());
-            kept.push(action);
+        let times = book.strikes.entry(current.uid.clone()).or_default();
+        while times.front().is_some_and(|t| now.saturating_sub(*t) >= EVICTION_WINDOW) {
+            times.pop_front();
         }
-        (kept, notes)
+        if book.paused.contains(&current.uid) || times.len() >= EVICTION_LIMIT {
+            let note = book.paused.insert(current.uid.clone()).then(|| {
+                format!(
+                    "{}: {} keeps coming back ({EVICTION_LIMIT} evictions in {} s), leaving it until a device is added or removed, the config reloads, or a microphone's signal changes",
+                    action.label(),
+                    current.name,
+                    EVICTION_WINDOW.as_secs()
+                )
+            });
+            return (None, note);
+        }
+        times.push_back(now);
+        book.placed = snap.device(target).map(|d| d.uid.clone());
+        (Some(action), None)
+    }
+}
+
+/// The device each side is left on because it is "not used" and nothing else is usable.
+#[derive(Debug, Default)]
+pub(crate) struct Stuck {
+    pub input: Option<String>,
+    pub output: Option<String>,
+}
+
+impl Engine {
+    /// One side's default-device decision, in this order: a "not used" default leaves through the
+    /// cooldown gate, or is reported stuck; only a default that is not blocked goes to the pin rule.
+    pub(super) fn pin_side(
+        &mut self,
+        side: Side,
+        snap: &DeviceSnapshot,
+        now: Duration,
+        held: &mut Vec<String>,
+    ) -> Vec<Action> {
+        match blocked::reconcile(side, snap, &self.config) {
+            Verdict::Clear => {
+                self.set_stuck(side, None, held);
+                match side {
+                    Side::Input => input_pin::reconcile(snap, &self.config),
+                    Side::Output => output_pin::reconcile(snap, &self.config),
+                }
+            }
+            Verdict::Evict(action) => {
+                self.set_stuck(side, None, held);
+                let (kept, note) = self.eviction.gate(side, action, snap, now);
+                held.extend(note);
+                kept.into_iter().collect()
+            }
+            Verdict::Stuck(device) => {
+                self.set_stuck(side, Some(device.name), held);
+                vec![]
+            }
+        }
+    }
+
+    /// Edge triggered: one line when a side becomes stuck on a "not used" device, one when it stops.
+    pub(super) fn set_stuck(&mut self, side: Side, name: Option<String>, held: &mut Vec<String>) {
+        let (slot, label) = match side {
+            Side::Input => (&mut self.stuck.input, "pinInput"),
+            Side::Output => (&mut self.stuck.output, "pinOutput"),
+        };
+        if *slot == name {
+            return;
+        }
+        match (&*slot, &name) {
+            (_, Some(n)) => held.push(format!("{label}: no other usable device, still on {n}")),
+            (Some(old), None) => held.push(format!("{label}: {old} no longer the default")),
+            (None, None) => {}
+        }
+        *slot = name;
     }
 }

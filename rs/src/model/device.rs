@@ -7,14 +7,24 @@ use super::presence::PresenceFacts;
 pub type AudioDeviceId = u32;
 
 pub use objc2_core_audio::{
+    kAudioDeviceTransportTypeAggregate as TRANSPORT_AGGREGATE,
+    kAudioDeviceTransportTypeAirPlay as TRANSPORT_AIRPLAY,
     kAudioDeviceTransportTypeBluetooth as TRANSPORT_BLUETOOTH,
     kAudioDeviceTransportTypeBluetoothLE as TRANSPORT_BLUETOOTH_LE,
     kAudioDeviceTransportTypeBuiltIn as TRANSPORT_BUILT_IN,
+    kAudioDeviceTransportTypeContinuityCaptureWired as TRANSPORT_CONTINUITY_WIRED,
+    kAudioDeviceTransportTypeContinuityCaptureWireless as TRANSPORT_CONTINUITY_WIRELESS,
     kAudioDeviceTransportTypeDisplayPort as TRANSPORT_DISPLAY_PORT,
+    kAudioDeviceTransportTypeHDMI as TRANSPORT_HDMI,
     kAudioDeviceTransportTypeUSB as TRANSPORT_USB,
     kAudioDeviceTransportTypeUnknown as TRANSPORT_UNKNOWN,
     kAudioDeviceTransportTypeVirtual as TRANSPORT_VIRTUAL,
 };
+
+/// `'fgrp'`, the HAL's own aggregate; only in the crate's deprecated header set.
+pub const TRANSPORT_AUTO_AGGREGATE: u32 = 0x6667_7270;
+/// `'ccap'`, Continuity Capture before Apple split it into wired and wireless (deprecated).
+pub const TRANSPORT_CONTINUITY: u32 = 0x6363_6170;
 
 /// One audio device as the rules see it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +62,23 @@ impl AudioDevice {
     /// The Mac's own microphone, speakers or headphone jack, by `kAudioDevicePropertyTransportType`.
     pub fn is_built_in(&self) -> bool {
         self.transport == TRANSPORT_BUILT_IN
+    }
+
+    /// A device sound actually comes out of or into: not a virtual or aggregate one, not an
+    /// iPhone over Continuity, not an AirPlay target, and not one whose transport the HAL would
+    /// not name. The only pool the "not used" rule may move an output into (PM, B-1287).
+    pub fn is_physical(&self) -> bool {
+        !matches!(
+            self.transport,
+            TRANSPORT_VIRTUAL
+                | TRANSPORT_AGGREGATE
+                | TRANSPORT_AUTO_AGGREGATE
+                | TRANSPORT_AIRPLAY
+                | TRANSPORT_CONTINUITY
+                | TRANSPORT_CONTINUITY_WIRED
+                | TRANSPORT_CONTINUITY_WIRELESS
+                | TRANSPORT_UNKNOWN
+        )
     }
 
     /// True when any of these config entries names this device.

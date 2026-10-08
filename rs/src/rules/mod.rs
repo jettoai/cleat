@@ -2,6 +2,7 @@
 //! no engine, no I/O.
 
 pub mod balance;
+pub mod blocked;
 pub mod headphones_takeover;
 pub mod input_pin;
 pub mod input_volume;

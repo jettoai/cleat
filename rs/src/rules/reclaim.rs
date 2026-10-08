@@ -35,7 +35,7 @@ pub fn candidates(snapshot: &DeviceSnapshot, headsets: &[BluetoothHeadset], conf
         headsets
             .iter()
             .filter(|h| h.is_connected && h.is_listed(config.reclaim_active()) && !is_default_output(h, snapshot))
-            // blockedOutput is "never this output", so a blocked headset is not asked back either.
+            // blockedOutput is "never this output" (rules::blocked); a blocked headset is not asked back either.
             .filter(|h| !h.is_listed(&config.blocked_output))
             .cloned()
             .collect(),

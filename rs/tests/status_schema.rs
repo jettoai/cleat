@@ -59,5 +59,7 @@ fn rust_writes_the_swift_key_set() {
     // The Swift build after 0.3.11 (ui-settings-direction) adds `performance`.
     let mut expected = keys(&current);
     expected.insert("performance".into());
+    // The "not used" rule (B-1287) adds `stuck`: the device a side is left on, or null.
+    expected.insert("stuck".into());
     assert_eq!(keys(&written), expected);
 }

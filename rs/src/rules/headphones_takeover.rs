@@ -6,7 +6,9 @@ use crate::model::{Action, AudioDevice, DeviceSnapshot};
 
 /// A Bluetooth output while takeover is on, unless blocked.
 pub fn owns(device: &AudioDevice, config: &Config) -> bool {
-    config.headphones_take_over && device.is_bluetooth() && !device.is_listed(&config.blocked_output)
+    config.headphones_take_over
+        && device.is_bluetooth()
+        && !super::blocked::is_blocked(device, super::blocked::Side::Output, config)
 }
 
 /// The arriving headsets this rule would act on, most preferred (by name) first.

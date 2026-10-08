@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use cleat_rs::config::{Config, LivenessConfig};
 use cleat_rs::model::{
-    AudioDevice, TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN, TRANSPORT_DISPLAY_PORT, TRANSPORT_UNKNOWN, TRANSPORT_USB,
-    TRANSPORT_VIRTUAL,
+    AudioDevice, TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN, TRANSPORT_CONTINUITY_WIRELESS, TRANSPORT_DISPLAY_PORT,
+    TRANSPORT_HDMI, TRANSPORT_UNKNOWN, TRANSPORT_USB, TRANSPORT_VIRTUAL,
 };
 
 pub fn s(v: &[&str]) -> Vec<String> {
@@ -81,4 +81,65 @@ pub fn pinned_input() -> Config {
 /// Albert's real input list: AirPods Max is listed and blocked at once.
 pub fn albert_input() -> Config {
     Config { input: s(&["Wireless microphone", "Brio 100", "AirPods Max"]), ..pinned_input() }
+}
+
+// Albert's Mac Studio (Mac16,9), from `system_profiler` on 2026-10-09 (B-1287, PM 0209 #2).
+
+/// The Maono as it really shows up: one device with a microphone and a speaker side.
+pub fn maono_io() -> AudioDevice {
+    AudioDevice::with_transport(93, "Maono AI Microphone", "Maono-IO-UID", true, true, TRANSPORT_USB)
+}
+pub fn teams() -> AudioDevice {
+    AudioDevice::with_transport(92, "Microsoft Teams Audio", "MSTeamsAudioDevice_UID", true, true, TRANSPORT_VIRTUAL)
+}
+pub fn dell() -> AudioDevice {
+    AudioDevice::with_transport(95, "DELL U3223QE", "DELL-UID", false, true, TRANSPORT_DISPLAY_PORT)
+}
+pub fn xv272u() -> AudioDevice {
+    AudioDevice::with_transport(96, "XV272U", "XV272U-UID", false, true, TRANSPORT_HDMI)
+}
+pub fn continuity_iphone() -> AudioDevice {
+    AudioDevice::with_transport(
+        85,
+        "Albert\u{2019}s iPhone Microphone",
+        "iPhone-CC-UID",
+        true,
+        false,
+        TRANSPORT_CONTINUITY_WIRELESS,
+    )
+}
+
+/// No built-in microphone; the built-in outputs are the jack and the speakers he blocks. `jack`
+/// false = nothing plugged into the 3.5 mm port.
+pub fn mac_studio(jack: bool, air_pods_here: bool, wireless_here: bool, brio_here: bool) -> Vec<AudioDevice> {
+    let mut v = vec![mac_studio_speakers(), dell(), xv272u(), maono_io(), teams(), zoom()];
+    if jack {
+        v.push(wired_headphones());
+    }
+    if air_pods_here {
+        v.push(air_pods());
+    }
+    if wireless_here {
+        v.push(wireless());
+    }
+    if brio_here {
+        v.push(brio());
+    }
+    v
+}
+
+/// ~/.config/cleat/config.json as of 2026-10-09.
+pub fn albert_config() -> Config {
+    Config {
+        input: s(&["Wireless microphone", "Brio 100", "AirPods Max"]),
+        blocked_input: s(&["AirPods Max", "Microsoft Teams Audio", "ZoomAudioDevice"]),
+        output: s(&["外接耳機"]),
+        blocked_output: s(&["Mac Studio的揚聲器", "Maono AI Microphone"]),
+        headphones_take_over: true,
+        balance: Some(0.5),
+        liveness: [("Wireless microphone".to_string(), LivenessConfig { zero_seconds: 3.0 })].into_iter().collect(),
+        reclaim: s(&["AirPods Max", "AirPods Pro"]),
+        launch_at_login: false,
+        ..Config::default()
+    }
 }

@@ -7,7 +7,11 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use cleat_rs::config::Config;
-use cleat_rs::model::{device_name, Action, AudioDevice, DeviceSnapshot, Liveness, TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN};
+use cleat_rs::model::{
+    device_name, Action, AudioDevice, DeviceSnapshot, Liveness, TRANSPORT_BLUETOOTH, TRANSPORT_BUILT_IN,
+    TRANSPORT_DISPLAY_PORT, TRANSPORT_USB, TRANSPORT_VIRTUAL,
+};
+use cleat_rs::rules::blocked::{self, Side, Verdict};
 use cleat_rs::rules::{headphones_takeover, input_pin, output_pin};
 use cleat_rs::settings::document::{merged_from, Managed, Origin, Unit, UNITS};
 use cleat_rs::settings::draft::{DeviceList, LiveLevels, PairedDevice, SettingsDraft, Stance};
@@ -15,14 +19,30 @@ use serde_json::{json, Value};
 
 fn present() -> Vec<AudioDevice> {
     vec![
-        AudioDevice::new(1, "Wireless microphone", "uid-1", true, false),
-        AudioDevice::new(2, "Brio 100", "uid-2", true, false),
+        // USB like the real ones: a "not used" device that is not physical is only never chosen
+        // (rules::blocked), so these must be physical for I3 to demand their eviction.
+        AudioDevice::with_transport(1, "Wireless microphone", "uid-1", true, false, TRANSPORT_USB),
+        AudioDevice::with_transport(2, "Brio 100", "uid-2", true, false, TRANSPORT_USB),
         // Bluetooth, so headphone takeover has something to act on in the rule check.
         AudioDevice::with_transport(3, "AirPods Max", "uid-3", true, true, TRANSPORT_BLUETOOTH),
         // Built in and never blocked by any variant, so every blocked current default has somewhere to go.
         AudioDevice::with_transport(4, "MacBook Pro Speakers", "uid-4", false, true, TRANSPORT_BUILT_IN),
         AudioDevice::with_transport(5, "MacBook Pro Microphone", "uid-5", true, false, TRANSPORT_BUILT_IN),
     ]
+}
+
+/// Albert's Mac Studio (B-1287, PM 0209 #2): no built-in microphone, the built-in outputs are the
+/// jack and the speakers, plus displays, a USB microphone with a speaker side, and virtual devices.
+fn present_mac_studio() -> Vec<AudioDevice> {
+    let mut v = present().into_iter().filter(|d| !d.is_built_in()).collect::<Vec<_>>();
+    v.extend([
+        AudioDevice::with_transport(6, "Mac Studio的揚聲器", "uid-6", false, true, TRANSPORT_BUILT_IN),
+        AudioDevice::with_transport(7, "外接耳機", "uid-7", false, true, TRANSPORT_BUILT_IN),
+        AudioDevice::with_transport(8, "DELL U3223QE", "uid-8", false, true, TRANSPORT_DISPLAY_PORT),
+        AudioDevice::with_transport(9, "Maono AI Microphone", "uid-9", true, true, TRANSPORT_USB),
+        AudioDevice::with_transport(10, "Microsoft Teams Audio", "uid-10", true, true, TRANSPORT_VIRTUAL),
+    ]);
+    v
 }
 
 fn paired() -> Vec<PairedDevice> {
@@ -251,24 +271,69 @@ fn check_stance(list: &DeviceList, priority: &[String], blocked: &[String], writ
     out
 }
 
+/// What the engine does on one side (engine `pin_side`): a "not used" default is the blocked
+/// rule's, anything else the pin rule's. `Err` names the device a side is left stuck on.
+fn side(side: Side, snapshot: &DeviceSnapshot, config: &Config) -> Result<Vec<Action>, String> {
+    match blocked::reconcile(side, snapshot, config) {
+        Verdict::Clear => Ok(match side {
+            Side::Input => input_pin::reconcile(snapshot, config),
+            Side::Output => output_pin::reconcile(snapshot, config),
+        }),
+        Verdict::Evict(a) => Ok(vec![a]),
+        Verdict::Stuck(d) => Err(d.name),
+    }
+}
+
+/// Independent of `blocked::escape`: whether anything at all is left to move a blocked side to.
+/// Input: an unblocked microphone that is listed or built in. Output: an unblocked physical output
+/// that headphone takeover does not own.
+fn has_escape(side: Side, devices: &[AudioDevice], config: &Config) -> bool {
+    devices.iter().any(|d| match side {
+        Side::Input => {
+            d.has_input && !d.is_listed(&config.blocked_input) && (d.is_listed(&config.input) || d.is_built_in())
+        }
+        Side::Output => {
+            d.has_output
+                && !d.is_listed(&config.blocked_output)
+                && d.is_physical()
+                && !headphones_takeover::owns(d, config)
+        }
+    })
+}
+
 /// Every action a pin rule takes on this config, with every device present and live and each one
 /// in turn the current default, must target a device outside the blocked list of its side, and a
-/// current default on the blocked list of its side must be moved off.
-fn rule_violations(config: &Config) -> Vec<String> {
-    let devices = present();
+/// physical current default on the blocked list of its side must be moved off, or reported stuck
+/// exactly when nothing is left to move it to.
+fn rule_violations(config: &Config, devices: &[AudioDevice]) -> Vec<String> {
     let mut out = vec![];
-    for current in &devices {
+    for current in devices {
         let snapshot = DeviceSnapshot {
-            devices: devices.clone(),
+            devices: devices.to_vec(),
             default_input: current.has_input.then_some(current.id),
             default_output: current.has_output.then_some(current.id),
             liveness: devices.iter().map(|d| (d.uid.clone(), Liveness::Live)).collect(),
             arrived: devices.iter().map(|d| d.uid.clone()).collect(),
             ..Default::default()
         };
+        let input = side(Side::Input, &snapshot, config);
+        let output = side(Side::Output, &snapshot, config);
+        for (s, r, here) in [(Side::Input, &input, current.has_input), (Side::Output, &output, current.has_output)] {
+            let blocked = here && blocked::is_blocked(current, s, config) && current.is_physical();
+            match r {
+                Err(name) if has_escape(s, devices, config) => {
+                    out.push(format!("{s:?} stuck on {name} with somewhere to go"))
+                }
+                Err(_) => {}
+                Ok(a) if blocked && a.is_empty() => {
+                    out.push(format!("blocked current {s:?} {} left in place", current.name))
+                }
+                Ok(_) => {}
+            }
+        }
         let actions = [
-            input_pin::reconcile(&snapshot, config),
-            output_pin::reconcile(&snapshot, config),
+            input.unwrap_or_default(),
+            output.unwrap_or_default(),
             headphones_takeover::reconcile(&snapshot, config),
         ];
         for action in actions.iter().flatten() {
@@ -280,14 +345,6 @@ fn rule_violations(config: &Config) -> Vec<String> {
             if devices.iter().any(|d| d.id == id && d.is_listed(blocked)) {
                 out.push(format!("rule picked a not-used device: {}", action.reason()));
             }
-        }
-        let moved_input = actions.iter().flatten().any(|a| matches!(a, Action::SetDefaultInput(..)));
-        let moved_output = actions.iter().flatten().any(|a| matches!(a, Action::SetDefaultOutput(..)));
-        if current.has_input && current.is_listed(&config.blocked_input) && !moved_input {
-            out.push(format!("blocked current input {} left in place", current.name));
-        }
-        if current.has_output && current.is_listed(&config.blocked_output) && !moved_output {
-            out.push(format!("blocked current output {} left in place", current.name));
         }
     }
     out
@@ -360,7 +417,8 @@ fn run() -> &'static Report {
                     i3.extend(check_stance(&draft.input, &strings(&out["input"]), &strings(&out["blockedInput"]), written(Unit::InputStance), "input"));
                     i3.extend(check_stance(&draft.output, &strings(&out["output"]), &strings(&out["blockedOutput"]), written(Unit::OutputStance), "output"));
                     if ruled.insert(file.clone()) {
-                        i3.extend(rule_violations(&saved));
+                        i3.extend(rule_violations(&saved, &present));
+                        i3.extend(rule_violations(&saved, &present_mac_studio()));
                     }
                     report.i3.extend(i3.into_iter().map(|e| format!("{tag}: {e}")));
 

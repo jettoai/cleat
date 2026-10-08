@@ -34,6 +34,16 @@ pub struct Status {
     /// Reaction timing; None in a file written by a daemon older than the measurement.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub performance: Option<DaemonPerformance>,
+    /// The device each side is left on because it is "not used" and nothing else is usable
+    /// (B-1287); None in a file written by a daemon older than the rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stuck: Option<StuckStatus>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct StuckStatus {
+    pub input: Option<String>,
+    pub output: Option<String>,
 }
 
 impl Status {
@@ -61,6 +71,7 @@ fn name_of(snap: &DeviceSnapshot, id: Option<u32>) -> Option<String> {
 
 impl Engine {
     pub(super) fn write_status(&self, snap: &DeviceSnapshot) {
+        let stuck = StuckStatus { input: self.stuck.input.clone(), output: self.stuck.output.clone() };
         let status = Status {
             pid: std::process::id() as i32,
             updated_at: iso8601_utc(self.clock.wall()),
@@ -70,7 +81,7 @@ impl Engine {
             default_input: name_of(snap, snap.default_input),
             default_output: name_of(snap, snap.default_output),
             rules: {
-                let mut rules = rule_summaries(&self.config, snap, self.reclaim_summary());
+                let mut rules = rule_summaries(&self.config, snap, self.reclaim_summary(), &stuck);
                 rules.insert("outputVolume".into(), self.output_volume_summary());
                 rules
             },
@@ -78,15 +89,21 @@ impl Engine {
             recent_events: self.recent_events.clone(),
             output_volume: Some(self.output_volume_status()),
             performance: Some(self.reactions.summary()),
+            stuck: Some(stuck),
         };
         status.write(&self.status_path);
     }
 }
 
-pub fn rule_summaries(config: &Config, snap: &DeviceSnapshot, reclaim: String) -> BTreeMap<String, String> {
+pub fn rule_summaries(
+    config: &Config,
+    snap: &DeviceSnapshot,
+    reclaim: String,
+    stuck: &StuckStatus,
+) -> BTreeMap<String, String> {
     let mut rules = BTreeMap::new();
-    rules.insert("inputPin".into(), pin_summary(&config.input, &config.blocked_input));
-    rules.insert("outputPin".into(), pin_summary(&config.output, &config.blocked_output));
+    rules.insert("inputPin".into(), pin_summary(&config.input, &config.blocked_input, stuck.input.as_deref()));
+    rules.insert("outputPin".into(), pin_summary(&config.output, &config.blocked_output, stuck.output.as_deref()));
     rules.insert("headphones".into(), headphones_summary(config));
     rules.insert("reclaim".into(), reclaim);
     rules.insert(
@@ -131,17 +148,22 @@ pub fn headphones_summary(config: &Config) -> String {
     s + ")"
 }
 
-pub fn pin_summary(priority: &[String], blocked: &[String]) -> String {
-    if priority.is_empty() {
-        return if blocked.is_empty() {
+pub fn pin_summary(priority: &[String], blocked: &[String], stuck: Option<&str>) -> String {
+    let mut s = if priority.is_empty() {
+        if blocked.is_empty() {
             "off".into()
         } else {
             format!("on (no priority list, blocked: {})", blocked.join(", "))
-        };
-    }
-    let mut s = format!("on ({})", priority.join(", "));
-    if !blocked.is_empty() {
-        s += &format!(", blocked: {}", blocked.join(", "));
+        }
+    } else {
+        let mut s = format!("on ({})", priority.join(", "));
+        if !blocked.is_empty() {
+            s += &format!(", blocked: {}", blocked.join(", "));
+        }
+        s
+    };
+    if let Some(n) = stuck {
+        s += &format!(", stuck on {n} (no other usable device)");
     }
     s
 }
