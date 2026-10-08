@@ -231,8 +231,9 @@ it is connected to this Mac, it has no audio device here, something is playing t
 holds the output, and someone is at the Mac (a key or mouse touched in the last 30 seconds, or
 the frontmost app playing a video). A display kept awake by a meeting or `caffeinate` does not
 count as someone. Moving the output off the headset by hand is respected for the rest of that
-playback. A headset the phone keeps is left alone for a minute before asking again, and said once
-in the log rather than once a beat. When a request is accepted, the log says how long the headset
+playback. A headset the phone keeps is left alone for a minute; after that Cleat asks again at the next
+audio change it reacts to, such as playback starting or a device connecting. The log says it
+once rather than once a beat. When a request is accepted, the log says how long the headset
 took to become the output, or that it did not come back.
 
 A headset may be named by its Bluetooth address (`"70:F9:4A:B6:0C:C9"`, dashes and lower case
