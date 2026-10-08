@@ -280,8 +280,8 @@ cleat version
 has not happened yet, then has launchd replace the process. Nothing else has to be started by
 hand.
 
-`cleat status` reads `~/Library/Application Support/Cleat-rs/status.json`; `cleat log` reads
-`~/Library/Logs/Cleat-rs/cleat-rs.log`. The commands never talk to the daemon, they read the files
+`cleat status` reads `~/Library/Application Support/Cleat/status.json`; `cleat log` reads
+`~/Library/Logs/Cleat/cleat.log`. The commands never talk to the daemon, they read the files
 it writes. Only actions that changed something are logged, so a quiet log means a quiet day, not a
 broken daemon; `status` is what tells you it is alive.
 
@@ -331,8 +331,8 @@ brew uninstall --cask --zap cleat
 ```
 
 Or, for a manual install: unload the agent with `launchctl bootout gui/$UID/ai.jetto.cleat`, delete
-`/Applications/Cleat.app`, and remove `~/Library/Application Support/Cleat-rs`,
-`~/Library/Logs/Cleat-rs` and `~/.config/cleat`.
+`/Applications/Cleat.app`, and remove `~/Library/Application Support/Cleat`,
+`~/Library/Logs/Cleat` and `~/.config/cleat`.
 
 ## License
 

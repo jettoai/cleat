@@ -170,7 +170,7 @@ cleat version
 
 Cleat 没在运行时，用 `cleat restart` 就对了：还没注册 agent 就先注册，再让 launchd 换上新的进程。其他什么都不需要手动启动。
 
-`cleat status` 读取 `~/Library/Application Support/Cleat-rs/status.json`；`cleat log` 读取 `~/Library/Logs/Cleat-rs/cleat-rs.log`。这些命令读的是守护进程写出来的文件，和它之间没有任何直接通信。只有真的改动了东西的操作才会记进日志，所以日志安静代表这一天很平静，守护进程并没有坏；要确认它活着，看 `status`。
+`cleat status` 读取 `~/Library/Application Support/Cleat/status.json`；`cleat log` 读取 `~/Library/Logs/Cleat/cleat.log`。这些命令读的是守护进程写出来的文件，和它之间没有任何直接通信。只有真的改动了东西的操作才会记进日志，所以日志安静代表这一天很平静，守护进程并没有坏；要确认它活着，看 `status`。
 
 ## 麦克风权限
 
@@ -201,7 +201,7 @@ bash scripts/bundle.sh    # target/bundle.noindex/Cleat.app
 brew uninstall --cask --zap cleat
 ```
 
-手动安装的话：用 `launchctl bootout gui/$UID/ai.jetto.cleat` 卸载 agent，删除 `/Applications/Cleat.app`，再移除 `~/Library/Application Support/Cleat-rs`、`~/Library/Logs/Cleat-rs` 和 `~/.config/cleat`。
+手动安装的话：用 `launchctl bootout gui/$UID/ai.jetto.cleat` 卸载 agent，删除 `/Applications/Cleat.app`，再移除 `~/Library/Application Support/Cleat`、`~/Library/Logs/Cleat` 和 `~/.config/cleat`。
 
 ## 许可证
 

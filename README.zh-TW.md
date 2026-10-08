@@ -170,7 +170,7 @@ cleat version
 
 Cleat 沒在執行時，用 `cleat restart` 就對了：還沒註冊 agent 就先註冊，再讓 launchd 換上新的行程。其他什麼都不需要手動啟動。
 
-`cleat status` 讀的是 `~/Library/Application Support/Cleat-rs/status.json`；`cleat log` 讀的是 `~/Library/Logs/Cleat-rs/cleat-rs.log`。這些指令讀的是常駐程式寫出來的檔案，跟它之間沒有任何直接溝通。只有真的改到東西的動作才會記進 log，所以 log 安靜代表這一天很平靜，常駐程式並沒有壞；要確認它活著，看 `status`。
+`cleat status` 讀的是 `~/Library/Application Support/Cleat/status.json`；`cleat log` 讀的是 `~/Library/Logs/Cleat/cleat.log`。這些指令讀的是常駐程式寫出來的檔案，跟它之間沒有任何直接溝通。只有真的改到東西的動作才會記進 log，所以 log 安靜代表這一天很平靜，常駐程式並沒有壞；要確認它活著，看 `status`。
 
 ## 麥克風權限
 
@@ -201,7 +201,7 @@ bash scripts/bundle.sh    # target/bundle.noindex/Cleat.app
 brew uninstall --cask --zap cleat
 ```
 
-手動安裝的話：用 `launchctl bootout gui/$UID/ai.jetto.cleat` 卸載 agent，刪掉 `/Applications/Cleat.app`，再移除 `~/Library/Application Support/Cleat-rs`、`~/Library/Logs/Cleat-rs` 與 `~/.config/cleat`。
+手動安裝的話：用 `launchctl bootout gui/$UID/ai.jetto.cleat` 卸載 agent，刪掉 `/Applications/Cleat.app`，再移除 `~/Library/Application Support/Cleat`、`~/Library/Logs/Cleat` 與 `~/.config/cleat`。
 
 ## 授權
 

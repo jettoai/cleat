@@ -170,7 +170,7 @@ cleat version
 
 Cleat가 실행 중이 아닐 때는 `cleat restart`를 쓰면 됩니다. 에이전트가 아직 등록되지 않았다면 등록하고, launchd가 프로세스를 교체하게 합니다. 그 밖에 직접 시작할 것은 없습니다.
 
-`cleat status`는 `~/Library/Application Support/Cleat-rs/status.json`을, `cleat log`는 `~/Library/Logs/Cleat-rs/cleat-rs.log`를 읽습니다. 이 명령들은 데몬이 써 둔 파일을 읽을 뿐, 데몬과 직접 통신하지 않습니다. 실제로 무언가를 바꾼 동작만 로그에 남으므로, 조용한 로그는 조용한 하루라는 뜻이지 데몬이 고장 났다는 뜻이 아닙니다. 살아 있는지는 `status`로 확인합니다.
+`cleat status`는 `~/Library/Application Support/Cleat/status.json`을, `cleat log`는 `~/Library/Logs/Cleat/cleat.log`를 읽습니다. 이 명령들은 데몬이 써 둔 파일을 읽을 뿐, 데몬과 직접 통신하지 않습니다. 실제로 무언가를 바꾼 동작만 로그에 남으므로, 조용한 로그는 조용한 하루라는 뜻이지 데몬이 고장 났다는 뜻이 아닙니다. 살아 있는지는 `status`로 확인합니다.
 
 ## 마이크 권한
 
@@ -201,7 +201,7 @@ bash scripts/bundle.sh    # target/bundle.noindex/Cleat.app
 brew uninstall --cask --zap cleat
 ```
 
-직접 설치한 경우에는 `launchctl bootout gui/$UID/ai.jetto.cleat`로 에이전트를 내리고, `/Applications/Cleat.app`을 지우고, `~/Library/Application Support/Cleat-rs`, `~/Library/Logs/Cleat-rs`, `~/.config/cleat`를 제거하세요.
+직접 설치한 경우에는 `launchctl bootout gui/$UID/ai.jetto.cleat`로 에이전트를 내리고, `/Applications/Cleat.app`을 지우고, `~/Library/Application Support/Cleat`, `~/Library/Logs/Cleat`, `~/.config/cleat`를 제거하세요.
 
 ## 라이선스
 

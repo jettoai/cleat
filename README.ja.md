@@ -170,7 +170,7 @@ cleat version
 
 Cleat が動いていないときは `cleat restart` を使ってください。エージェントがまだ登録されていなければ登録し、launchd にプロセスを置き換えさせます。ほかに手動で起動するものはありません。
 
-`cleat status` は `~/Library/Application Support/Cleat-rs/status.json` を、`cleat log` は `~/Library/Logs/Cleat-rs/cleat-rs.log` を読みます。これらのコマンドはデーモンが書き出したファイルを読むだけで、デーモンと直接やりとりはしません。ログに残るのは実際に何かを変えた操作だけなので、静かなログは静かな一日を意味し、デーモンが壊れているわけではありません。生きているかどうかは `status` で確かめます。
+`cleat status` は `~/Library/Application Support/Cleat/status.json` を、`cleat log` は `~/Library/Logs/Cleat/cleat.log` を読みます。これらのコマンドはデーモンが書き出したファイルを読むだけで、デーモンと直接やりとりはしません。ログに残るのは実際に何かを変えた操作だけなので、静かなログは静かな一日を意味し、デーモンが壊れているわけではありません。生きているかどうかは `status` で確かめます。
 
 ## マイクの許可
 
@@ -201,7 +201,7 @@ bash scripts/bundle.sh    # target/bundle.noindex/Cleat.app
 brew uninstall --cask --zap cleat
 ```
 
-手動でインストールした場合は、`launchctl bootout gui/$UID/ai.jetto.cleat` でエージェントを停止し、`/Applications/Cleat.app` を削除し、`~/Library/Application Support/Cleat-rs`、`~/Library/Logs/Cleat-rs`、`~/.config/cleat` を消してください。
+手動でインストールした場合は、`launchctl bootout gui/$UID/ai.jetto.cleat` でエージェントを停止し、`/Applications/Cleat.app` を削除し、`~/Library/Application Support/Cleat`、`~/Library/Logs/Cleat`、`~/.config/cleat` を消してください。
 
 ## ライセンス
 
