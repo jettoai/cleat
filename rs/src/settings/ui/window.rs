@@ -55,7 +55,7 @@ define_class!(
             let selected = table.selectedRow() == row;
             let color = if selected { NSColor::labelColor() } else { NSColor::secondaryLabelColor() };
             let glyph = overflowing_icon(mtm, page.symbol(), 22.0, 15.0, &color);
-            let glyph = if page == Page::Input { lowered(mtm, &glyph, 1.0) } else { glyph };
+            let glyph = if page.symbol() == "mic" { lowered(mtm, &glyph, 1.0) } else { glyph };
             // SAFETY: an AppKit constant.
             let weight = if selected { unsafe { objc2_app_kit::NSFontWeightMedium } } else { regular() };
             let title = label(mtm, page.title(), 15.0, weight, &color);

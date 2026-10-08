@@ -239,8 +239,11 @@ fn icon_view(mtm: MainThreadMarker, name: &str, size_pt: f64, point: f64, color:
 }
 
 /// `view` in a slot of its own size, drawn `dy` points lower. A stack aligns the slot, so this
-/// moves what the eye sees without moving the row: `mic` sits about 1 pt high in its square,
-/// and a chevron beside a two-line block belongs on the first line's centre.
+/// moves what the eye sees without moving the row. Two callers: `mic`, whose ink is centred in
+/// its image bounds but whose alignment rect sits 0.75 pt low (the stand reaches below the
+/// baseline, against 0.25 pt for the other symbols here), so stacks place it high; the 1 pt
+/// those callers pass holds for `mic` at 15 pt only and scales with point size (about 0.067 x
+/// size). And a chevron beside a two-line block, which belongs on the first line's centre.
 pub fn lowered(mtm: MainThreadMarker, view: &NSView, dy: f64) -> Retained<NSView> {
     let slot = NSView::new(mtm);
     slot.setTranslatesAutoresizingMaskIntoConstraints(false);
