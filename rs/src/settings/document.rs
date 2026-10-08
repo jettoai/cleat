@@ -1,6 +1,7 @@
 //! Writes the settings window's keys back into the config file, leaving every other key exactly as
 //! it was (Swift `ConfigDocument.swift`). The Rust-only switches `reclaimEnabled` and
-//! `outputVolumeHoldEnabled` are not owned: the daemon reads them, so they are carried verbatim.
+//! `outputVolumeHoldEnabled` are not owned: the daemon reads them, so they are carried verbatim,
+//! except that a `false` one is removed (default true) when the window turns its feature on.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -126,6 +127,11 @@ pub fn merged(raw: Option<&[u8]>, managed: &Managed) -> Result<Vec<u8>, WriteErr
             Some(v) => object.insert(key.into(), v.clone()),
             None => object.remove(key),
         };
+    }
+    for (on, key) in [(!managed.reclaim.is_empty(), "reclaimEnabled"), (managed.hold_against.is_some(), "outputVolumeHoldEnabled")] {
+        if on && object.get(key) == Some(&Value::Bool(false)) {
+            object.remove(key);
+        }
     }
     let known = KEY_ORDER.iter().filter(|k| object.contains_key(**k)).map(|k| k.to_string());
     let mut unknown: Vec<String> = object.keys().filter(|k| !KEY_ORDER.contains(&k.as_str())).cloned().collect();

@@ -88,3 +88,24 @@ fn a_file_changed_on_disk_is_not_overwritten() {
     assert_eq!(std::fs::read(&path).unwrap(), ok);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn switching_a_feature_on_lifts_its_rust_only_false() {
+    let raw = r#"{"reclaimEnabled":false,"outputVolumeHoldEnabled":false}"#;
+    let mut m = default_managed();
+    m.reclaim = vec!["AirPods Max".into()];
+    m.hold_against = Some(vec!["Parallels Desktop".into()]);
+    let out = text(Some(raw), &m);
+    let config: Config = serde_json::from_str(&out).unwrap();
+    assert_eq!(config.reclaim_active(), ["AirPods Max"], "{out}");
+    assert_eq!(config.hold_against_active(), ["Parallels Desktop"], "{out}");
+}
+
+#[test]
+fn switching_a_feature_on_adds_no_enabled_key() {
+    let mut m = default_managed();
+    m.reclaim = vec!["AirPods Max".into()];
+    m.hold_against = Some(vec!["Parallels Desktop".into()]);
+    let out = text(Some("{}"), &m);
+    assert!(!out.contains("Enabled"), "{out}");
+}
