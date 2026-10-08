@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds rs/target/bundle.noindex/Cleat-rs.app from the optimised binary, without Xcode: Info.plist
+# Builds rs/target/bundle.noindex/Cleat.app from the optimised binary, without Xcode: Info.plist
 # and the launchd agent plist from rs/bundle/*.in, ad-hoc signed with the hardened runtime and the
 # one entitlement the Swift build has (audio input), with bundle/AppIcon.icns as its icon. A
 # previous bundle is moved aside (old-*), never deleted. The .noindex directory keeps Spotlight,
@@ -11,7 +11,7 @@ set -euo pipefail
 RS="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$RS"
 LABEL="${CLEAT_LABEL:-ai.jetto.cleat.rs}"
-EXE="Cleat-rs"
+EXE="Cleat"
 
 cargo build --release
 

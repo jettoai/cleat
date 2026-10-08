@@ -6,8 +6,8 @@ status file and log (`~/Library/Application Support/Cleat-rs/status.json`,
 
 ```bash
 cargo test
-bash scripts/bundle.sh                 # target/bundle.noindex/Cleat-rs.app, ad-hoc signed, bundle id ai.jetto.cleat.rs
-target/bundle.noindex/Cleat-rs.app/Contents/MacOS/Cleat-rs status
+bash scripts/bundle.sh                 # target/bundle.noindex/Cleat.app, ad-hoc signed, bundle id ai.jetto.cleat.rs
+target/bundle.noindex/Cleat.app/Contents/MacOS/Cleat status
 ```
 
 The CLI (`status`, `log`, `restart`, `version`, `help`) prints what the Swift `cleat` prints.
@@ -33,8 +33,8 @@ settings window (one at a time), shows About, and quits. Quit stays down until t
 until the app is opened again; install.sh sets the agent's `KeepAlive` to `SuccessfulExit` false
 for that.
 
-`bash scripts/install.sh` copies `target/bundle.noindex/Cleat-rs.app` to `/Applications/Cleat-rs.app` (beside the
-Swift `Cleat.app`), where Raycast finds it, points the existing `~/Library/LaunchAgents/ai.jetto.cleat.rs.plist` at that
+`bash scripts/install.sh` copies `target/bundle.noindex/Cleat.app` to `/Applications/Cleat.app` (moving aside an
+`/Applications/Cleat-rs.app` from before the rename), where Raycast finds it, points the existing `~/Library/LaunchAgents/ai.jetto.cleat.rs.plist` at that
 copy and restarts the daemon. The bundle is ad-hoc signed, so a rebuilt one may ask for the
 microphone again. Builds and moved-aside copies stay under `target/bundle.noindex/`, which
 Spotlight skips, so Raycast lists only the installed one.

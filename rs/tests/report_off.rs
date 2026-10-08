@@ -140,10 +140,12 @@ fn crash_reports_from_before_the_switch_went_on_are_not_sent() {
     crash_file(&s, "Cleat-rs-old.ips", SystemTime::now() - Duration::from_secs(3600));
     // Control: one stamped after the switch goes on is picked up.
     crash_file(&s, "Cleat-rs-new.ips", SystemTime::now() + Duration::from_secs(3600));
+    // After the B-1222 rename the executable, and so the report name, is plain Cleat.
+    crash_file(&s, "Cleat-2026-10-08-103000.ips", SystemTime::now() + Duration::from_secs(3600));
     crash_file(&s, "Other-new.ips", SystemTime::now() + Duration::from_secs(3600));
     s.reporter.set_enabled(true);
     s.reporter.wait_idle();
-    assert_eq!(s.counts.sent.load(Ordering::SeqCst), 1);
+    assert_eq!(s.counts.sent.load(Ordering::SeqCst), 2);
 }
 
 #[test]

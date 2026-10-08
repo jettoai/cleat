@@ -6,14 +6,14 @@ use std::time::UNIX_EPOCH;
 
 use serde_json::{json, Value};
 
-/// `Cleat-rs*.ips` files modified after `since` (Unix seconds), oldest first, with their mtimes.
+/// `Cleat-*.ips` files (`Cleat-rs-*` before the B-1222 rename, `Cleat-*` after) modified after `since` (Unix seconds), oldest first, with their mtimes.
 pub fn crash_files(dir: &Path, since: f64) -> Vec<(PathBuf, f64)> {
     let Ok(entries) = std::fs::read_dir(dir) else { return vec![] };
     let mut found: Vec<(PathBuf, f64)> = entries
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
-            if !name.starts_with("Cleat-rs") || !name.ends_with(".ips") {
+            if !name.starts_with("Cleat-") || !name.ends_with(".ips") {
                 return None;
             }
             let mtime = e.metadata().ok()?.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_secs_f64();
