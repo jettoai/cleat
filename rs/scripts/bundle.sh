@@ -27,6 +27,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/
 
 cp "$RS/target/release/cleat-rs" "$APP/Contents/MacOS/$EXE"
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# README step 2 copies this to ~/.config/cleat/config.json; the Swift build ships it too.
+cp ../config.example.json "$APP/Contents/Resources/config.example.json"
 # The menu bar icon (src/app/menubar.rs ICON_RESOURCE): replace bundle/MenuBarIcon* to change it.
 for f in bundle/MenuBarIcon*; do
     [ -f "$f" ] || continue
@@ -41,6 +43,7 @@ codesign --force --sign - --options runtime --entitlements bundle/Cleat-rs.entit
 
 plutil -lint "$APP/Contents/Info.plist" "$APP/Contents/Library/LaunchAgents/$LABEL.plist"
 codesign --verify --strict "$APP"
+cmp -s ../config.example.json "$APP/Contents/Resources/config.example.json"
 codesign -d --entitlements - "$APP" 2>/dev/null | grep -q 'com.apple.security.device.audio-input'
 REPORTED="$("$APP/Contents/MacOS/$EXE" version)"
 if [ "$REPORTED" != "$VERSION" ]; then

@@ -1,34 +1,117 @@
-# Cleat
+<h1 align="center">Cleat</h1>
+<p align="center"><sub>by <a href="https://jetto.ai">Jetto</a></sub></p>
 
-<sub>by <a href="https://jetto.ai">Jetto</a></sub>
+<p align="center">Your Mac's audio devices, held where you put them:<br>the right speaker, the right microphone at the right level, and your AirPods back from the phone.</p>
+
+<p align="center"><b>English</b> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a></p>
 
 A cleat is the fitting a rope gets tied to so the boat stops drifting. This one is for audio
-devices: you declare the state you want in a config file, and Cleat holds it, event driven, for
-about zero percent of a CPU.
+devices: you say which output, which microphone, what gain and what balance you want, and Cleat
+holds it. It reacts to CoreAudio events instead of polling, so it costs next to no CPU, and it
+lives in the menu bar with a settings window for everything it holds.
 
 macOS keeps moving audio devices on you. Connecting AirPods Max takes over the microphone (and
 drops Bluetooth into call-quality HFP). Conferencing apps "automatically adjust microphone volume"
-and leave the gain somewhere else. Balance drifts off centre after some reconnects. And a wireless
-receiver whose transmitter is switched off is still a perfectly good CoreAudio device that happens
-to be sending nothing at all.
+and leave the gain somewhere else. A virtual machine resets the output volume when it starts.
+Balance drifts off centre after some reconnects. AirPods that a phone borrowed stay with the phone,
+and the Mac plays through its speakers for the rest of the day. And a wireless receiver whose
+transmitter is switched off is still a perfectly good CoreAudio device that happens to be sending
+nothing at all.
 
-Cleat does seven things. Six are the same shape: subscribe to a CoreAudio property, compare
-against the config, write back if they differ. The seventh asks another daemon for a headset back,
-because a headset a phone has taken is not a CoreAudio property to write.
+**What Cleat does**
+
+- **Output priority list.** Sound plays from the first connected device on your list. While a device
+  on your list is connected, devices marked "never use" are moved off, even when macOS lands on
+  them by itself.
+- **Microphone priority list.** The first connected microphone on your list is the default input;
+  while one of them is connected, a blocklist keeps AirPods Max (or Zoom's and Teams' virtual
+  devices) out of that slot.
+- **Bluetooth headphones take over.** When a headset connects, the sound goes to it, the way it
+  already does for wired headphones.
+- **AirPods back from the phone.** When a headset you listed is connected but a phone or iPad holds
+  its audio, and the Mac is playing while you are at it, Cleat asks for it back. A phone that is
+  actually playing or on a call keeps it. A headset that says no because nobody is wearing it yet
+  is asked again every 8 seconds, for up to 3 minutes, while the Mac keeps playing.
+- **Microphone gain held.** One level for every microphone, with per-device overrides.
+- **Output volume held against the programs you name.** If Parallels Desktop (or any app you add)
+  changes the output volume, Cleat puts it back. Your own changes stay.
+- **Balance held at centre** (or wherever you set it).
+- **Silent devices count as gone.** A receiver sending exact digital silence is skipped and the
+  next microphone on the list takes over.
+- **Your own choices are left alone.** A microphone you picked yourself that is on neither list
+  stays picked.
+- **A settings window and a menu bar item**, showing what is in use right now and what Cleat itself
+  costs in CPU and memory.
+- **Error reports only if you ask.** Off by default. Turning them off deletes the reports still
+  waiting to go and cuts off one already on its way.
+
+<p align="center">
+  <img src="assets/screenshot-output.png" alt="Cleat's settings window, Output page, in dark mode with a Traditional Chinese interface: a sidebar with Output, Input and Headphones; a status card with CPU, memory and reclaim speed; an output priority list with 外接耳機 (external headphones) first and marked in use; other output devices below it, with Mac Studio's speakers and the Maono AI Microphone ticked never use; and an output volume and balance card holding the volume against Parallels Desktop and the balance pinned, with a note that the current output, 外接耳機, has no balance control, so Cleat leaves it alone" width="720">
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-input.png" alt="Cleat's settings window, Input page, in dark mode with a Traditional Chinese interface: an input priority list of Wireless microphone (in use), Brio 100 and AirPods Max (not connected, excluded); other input devices with Microsoft Teams Audio and ZoomAudioDevice excluded; and an input volume card holding every microphone at 100 percent, with the current reading Wireless microphone 100%" width="720">
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-headphones.png" alt="Cleat's settings window, Headphones page, in dark mode with a Traditional Chinese interface: switches for taking over the output when Bluetooth headphones connect and for asking a headset back when another device has taken it, both on; AirPods Max and AirPods Pro (not connected) ticked; and a collapsed row of three other Bluetooth devices" width="720">
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-output-light.png" alt="The same Output page of Cleat's settings window in light mode, Traditional Chinese interface" width="720">
+</p>
+
+<p align="center"><sub>The settings window is in Traditional Chinese for now. The config file and the <code>cleat</code> commands are in English.</sub></p>
+
+## What it holds
+
+Six rules are the same shape: subscribe to a CoreAudio property, compare against the config, write
+back if they differ. The output volume rule also has to know which program made a change, which
+CoreAudio does not say, so it reads that from the system log. The reclaim rule asks another daemon
+for a headset back, because a headset a phone has taken is not a CoreAudio property to write.
 
 | | What | Config |
 |---|---|---|
 | 1 | Input device priority list, with a blocklist | `input`, `blockedInput` |
 | 2 | Treat a device sending exact digital silence as absent | `liveness` |
 | 3 | Hold the output balance | `balance` |
-| 4 | Output device priority list | `output` |
+| 4 | Output device priority list, with a blocklist | `output`, `blockedOutput` |
 | 5 | Hold input gain per device | `inputVolume` |
 | 6 | Bluetooth headphones take over the output when they connect | `headphonesTakeOver` |
-| 7 | Ask a Bluetooth headset back when a phone has taken it | `reclaim` |
+| 7 | Ask a Bluetooth headset back when a phone has taken it | `reclaim`, `reclaimEnabled` |
+| 8 | Undo output volume changes made by the programs you list | `outputVolumeHoldAgainst`, `outputVolumeHoldEnabled` |
 
 It never takes over a device you picked yourself. If the current default input is not on your
-priority list and not on the blocklist - a mic you chose in System Settings, Zoom's or Teams'
-virtual device - Cleat leaves it alone.
+priority list and not on the blocklist (a mic you chose in System Settings, Zoom's or Teams'
+virtual device), Cleat leaves it alone.
+
+## The window and the menu bar
+
+The daemon puts an item in the menu bar. Its menu shows the output and input in use right now,
+opens the settings window, shows About, and quits Cleat.
+
+The settings window has three pages: Output, Input and Headphones. Across the top of each page is
+a status card: whether Cleat is running, its CPU (one core is 100 percent, averaged over the last
+minute, the same figure Activity Monitor shows), its memory (the same as Activity Monitor's Memory
+column), and its reclaim speed (how long Cleat takes to put a setting back after something changed
+it, the median of the recent ones).
+
+- **Output**: the priority list, every other output device with an "add to order" button and a
+  "never use" box, the programs whose volume changes are undone (with the time of the last undo),
+  and the balance with a live reading.
+- **Input**: the microphone priority list, every other input device, and the gain: one slider for
+  every microphone plus a slider for each device you add.
+- **Headphones**: the takeover switch, the reclaim switch, and a box for each paired Bluetooth
+  headset. Bluetooth devices the system does not identify as audio sit in a collapsed group,
+  for speakers or headphones that do not announce themselves.
+
+Right-click a device in a priority list to move it up or down. Every change is written to the
+config file a moment later, and the daemon picks it up from there; keys the window does not show
+are left exactly as they were. If the file changes on disk while the window is open, the window
+stops writing and offers to reload.
+
+Open it from the menu bar item, with `cleat settings`, or by opening Cleat.app from Finder,
+Spotlight or Raycast while the daemon is running. Only one settings window is open at a time.
 
 ## Install
 
@@ -48,9 +131,10 @@ Then write a config and start it:
 point: it holds every input device's gain at 100 percent (`"inputVolume": {"*": 100, ...}`) and it
 turns headphone takeover on, so any Bluetooth headset becomes the output as soon as it connects.
 The device names in it are the author's, so the rules that name devices do nothing on your machine
-until you put your own there - but two settings in it name no device and take effect at once:
-`balance` pulls whatever output you are on back to centre, and `launchAtLogin` registers Cleat as a
-login item. Edit it for your devices first, or start from `{}` and add one rule at a time.
+until you put your own there. Two settings in it name no device and take effect at once: `balance`
+pulls whatever output you are on back to centre, and `launchAtLogin` registers Cleat as a login
+item. Edit it for your devices first, or start from `{}` and add one rule at a time; the settings
+window can do the editing for you.
 
 ```sh
 mkdir -p ~/.config/cleat
@@ -58,16 +142,16 @@ cp /Applications/Cleat.app/Contents/Resources/config.example.json ~/.config/clea
 cleat restart
 ```
 
-Cleat has no window. `cleat restart` registers the launchd agent that ships inside the bundle and
-starts the daemon through it; from then on launchd starts Cleat at login and starts it again if it
-is ever killed or crashes. A clean quit is left alone on purpose - that is what `brew upgrade`
-does to the old copy, and the cask starts the new one for you. `cleat status` says which agent
-state you are in. Setting `launchAtLogin` to `false` unregisters the agent, and Cleat exits with
-it.
+`cleat restart` registers the launchd agent that ships inside the bundle and starts the daemon
+through it; from then on launchd starts Cleat at login and starts it again if it is ever killed or
+crashes. A clean quit (the menu's Quit, or `brew upgrade` replacing the old copy) is left alone on
+purpose; Cleat comes back at the next login, when you open the app again, or with `cleat restart`.
+`cleat status` says which agent state you are in. Setting `launchAtLogin` to `false` unregisters
+the agent, and Cleat exits with it.
 
 Installing by hand instead: open the app once from Finder, which is both the first microphone
-prompt and the moment it registers its agent. A copy started by hand while the agent is already
-running steps aside for the supervised one, so there is never a second daemon.
+prompt and the moment it registers its agent. Opening the app again while the agent is running
+opens the settings window, so there is never a second daemon.
 
 ## Config
 
@@ -84,6 +168,7 @@ running steps aside for the supervised one, so there is never a second daemon.
   "inputVolume": { "*": 100, "Wireless microphone": 88, "Brio 100": 75 },
   "liveness": { "Wireless microphone": { "zeroSeconds": 3 } },
   "reclaim": ["AirPods Max"],
+  "outputVolumeHoldAgainst": ["Parallels Desktop"],
   "launchAtLogin": true,
   "errorReports": false
 }
@@ -92,14 +177,17 @@ running steps aside for the supervised one, so there is never a second daemon.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `input` | array of strings | `[]` | Input priority, most preferred first. Empty turns the rule off |
-| `blockedInput` | array of strings | `[]` | Never allowed to be the default input |
+| `blockedInput` | array of strings | `[]` | Never allowed to be the default input while a device on `input` is connected |
 | `output` | array of strings | `[]` | Output priority. Empty turns the rule off |
-| `blockedOutput` | array of strings | `[]` | Never allowed to be the default output |
-| `headphonesTakeOver` | boolean | `false` (the example turns it on) | Bluetooth output devices take the output when they connect |
+| `blockedOutput` | array of strings | `[]` | Never allowed to be the default output while a device on `output` is connected |
+| `headphonesTakeOver` | boolean | `false` | Bluetooth output devices take the output when they connect |
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
 | `liveness` | object | `{}` | Device name to `{ "zeroSeconds": N }`, N at least 1 |
 | `reclaim` | array of strings | `[]` | Bluetooth headsets to ask back when another device holds them, by name or address |
+| `reclaimEnabled` | boolean | `true` | Turns reclaim off without emptying `reclaim` |
+| `outputVolumeHoldAgainst` | array of strings | `[]` | Programs whose changes to the output volume are undone |
+| `outputVolumeHoldEnabled` | boolean | `true` | Turns the volume hold off without emptying its list |
 | `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
 | `errorReports` | boolean | `false` | Send crash and error reports to Sentry. See [Privacy](#privacy) |
 
@@ -107,29 +195,29 @@ running steps aside for the supervised one, so there is never a second daemon.
 it for that device: `{"*": 100, "Brio 100": 75}` holds everything at 100 percent except the Brio,
 which is held at 75. Without a `"*"` entry, a device the config does not name is left alone. The
 wildcard covers blocked devices too, so an AirPods Max kept out of the input slot by `blockedInput`
-still has its gain held, and devices whose gain cannot be read - some virtual devices - are left
+still has its gain held, and devices whose gain cannot be read (some virtual devices) are left
 alone either way.
 
 **Headphones.** When a Bluetooth output device appears, it becomes the output. Choosing another
 device by hand while it stays connected is respected: with `headphonesTakeOver` on, `output` never
 moves the sound off a connected Bluetooth device and never moves it onto one, unless that device is
-on `blockedOutput` - that list says "never this one", and it outranks "this one is a headset". So
+on `blockedOutput`. That list says "never this one", and it outranks "this one is a headset". So
 the priority list decides what plays when no headphones hold the output. macOS does this for wired
-headphones already and iOS does it for AirPods;
-over Bluetooth on a Mac, reconnecting a headset that was last paired to a phone leaves the sound
-coming out of the speakers, which is the gap this fills. Headphones already connected when Cleat
-starts are not treated as having just arrived, so restarting Cleat never moves the output.
+headphones already and iOS does it for AirPods; over Bluetooth on a Mac, reconnecting a headset
+that was last paired to a phone leaves the sound coming out of the speakers, which is the gap this
+fills. Headphones already connected when Cleat starts are not treated as having just arrived, so
+restarting Cleat never moves the output.
 
 `blockedOutput` is the other half of it. Some USB microphones carry a speaker end, and that is
 where macOS lands when the headphones leave. It is not on your priority list, so without the
-blocked list Cleat would read it as an output you picked yourself and leave it there. A blocked
-device is moved off even when the priority list has nowhere to send the sound - when every device
+blocked list Cleat would read it as an output you picked yourself and leave it there. While a
+device on `output` is connected, a blocked device is moved off even when the priority list has nowhere to send the sound: when every device
 it names is a headset Cleat may not touch, the sound goes to the first output present that is
 neither blocked nor a headset, and only stays put when there is no such device.
 
 **Reclaim.** AirPods paired to both a Mac and a phone belong to whichever one last asked for
 them. The phone asks by playing something; when it stops, nothing on the Mac asks again, so the
-headset stays with the phone - still connected over Bluetooth, gone from the audio device list -
+headset stays with the phone (still connected over Bluetooth, gone from the audio device list)
 and the Mac's sound comes out of the speakers for the rest of the day. macOS only reclaims the
 headset when an app on this side *starts* playing, and by then the sound has already gone
 somewhere else.
@@ -138,12 +226,15 @@ Listing a headset under `reclaim` asks for it back. Cleat sends the same routing
 itself sends, and the accessory decides between the two devices by what each one is doing: the
 request says this Mac has a playback session, which outranks a phone sitting idle and is outranked
 by a phone playing media or on a call. So an idle phone gives the headset up and a phone actually
-using it keeps it - the phone comes first, and Cleat only asks for a headset it is not using.
-Four things have to be
-true before a request goes out - the headset is listed, it is connected to this Mac, it has no
-audio device here, and something is playing through whatever holds the output - so an idle Mac
-never takes a headset off anybody. A headset the phone keeps is left alone for a minute before
-asking again, and said once in the log rather than once a beat.
+using it keeps it. Five things have to be true before a request goes out: the headset is listed,
+it is connected to this Mac, it has no audio device here, something is playing through whatever
+holds the output, and someone is at the Mac (a key or mouse touched in the last 30 seconds, or
+the frontmost app playing a video). A display kept awake by a meeting or `caffeinate` does not
+count as someone. Moving the output off the headset by hand is respected for the rest of that
+playback. A headset the phone keeps is left alone for a minute; after that Cleat asks again at the next
+audio change it reacts to, such as playback starting or a device connecting. The log says it
+once rather than once a beat. When a request is accepted, the log says how long the headset
+took to become the output, or that it did not come back.
 
 A headset may be named by its Bluetooth address (`"70:F9:4A:B6:0C:C9"`, dashes and lower case
 accepted) as well as by name, which is how two headsets called the same thing are told apart.
@@ -152,16 +243,22 @@ arbitration is saying. This rule uses a private system interface: on a macOS tha
 it, the rule turns itself off, says so once in the log, and `cleat status` reports it as
 unavailable rather than on.
 
+**Output volume.** CoreAudio says that the volume changed, not who changed it, so Cleat reads the
+writer from the system's audio log. A change by a program on `outputVolumeHoldAgainst` is put back
+to the value before it; a change by you or by any program not on the list becomes the new value to
+hold. An entry is an executable's name or an app's name: `Parallels Desktop` matches anything
+inside `Parallels Desktop.app`.
+
 **Naming a device.** Use the name shown in System Settings, or its CoreAudio UID if two devices
 share a name. Names are compared after Unicode normalisation, because some devices carry a
 no-break space in their name that you cannot type (Maono's, for one). Case is not normalised.
 
 A malformed or out-of-range config never replaces a working one: the previous settings stay in
 force and `cleat status` says why. Before any config has loaded, every rule is off. Removing the
-file also turns every rule off - that is the way to switch Cleat off without quitting it.
+file also turns every rule off, which is the way to switch Cleat off without quitting it.
 
 **Silence detection** (`liveness`) is the one feature that opens the microphone. Cleat runs a HAL
-IOProc on the listed device and checks whether every sample in the buffer is exactly zero - a real
+IOProc on the listed device and checks whether every sample in the buffer is exactly zero: a real
 microphone always has some noise floor, a receiver with its transmitter off sends nothing. After
 `zeroSeconds` of that, the device counts as absent and the next device on the priority list takes
 over. Because the input is open, macOS shows the orange microphone dot while Cleat is watching.
@@ -175,6 +272,7 @@ cleat status      # what it is holding right now, and why
 cleat log -n 50   # recent events
 cleat restart     # start the daemon, or replace the running one, through its launchd agent
 cleat reclaim     # ask for the headsets under "reclaim", once, and print the answer
+cleat settings    # open the settings window
 cleat version
 ```
 
@@ -182,18 +280,19 @@ cleat version
 has not happened yet, then has launchd replace the process. Nothing else has to be started by
 hand.
 
-`cleat status` reads `~/Library/Application Support/Cleat/status.json`; `cleat log` reads
-`~/Library/Logs/Cleat/cleat.log`. Only actions that changed something are logged, so a quiet log
-means a quiet day, not a broken daemon - `status` is what tells you it is alive.
+`cleat status` reads `~/Library/Application Support/Cleat-rs/status.json`; `cleat log` reads
+`~/Library/Logs/Cleat-rs/cleat-rs.log`. The commands never talk to the daemon, they read the files
+it writes. Only actions that changed something are logged, so a quiet log means a quiet day, not a
+broken daemon; `status` is what tells you it is alive.
 
 ## Microphone permission
 
 Only `liveness` needs it. macOS asks the first time Cleat runs; if you decline, every other rule
 keeps working and `cleat status` shows `microphone: denied`. To change your mind: System Settings
-> Privacy & Security > Microphone, then `cleat restart` - Cleat reads the permission at launch and
+> Privacy & Security > Microphone, then `cleat restart`. Cleat reads the permission at launch and
 does not watch that switch.
 
-This is also why Cleat is an .app rather than a bare binary on a LaunchAgent - a command-line tool
+This is also why Cleat is an .app rather than a bare binary on a LaunchAgent: a command-line tool
 started by launchd is often never asked, and the request fails silently instead. The agent that
 supervises the daemon starts the app bundle's own binary (`BundleProgram`), so the process launchd
 brings back is the same app the microphone was granted to, not a loose executable.
@@ -202,26 +301,28 @@ brings back is the same app the microphone was granted to, not a loose executabl
 
 Cleat sends nothing off your Mac unless you ask it to. The one exception is opt-in: set
 `"errorReports": true` in the config and the daemon sends crash and error reports to Sentry, so
-crashes reach the author without anyone filing an issue. A report carries the stack trace, the
-Cleat and macOS versions, the Mac model, language and time zone, and the rough region Sentry
-infers from the connection. It never carries your IP address, your config, or the contents of any
-file, and your home folder in file paths is replaced with `~`. There is no usage tracking, no
-session tracking and no screen recording.
+crashes reach the author without anyone filing an issue. A report carries the stack trace or the
+error message, the Cleat and macOS versions, and the time. It carries no IP address, no user, not
+your config and not the contents of any file, and your home folder in file paths is replaced with
+`~`. Sentry, like any server, sees the connection the report arrives on. There is no usage
+tracking, no session tracking and no screen recording.
 
 Set it back to `false`, or delete the line, and reporting stops as soon as the config is re-read;
-no restart needed. `cleat status` shows which way it is set. The `cleat` commands never send
-anything.
+no restart needed. Reports still waiting to go are deleted, and one already on its way is cut off. `cleat status` shows which way it is set. The `cleat` commands and the settings
+window never send anything.
 
 ## Build from source
 
 ```sh
-brew install xcodegen
-xcodegen generate
-xcodebuild build -project Cleat.xcodeproj -scheme Cleat -destination 'platform=macOS' -quiet
-xcodebuild test  -project Cleat.xcodeproj -scheme Cleat -destination 'platform=macOS' -quiet
+cd rs
+cargo build --release
+cargo test
+bash scripts/bundle.sh    # target/bundle.noindex/Cleat.app
 ```
 
-`scripts/build-release.sh` produces the signed, notarized zip that the cask points at.
+`scripts/bundle.sh` builds an ad-hoc signed bundle with the development identity
+`ai.jetto.cleat.rs`, which never registers a login agent; `rs/README.md` explains how to run it
+under launchd for testing.
 
 ## Uninstall
 
@@ -230,8 +331,8 @@ brew uninstall --cask --zap cleat
 ```
 
 Or, for a manual install: unload the agent with `launchctl bootout gui/$UID/ai.jetto.cleat`, delete
-`/Applications/Cleat.app`, and remove `~/Library/Application Support/Cleat`, `~/Library/Logs/Cleat`
-and `~/.config/cleat`.
+`/Applications/Cleat.app`, and remove `~/Library/Application Support/Cleat-rs`,
+`~/Library/Logs/Cleat-rs` and `~/.config/cleat`.
 
 ## License
 
