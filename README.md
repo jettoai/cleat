@@ -20,15 +20,18 @@ nothing at all.
 
 **What Cleat does**
 
-- **Output priority list.** Sound plays from the first connected device on your list. Devices
-  marked "never use" are moved off, even when macOS lands on them by itself.
+- **Output priority list.** Sound plays from the first connected device on your list. While a device
+  on your list is connected, devices marked "never use" are moved off, even when macOS lands on
+  them by itself.
 - **Microphone priority list.** The first connected microphone on your list is the default input;
-  a blocklist keeps AirPods Max (or Zoom's and Teams' virtual devices) out of that slot.
+  while one of them is connected, a blocklist keeps AirPods Max (or Zoom's and Teams' virtual
+  devices) out of that slot.
 - **Bluetooth headphones take over.** When a headset connects, the sound goes to it, the way it
   already does for wired headphones.
 - **AirPods back from the phone.** When a headset you listed is connected but a phone or iPad holds
   its audio, and the Mac is playing while you are at it, Cleat asks for it back. A phone that is
-  actually playing or on a call keeps it.
+  actually playing or on a call keeps it. A headset that says no because nobody is wearing it yet
+  is asked again every 8 seconds, for up to 3 minutes, while the Mac keeps playing.
 - **Microphone gain held.** One level for every microphone, with per-device overrides.
 - **Output volume held against the programs you name.** If Parallels Desktop (or any app you add)
   changes the output volume, Cleat puts it back. Your own changes stay.
@@ -39,9 +42,11 @@ nothing at all.
   stays picked.
 - **A settings window and a menu bar item**, showing what is in use right now and what Cleat itself
   costs in CPU and memory.
+- **Error reports only if you ask.** Off by default. Turning them off deletes the reports still
+  waiting to go and cuts off one already on its way.
 
 <p align="center">
-  <img src="assets/screenshot-output.png" alt="Cleat's settings window, Output page, in dark mode with a Traditional Chinese interface: a sidebar with Output, Input and Headphones; a status card with CPU, memory and reclaim speed; an output priority list with 外接耳機 (external headphones) first and marked in use; other output devices below it, with Mac Studio's speakers and the Maono AI Microphone ticked never use; and an output volume and balance card holding the volume against Parallels Desktop and pinning the balance" width="720">
+  <img src="assets/screenshot-output.png" alt="Cleat's settings window, Output page, in dark mode with a Traditional Chinese interface: a sidebar with Output, Input and Headphones; a status card with CPU, memory and reclaim speed; an output priority list with 外接耳機 (external headphones) first and marked in use; other output devices below it, with Mac Studio's speakers and the Maono AI Microphone ticked never use; and an output volume and balance card holding the volume against Parallels Desktop and the balance pinned, with a note that the current output, 外接耳機, has no balance control, so Cleat leaves it alone" width="720">
 </p>
 
 <p align="center">
@@ -172,9 +177,9 @@ opens the settings window, so there is never a second daemon.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `input` | array of strings | `[]` | Input priority, most preferred first. Empty turns the rule off |
-| `blockedInput` | array of strings | `[]` | Never allowed to be the default input |
+| `blockedInput` | array of strings | `[]` | Never allowed to be the default input while a device on `input` is connected |
 | `output` | array of strings | `[]` | Output priority. Empty turns the rule off |
-| `blockedOutput` | array of strings | `[]` | Never allowed to be the default output |
+| `blockedOutput` | array of strings | `[]` | Never allowed to be the default output while a device on `output` is connected |
 | `headphonesTakeOver` | boolean | `false` | Bluetooth output devices take the output when they connect |
 | `balance` | number or null | `null` | 0.0 (left) to 1.0 (right); 0.5 is centred. `null` turns the rule off |
 | `inputVolume` | object | `{}` | Device name, or `"*"` for every input device, to percent, 0-100 |
@@ -205,8 +210,8 @@ restarting Cleat never moves the output.
 
 `blockedOutput` is the other half of it. Some USB microphones carry a speaker end, and that is
 where macOS lands when the headphones leave. It is not on your priority list, so without the
-blocked list Cleat would read it as an output you picked yourself and leave it there. A blocked
-device is moved off even when the priority list has nowhere to send the sound: when every device
+blocked list Cleat would read it as an output you picked yourself and leave it there. While a
+device on `output` is connected, a blocked device is moved off even when the priority list has nowhere to send the sound: when every device
 it names is a headset Cleat may not touch, the sound goes to the first output present that is
 neither blocked nor a headset, and only stays put when there is no such device.
 
@@ -302,7 +307,7 @@ your config and not the contents of any file, and your home folder in file paths
 tracking, no session tracking and no screen recording.
 
 Set it back to `false`, or delete the line, and reporting stops as soon as the config is re-read;
-no restart needed. `cleat status` shows which way it is set. The `cleat` commands and the settings
+no restart needed. Reports still waiting to go are deleted, and one already on its way is cut off. `cleat status` shows which way it is set. The `cleat` commands and the settings
 window never send anything.
 
 ## Build from source
