@@ -173,6 +173,16 @@ fn blocked_listed_current_device_is_replaced_by_the_next_candidate() {
 }
 
 #[test]
+fn blocked_listed_current_device_moves_to_a_silent_listed_device() {
+    let config = overlap(&["Brio 100", "AirPods Max"], &["AirPods Max"]);
+    let snap = snapshot(vec![air_pods(), brio()], Some(&air_pods()), &[(&brio(), Liveness::Silent)]);
+    assert_eq!(
+        reconcile(&snap, &config),
+        vec![Action::SetDefaultInput(brio().id, "AirPods Max -> Brio 100 (blocked)".into())]
+    );
+}
+
+#[test]
 fn blocked_listed_current_device_stays_without_another_candidate() {
     let config = overlap(&["AirPods Max", "Brio 100"], &["AirPods Max"]);
     let snap = snapshot(vec![air_pods()], Some(&air_pods()), &[]);
@@ -194,4 +204,48 @@ fn uid_block_skips_to_the_next_candidate_from_outside_the_list() {
         reconcile(&snap, &config),
         vec![Action::SetDefaultInput(wireless().id, "AirPods Max -> Wireless microphone (blocked)".into())]
     );
+}
+
+// A blocked current input with no live candidate is still evicted.
+
+#[test]
+fn albert_config_evicts_air_pods_to_the_silent_wireless_microphone() {
+    let config = overlap(&["Wireless microphone", "Brio 100", "AirPods Max"], &["AirPods Max"]);
+    let snap = snapshot(vec![wireless(), air_pods()], Some(&air_pods()), &[(&wireless(), Liveness::Silent)]);
+    assert_eq!(
+        reconcile(&snap, &config),
+        vec![Action::SetDefaultInput(wireless().id, "AirPods Max -> Wireless microphone (blocked)".into())]
+    );
+}
+
+#[test]
+fn blocked_current_input_falls_back_to_an_unlisted_device() {
+    let snap = snapshot(vec![air_pods(), maono()], Some(&air_pods()), &[]);
+    assert_eq!(
+        reconcile(&snap, &pinned_input()),
+        vec![Action::SetDefaultInput(maono().id, format!("AirPods Max -> {} (blocked)", maono().name))]
+    );
+}
+
+#[test]
+fn unlisted_fallback_skips_blocked_and_output_only_devices() {
+    let speakers = AudioDevice::new(70, "Aaa Speakers", "Aaa-UID", false, true);
+    let config = overlap(&["Wireless microphone"], &["AirPods Max", "Brio 100"]);
+    let snap = snapshot(vec![air_pods(), brio(), speakers.clone(), maono()], Some(&air_pods()), &[]);
+    assert_eq!(
+        reconcile(&snap, &config),
+        vec![Action::SetDefaultInput(maono().id, format!("AirPods Max -> {} (blocked)", maono().name))]
+    );
+    let snap = snapshot(vec![air_pods(), brio(), speakers], Some(&air_pods()), &[]);
+    assert_eq!(reconcile(&snap, &config), vec![]);
+}
+
+#[test]
+fn unblocked_current_input_is_not_evicted_without_a_candidate() {
+    let snap = snapshot(
+        vec![wireless(), brio(), maono()],
+        Some(&brio()),
+        &[(&wireless(), Liveness::Silent), (&brio(), Liveness::Silent)],
+    );
+    assert_eq!(reconcile(&snap, &pinned_input()), vec![]);
 }
