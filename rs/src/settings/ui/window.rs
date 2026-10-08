@@ -151,8 +151,10 @@ fn with_brand(mtm: MainThreadMarker, list: &NSScrollView) -> Retained<NSView> {
     let name = label(mtm, "Cleat", 13.0 * 1.32, heavy, &NSColor::labelColor());
     let version = crate::identity::Identity::current().version();
     let v = label(mtm, &version, 10.0, regular(), &NSColor::tertiaryLabelColor());
-    let head = stack(mtm, false, 6.0, &[&mark, &name, &v]);
-    head.setAlignment(objc2_app_kit::NSLayoutAttribute::CenterY);
+    // The version sits on the name's baseline; the mark centres on the pair.
+    let title = stack(mtm, false, 6.0, &[&name, &v]);
+    title.setAlignment(objc2_app_kit::NSLayoutAttribute::FirstBaseline);
+    let head = stack(mtm, false, 6.0, &[&mark, &title]);
 
     let by = label(mtm, "by", 10.0, regular(), &NSColor::tertiaryLabelColor());
     let foot = stack(mtm, false, 4.0, &[&by]);
