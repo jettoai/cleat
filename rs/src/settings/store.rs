@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::config::{paths, Config};
 use crate::model::AudioDevice;
 
-use super::document::{self, WriteError};
+use super::document::{self, Origin, WriteError};
 use super::draft::{LiveLevels, PairedDevice, SettingsDraft};
 use super::sources;
 use super::vitals::{read_process, DaemonVitals, Sampler, VitalsState};
@@ -31,6 +31,7 @@ pub struct Store {
     config_path: PathBuf,
     status_path: PathBuf,
     baseline: Option<Vec<u8>>,
+    origin: Option<Origin>,
     pending: Option<(Config, Option<Vec<u8>>)>,
     sampler: Sampler,
 }
@@ -55,6 +56,7 @@ impl Store {
             config_path: paths::config_path(),
             status_path: paths::status_path(),
             baseline: None,
+            origin: None,
             pending: None,
             sampler: Sampler::default(),
         }
@@ -88,8 +90,9 @@ impl Store {
 
     pub fn apply_paired(&mut self, paired: &[PairedDevice]) {
         let Some((config, raw)) = self.pending.take() else { return };
-        self.baseline = raw;
         self.draft = SettingsDraft::make(&config, &self.present, paired, &self.live);
+        self.origin = Some(Origin::new(raw.as_deref(), self.draft.managed()));
+        self.baseline = raw;
         self.phase = Phase::Ready;
     }
 
@@ -118,7 +121,7 @@ impl Store {
         if self.phase != Phase::Ready {
             return;
         }
-        match document::write(&self.config_path, &self.draft.managed(), self.baseline.as_deref()) {
+        match document::write(&self.config_path, &self.draft.managed(), self.origin.as_ref(), self.baseline.as_deref()) {
             Ok(bytes) => {
                 self.baseline = Some(bytes);
                 self.error_message = None;

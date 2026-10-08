@@ -1,6 +1,6 @@
 use cleat_rs::config::Config;
 use cleat_rs::model::AudioDevice;
-use cleat_rs::settings::draft::{DeviceList, LiveLevels, PairedDevice, SettingsDraft, DEFAULT_HOLD_AGAINST};
+use cleat_rs::settings::draft::{DeviceList, LiveLevels, PairedDevice, SettingsDraft, Stance, DEFAULT_HOLD_AGAINST};
 
 fn out(id: u32, name: &str) -> AudioDevice {
     AudioDevice::new(id, name, &format!("uid-{id}"), false, true)
@@ -24,7 +24,7 @@ fn rows_are_priority_then_blocked_then_present() {
     let list = DeviceList::make(&s(&["B", "Gone", "B"]), &s(&["X"]), &present, false);
     assert_eq!(entries(&list), s(&["B", "Gone", "X", "Alpha", "Zed"]));
     assert!(!list.rows[1].is_connected);
-    assert!(list.rows[2].is_blocked && !list.rows[2].is_listed);
+    assert_eq!(list.rows[2].stance, Stance::Blocked);
 }
 
 #[test]
@@ -66,7 +66,9 @@ fn turning_reclaim_on_ticks_the_first_connected_headset() {
     d.set_reclaim_enabled(true);
     assert_eq!(d.managed().reclaim, s(&["B"]));
     d.set_reclaim_enabled(false);
-    assert!(d.managed().reclaim.is_empty());
+    let m = d.managed();
+    assert!(!m.reclaim_on);
+    assert_eq!(m.reclaim, s(&["B"]));
 }
 
 #[test]
@@ -86,10 +88,12 @@ fn hold_starts_from_the_default_and_ends_with_the_last_app() {
     let mut d = SettingsDraft::make(&Config::disabled(), &[], &[], &LiveLevels::default());
     assert!(!d.hold_enabled);
     d.set_hold_enabled(true);
-    assert_eq!(d.managed().hold_against, Some(s(&[DEFAULT_HOLD_AGAINST])));
+    let m = d.managed();
+    assert_eq!((m.hold_on, m.hold_against), (true, s(&[DEFAULT_HOLD_AGAINST])));
     d.remove_hold_app(DEFAULT_HOLD_AGAINST);
     assert!(!d.hold_enabled);
-    assert_eq!(d.managed().hold_against, None);
+    let m = d.managed();
+    assert_eq!((m.hold_on, m.hold_against), (false, vec![]));
 }
 
 #[test]

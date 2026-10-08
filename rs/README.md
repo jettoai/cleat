@@ -4,6 +4,10 @@ A port of the Swift daemon in `Cleat/`. Same config file (`~/.config/cleat/confi
 status file and log (`~/Library/Application Support/Cleat-rs/status.json`,
 `~/Library/Logs/Cleat-rs/cleat-rs.log`) so it can run beside the Swift build.
 
+The settings window turns reclaim or the volume hold off by writing `reclaimEnabled: false` /
+`outputVolumeHoldEnabled: false` and keeping the list. The Swift daemon does not read those keys:
+beside it, a list switched off here still runs.
+
 ```bash
 cargo test
 bash scripts/bundle.sh                 # target/bundle.noindex/Cleat.app, ad-hoc signed, bundle id ai.jetto.cleat.rs

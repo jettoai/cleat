@@ -1,5 +1,5 @@
 use cleat_rs::config::Config;
-use cleat_rs::settings::document::{merged, write, Managed, WriteError};
+use cleat_rs::settings::document::{merged, merged_from, write, Managed, Origin, WriteError};
 use cleat_rs::settings::draft::{LiveLevels, SettingsDraft};
 
 fn default_managed() -> Managed {
@@ -37,9 +37,12 @@ fn switches_off_remove_their_keys() {
 }
 
 #[test]
-fn rust_only_switches_and_unknown_keys_survive_a_write() {
+fn rust_only_switches_and_unknown_keys_survive_an_untouched_save() {
     let raw = r#"{"reclaimEnabled":false,"outputVolumeHoldEnabled":true,"someUnknownKey":1}"#;
-    let out = text(Some(raw), &default_managed());
+    let config: Config = serde_json::from_str(raw).unwrap();
+    let m = SettingsDraft::make(&config, &[], &[], &LiveLevels::default()).managed();
+    let origin = Origin::new(Some(raw.as_bytes()), m.clone());
+    let out = String::from_utf8(merged_from(Some(raw.as_bytes()), &m, Some(&origin)).unwrap()).unwrap();
     assert!(out.contains("  \"reclaimEnabled\": false"), "{out}");
     assert!(out.contains("  \"outputVolumeHoldEnabled\": true"), "{out}");
     assert!(out.contains("  \"someUnknownKey\": 1"), "{out}");
@@ -81,10 +84,10 @@ fn a_file_changed_on_disk_is_not_overwritten() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("config.json");
     std::fs::write(&path, b"{\"output\":[\"B\"]}").unwrap();
-    let r = write(&path, &default_managed(), Some(b"{\"output\":[\"A\"]}"));
+    let r = write(&path, &default_managed(), None, Some(b"{\"output\":[\"A\"]}"));
     assert_eq!(r, Err(WriteError::ChangedOnDisk));
     assert_eq!(std::fs::read(&path).unwrap(), b"{\"output\":[\"B\"]}");
-    let ok = write(&path, &default_managed(), Some(b"{\"output\":[\"B\"]}")).unwrap();
+    let ok = write(&path, &default_managed(), None, Some(b"{\"output\":[\"B\"]}")).unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), ok);
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -94,7 +97,9 @@ fn switching_a_feature_on_lifts_its_rust_only_false() {
     let raw = r#"{"reclaimEnabled":false,"outputVolumeHoldEnabled":false}"#;
     let mut m = default_managed();
     m.reclaim = vec!["AirPods Max".into()];
-    m.hold_against = Some(vec!["Parallels Desktop".into()]);
+    m.reclaim_on = true;
+    m.hold_against = vec!["Parallels Desktop".into()];
+    m.hold_on = true;
     let out = text(Some(raw), &m);
     let config: Config = serde_json::from_str(&out).unwrap();
     assert_eq!(config.reclaim_active(), ["AirPods Max"], "{out}");
@@ -105,7 +110,9 @@ fn switching_a_feature_on_lifts_its_rust_only_false() {
 fn switching_a_feature_on_adds_no_enabled_key() {
     let mut m = default_managed();
     m.reclaim = vec!["AirPods Max".into()];
-    m.hold_against = Some(vec!["Parallels Desktop".into()]);
+    m.reclaim_on = true;
+    m.hold_against = vec!["Parallels Desktop".into()];
+    m.hold_on = true;
     let out = text(Some("{}"), &m);
     assert!(!out.contains("Enabled"), "{out}");
 }
@@ -113,8 +120,10 @@ fn switching_a_feature_on_adds_no_enabled_key() {
 fn save_untouched(raw: &str, touch: impl FnOnce(&mut SettingsDraft)) -> serde_json::Value {
     let config: Config = serde_json::from_str(raw).unwrap();
     let mut draft = SettingsDraft::make(&config, &[], &[], &LiveLevels::default());
+    let origin = Origin::new(Some(raw.as_bytes()), draft.managed());
     touch(&mut draft);
-    serde_json::from_str(&text(Some(raw), &draft.managed())).unwrap()
+    let out = merged_from(Some(raw.as_bytes()), &draft.managed(), Some(&origin)).unwrap();
+    serde_json::from_slice(&out).unwrap()
 }
 
 #[test]
@@ -147,6 +156,8 @@ fn touching_a_parked_switch_writes_what_the_window_shows() {
         d.set_reclaim_enabled(false);
         d.set_hold_enabled(false);
     });
-    assert_eq!(off["reclaim"], serde_json::json!([]), "{off}");
-    assert!(off.get("outputVolumeHoldAgainst").is_none(), "{off}");
+    assert_eq!(off["reclaim"], serde_json::json!(["AirPods Max"]), "{off}");
+    assert_eq!(off["reclaimEnabled"], serde_json::json!(false), "{off}");
+    assert_eq!(off["outputVolumeHoldAgainst"], serde_json::json!(["Zoom"]), "{off}");
+    assert_eq!(off["outputVolumeHoldEnabled"], serde_json::json!(false), "{off}");
 }

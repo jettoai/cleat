@@ -15,14 +15,32 @@ pub enum Side {
     Output,
 }
 
+/// Where a device stands: in the priority order, nowhere, or never to be used. One of the three,
+/// so a device cannot be both preferred and not used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stance {
+    Listed,
+    Neutral,
+    Blocked,
+}
+
 /// One row of an input or output list. `entry` goes back into the file verbatim.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceRow {
     pub entry: String,
     pub display_name: String,
     pub is_connected: bool,
-    pub is_listed: bool,
-    pub is_blocked: bool,
+    pub stance: Stance,
+}
+
+impl DeviceRow {
+    pub fn is_listed(&self) -> bool {
+        self.stance == Stance::Listed
+    }
+
+    pub fn is_blocked(&self) -> bool {
+        self.stance == Stance::Blocked
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -33,6 +51,7 @@ pub struct DeviceList {
 impl DeviceList {
     /// Priority entries (config order), blocked-only entries (config order), then present devices
     /// no entry names (by name). Duplicate entries collapse to the first.
+    /// An entry in both lists reads as blocked: "not used" outranks the order.
     pub fn make(priority: &[String], blocked: &[String], present: &[AudioDevice], input: bool) -> Self {
         let side: Vec<&AudioDevice> = present.iter().filter(|d| if input { d.has_input } else { d.has_output }).collect();
         let mut rows = vec![];
@@ -47,8 +66,13 @@ impl DeviceList {
                 entry: entry.clone(),
                 display_name: found.map_or_else(|| entry.clone(), |d| d.name.clone()),
                 is_connected: found.is_some(),
-                is_listed: priority.contains(entry),
-                is_blocked: blocked.contains(entry),
+                stance: if blocked.contains(entry) {
+                    Stance::Blocked
+                } else if priority.contains(entry) {
+                    Stance::Listed
+                } else {
+                    Stance::Neutral
+                },
             });
         }
         let mut sorted = side.clone();
@@ -65,19 +89,18 @@ impl DeviceList {
                 entry: device.name.clone(),
                 display_name: device.name.clone(),
                 is_connected: true,
-                is_listed: false,
-                is_blocked: false,
+                stance: Stance::Neutral,
             });
         }
         Self { rows }
     }
 
     pub fn listed(&self) -> Vec<DeviceRow> {
-        self.rows.iter().filter(|r| r.is_listed).cloned().collect()
+        self.rows.iter().filter(|r| r.is_listed()).cloned().collect()
     }
 
     pub fn others(&self) -> Vec<DeviceRow> {
-        self.rows.iter().filter(|r| !r.is_listed).cloned().collect()
+        self.rows.iter().filter(|r| !r.is_listed()).cloned().collect()
     }
 
     pub fn priority(&self) -> Vec<String> {
@@ -85,7 +108,7 @@ impl DeviceList {
     }
 
     pub fn blocked(&self) -> Vec<String> {
-        self.rows.iter().filter(|r| r.is_blocked).map(|r| r.entry.clone()).collect()
+        self.rows.iter().filter(|r| r.is_blocked()).map(|r| r.entry.clone()).collect()
     }
 
     /// Swift `Array.move(fromOffsets: [from], toOffset: to)`: `to` is the insertion point before
@@ -101,17 +124,30 @@ impl DeviceList {
         self.rows = listed.into_iter().chain(self.others()).collect();
     }
 
-    /// On lands last of the listed rows, off lands first of the others.
+    /// On (from any stance, lifting "not used") lands last of the listed rows; off (listed rows
+    /// only) lands first of the others.
     pub fn set_listed(&mut self, entry: &str, on: bool) {
         let Some(index) = self.rows.iter().position(|r| r.entry == entry) else { return };
+        if !on && !self.rows[index].is_listed() {
+            return;
+        }
         let mut row = self.rows.remove(index);
-        row.is_listed = on;
+        row.stance = if on { Stance::Listed } else { Stance::Neutral };
         self.rows = self.listed().into_iter().chain([row]).chain(self.others()).collect();
     }
 
+    /// On takes a listed row out of the order (first of the others); off makes a blocked row neutral.
     pub fn set_blocked(&mut self, entry: &str, on: bool) {
-        if let Some(row) = self.rows.iter_mut().find(|r| r.entry == entry) {
-            row.is_blocked = on;
+        let Some(index) = self.rows.iter().position(|r| r.entry == entry) else { return };
+        match (on, self.rows[index].stance) {
+            (true, Stance::Listed) => {
+                let mut row = self.rows.remove(index);
+                row.stance = Stance::Blocked;
+                self.rows = self.listed().into_iter().chain([row]).chain(self.others()).collect();
+            }
+            (true, _) => self.rows[index].stance = Stance::Blocked,
+            (false, Stance::Blocked) => self.rows[index].stance = Stance::Neutral,
+            (false, _) => {}
         }
     }
 }
@@ -180,10 +216,6 @@ pub struct SettingsDraft {
     pub balance: f64,
     pub hold_enabled: bool,
     pub hold_against: Vec<String>,
-    /// Off only because the file says `reclaimEnabled: false` / `outputVolumeHoldEnabled: false`
-    /// over a non-empty list, and the switch is untouched: the list key is carried verbatim.
-    pub reclaim_parked: bool,
-    pub hold_parked: bool,
 }
 
 pub const DEFAULT_HOLD_AGAINST: &str = "Parallels Desktop";
@@ -226,8 +258,6 @@ impl SettingsDraft {
             balance: config.balance.or(live.balance.map(round2)).unwrap_or(0.5),
             hold_enabled: config.output_volume_hold_enabled && !hold.is_empty(),
             hold_against: if hold.is_empty() { vec![DEFAULT_HOLD_AGAINST.into()] } else { hold.clone() },
-            reclaim_parked: !config.reclaim_enabled && !config.reclaim.is_empty(),
-            hold_parked: !config.output_volume_hold_enabled && !hold.is_empty(),
         }
     }
 
@@ -282,6 +312,8 @@ impl SettingsDraft {
         if self.wildcard_enabled {
             volumes.insert(INPUT_VOLUME_WILDCARD.to_string(), self.wildcard_percent.round());
         }
+        // An off hold showing only the placeholder is what a file with no hold keys reads as.
+        let placeholder = !self.hold_enabled && self.hold_against.len() == 1 && self.hold_against[0] == DEFAULT_HOLD_AGAINST;
         Managed {
             input: self.input.priority(),
             blocked_input: self.input.blocked(),
@@ -289,17 +321,11 @@ impl SettingsDraft {
             blocked_output: self.output.blocked(),
             headphones_take_over: self.headphones_take_over,
             input_volume: volumes,
-            reclaim: if self.reclaim_enabled {
-                self.headsets.iter().filter(|h| h.is_selected).map(|h| h.entry.clone()).collect()
-            } else {
-                vec![]
-            },
+            reclaim: self.headsets.iter().filter(|h| h.is_selected).map(|h| h.entry.clone()).collect(),
+            reclaim_on: self.reclaim_enabled,
             balance: self.balance_enabled.then(|| round2(self.balance)),
-            hold_against: (self.hold_enabled && !self.hold_against.is_empty()).then(|| self.hold_against.clone()),
-            carried: [(self.reclaim_parked, "reclaim"), (self.hold_parked, "outputVolumeHoldAgainst")]
-                .into_iter()
-                .filter_map(|(parked, key)| parked.then_some(key))
-                .collect(),
+            hold_against: if placeholder { vec![] } else { self.hold_against.clone() },
+            hold_on: self.hold_enabled,
         }
     }
 
@@ -312,7 +338,6 @@ impl SettingsDraft {
 
     pub fn set_hold_enabled(&mut self, on: bool) {
         self.hold_enabled = on;
-        self.hold_parked = false;
         if on && self.hold_against.is_empty() {
             self.hold_against = vec![DEFAULT_HOLD_AGAINST.into()];
         }
@@ -332,25 +357,27 @@ impl SettingsDraft {
         }
     }
 
-    /// Turning reclaim on with nothing ticked ticks the first connected headset, else the first.
+    /// Turning reclaim on with nothing ticked ticks the first connected headset, else the first;
+    /// with no headset at all it stays off.
     pub fn set_reclaim_enabled(&mut self, on: bool) {
-        self.reclaim_enabled = on;
-        self.reclaim_parked = false;
         if on && !self.headsets.iter().any(|h| h.is_selected) {
             let index = self.headsets.iter().position(|h| h.is_connected).or((!self.headsets.is_empty()).then_some(0));
-            if let Some(i) = index {
-                self.headsets[i].is_selected = true;
-            }
+            let Some(i) = index else { return };
+            self.headsets[i].is_selected = true;
         }
+        self.reclaim_enabled = on;
     }
 
-    /// Ignored while reclaim is off.
+    /// Ignored while reclaim is off. Unticking the last headset turns reclaim off.
     pub fn set_headset(&mut self, entry: &str, on: bool) {
         if !self.reclaim_enabled {
             return;
         }
         if let Some(h) = self.headsets.iter_mut().find(|h| h.entry == entry) {
             h.is_selected = on;
+        }
+        if !self.headsets.iter().any(|h| h.is_selected) {
+            self.reclaim_enabled = false;
         }
     }
 

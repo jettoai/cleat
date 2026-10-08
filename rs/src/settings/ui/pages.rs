@@ -197,7 +197,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         switch_row(mtm, "藍牙耳機連上時自動切過去", d.headphones_take_over, true, |on| {
             app().edit(move |s| s.draft.headphones_take_over = on)
         }),
-        switch_row(mtm, "耳機被其他裝置拿走時要回來", d.reclaim_enabled, true, |on| {
+        switch_row(mtm, "耳機被其他裝置拿走時要回來", d.reclaim_enabled, d.reclaim_enabled || !d.headsets.is_empty(), |on| {
             app().edit(move |s| s.draft.set_reclaim_enabled(on))
         }),
     ];

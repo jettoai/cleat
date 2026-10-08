@@ -29,7 +29,7 @@ fn tags(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Option<Ret
         Side::Input => s.live.input_device.clone(),
         Side::Output => s.live.output_device.clone(),
     };
-    if r.is_blocked {
+    if r.is_blocked() {
         Some(tag(mtm, "已排除", false))
     } else if r.is_connected && current.is_some_and(|c| device_name::matches(&r.display_name, &c, "")) {
         Some(tag(mtm, "使用中", true))
@@ -44,7 +44,7 @@ fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Ret
     let name = if symbol_exists(wanted) { wanted } else { "speaker.wave.2" };
     let v = icon(mtm, name, 20.0, &NSColor::secondaryLabelColor());
     let v = if name == "mic" { lowered(mtm, &v, 1.0) } else { v };
-    if r.is_blocked {
+    if r.is_blocked() {
         v.setAlphaValue(0.4);
     }
     v
@@ -52,7 +52,7 @@ fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Ret
 
 fn label_view(mtm: MainThreadMarker, r: &DeviceRow) -> Retained<NSView> {
     let v = device_label(mtm, &r.display_name, r.is_connected);
-    if r.is_blocked {
+    if r.is_blocked() {
         v.setAlphaValue(0.4);
     }
     v
@@ -69,7 +69,7 @@ fn block_toggle(mtm: MainThreadMarker, ctx: &mut Ctx, side: Side, r: &DeviceRow)
     let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns("不使用"), Some(&act), Some(sel!(fire:)), mtm) };
     b.setControlSize(NSControlSize::Small);
     b.setAttributedTitle(&attributed("不使用", 10.0, &NSColor::secondaryLabelColor()));
-    b.setState(if r.is_blocked { NSControlStateValueOn } else { NSControlStateValueOff });
+    b.setState(if r.is_blocked() { NSControlStateValueOn } else { NSControlStateValueOff });
     b.setToolTip(Some(&ns(text::BLOCK_HELP)));
     b
 }
