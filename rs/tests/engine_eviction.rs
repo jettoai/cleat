@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime};
 use cleat_rs::config::Config;
 use cleat_rs::engine::Event;
 use cleat_rs::model::{AudioDevice, DeviceSnapshot};
+use cleat_rs::model::MicrophonePermission;
 use common::engine::{Harness, Opts};
 use common::*;
 
@@ -136,4 +137,21 @@ fn output_side_has_its_own_cooldown() {
     }
     assert_eq!(count(&h, "output:70"), 3, "{:?}", h.writes());
     assert_eq!(h.count("keeps coming back"), 1);
+}
+
+/// Albert's replay (a2) end to end: the wireless microphone is silent, so AirPods Max goes to the
+/// built-in microphone; once the wireless one has signal, cleat hands the input back to it.
+#[test]
+fn silent_wireless_microphone_takes_over_from_the_built_in_once_it_has_signal() {
+    let config = Config { launch_at_login: false, ..pinned_input() };
+    let snap = inputs(vec![air_pods(), wireless(), mac_mic()], &wireless());
+    let opts = Opts { microphone: MicrophonePermission::Granted, start_results: vec![true], ..Opts::default() };
+    let mut h = Harness::new(&config, snap, opts);
+    let flip = |live| Event::LivenessFlip { uid: wireless().uid, name: wireless().name, live };
+    h.engine.handle(flip(false));
+    h.set(|s| s.default_input = Some(air_pods().id));
+    h.reconcile();
+    assert_eq!(h.writes(), vec!["input:81"]);
+    h.engine.handle(flip(true));
+    assert_eq!(h.writes(), vec!["input:81", "input:10"]);
 }

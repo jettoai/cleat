@@ -209,12 +209,31 @@ fn uid_block_skips_to_the_next_candidate_from_outside_the_list() {
 // A blocked current input with no live candidate is still evicted.
 
 #[test]
-fn albert_config_evicts_air_pods_to_the_silent_wireless_microphone() {
+fn albert_config_evicts_air_pods_to_the_built_in_microphone_before_the_silent_wireless_one() {
+    let config = overlap(&["Wireless microphone", "Brio 100", "AirPods Max"], &["AirPods Max"]);
+    let snap = snapshot(vec![wireless(), air_pods(), mac_mic()], Some(&air_pods()), &[(&wireless(), Liveness::Silent)]);
+    assert_eq!(
+        reconcile(&snap, &config),
+        vec![Action::SetDefaultInput(mac_mic().id, "AirPods Max -> MacBook Pro Microphone (blocked)".into())]
+    );
+}
+
+#[test]
+fn without_a_built_in_microphone_air_pods_go_to_the_silent_wireless_microphone() {
     let config = overlap(&["Wireless microphone", "Brio 100", "AirPods Max"], &["AirPods Max"]);
     let snap = snapshot(vec![wireless(), air_pods()], Some(&air_pods()), &[(&wireless(), Liveness::Silent)]);
     assert_eq!(
         reconcile(&snap, &config),
         vec![Action::SetDefaultInput(wireless().id, "AirPods Max -> Wireless microphone (blocked)".into())]
+    );
+}
+
+#[test]
+fn a_measuring_listed_device_also_comes_after_the_built_in_microphone() {
+    let snap = snapshot(vec![wireless(), air_pods(), mac_mic()], Some(&air_pods()), &[(&wireless(), Liveness::Measuring)]);
+    assert_eq!(
+        reconcile(&snap, &pinned_input()),
+        vec![Action::SetDefaultInput(mac_mic().id, "AirPods Max -> MacBook Pro Microphone (blocked)".into())]
     );
 }
 
@@ -283,16 +302,16 @@ fn only_virtual_inputs_are_never_a_fallback() {
     assert_eq!(reconcile(&snap, &pinned_input()), vec![]);
 }
 
-/// Albert's replay (a2): the wireless microphone is there but silent; the existing contract moves
-/// AirPods Max to it, ahead of the built-in microphone.
+/// Albert's replay (a2): the wireless microphone is there but silent; AirPods Max goes to the
+/// built-in microphone, and back to the wireless one once it has signal (engine_eviction).
 #[test]
-fn albert_replay_silent_wireless_microphone_still_wins_over_the_built_in() {
+fn albert_replay_silent_wireless_microphone_yields_to_the_built_in() {
     let mut devices = albert_extras();
     devices.extend([mac_mic(), wireless()]);
     let snap = snapshot(devices, Some(&air_pods()), &[(&wireless(), Liveness::Silent)]);
     assert_eq!(
         reconcile(&snap, &albert_input()),
-        vec![Action::SetDefaultInput(wireless().id, "AirPods Max -> Wireless microphone (blocked)".into())]
+        vec![Action::SetDefaultInput(mac_mic().id, "AirPods Max -> MacBook Pro Microphone (blocked)".into())]
     );
 }
 
