@@ -25,6 +25,8 @@ pub struct Managed {
     pub reclaim: Vec<String>,
     pub balance: Option<f64>,
     pub hold_against: Option<Vec<String>>,
+    /// Owned keys left exactly as the file has them (a list parked behind a Rust-only `false`).
+    pub carried: Vec<&'static str>,
 }
 
 /// Swift's nine keys.
@@ -122,7 +124,7 @@ pub fn merged(raw: Option<&[u8]>, managed: &Managed) -> Result<Vec<u8>, WriteErr
         },
     };
     let values = managed.values();
-    for key in MANAGED_KEYS {
+    for key in MANAGED_KEYS.into_iter().filter(|k| !managed.carried.contains(k)) {
         match values.get(key) {
             Some(v) => object.insert(key.into(), v.clone()),
             None => object.remove(key),

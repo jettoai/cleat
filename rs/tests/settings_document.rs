@@ -109,3 +109,44 @@ fn switching_a_feature_on_adds_no_enabled_key() {
     let out = text(Some("{}"), &m);
     assert!(!out.contains("Enabled"), "{out}");
 }
+
+fn save_untouched(raw: &str, touch: impl FnOnce(&mut SettingsDraft)) -> serde_json::Value {
+    let config: Config = serde_json::from_str(raw).unwrap();
+    let mut draft = SettingsDraft::make(&config, &[], &[], &LiveLevels::default());
+    touch(&mut draft);
+    serde_json::from_str(&text(Some(raw), &draft.managed())).unwrap()
+}
+
+#[test]
+fn a_reclaim_list_parked_behind_false_survives_an_unrelated_save() {
+    let raw = r#"{"reclaim":["AirPods Max"],"reclaimEnabled":false}"#;
+    let out = save_untouched(raw, |d| d.headphones_take_over = !d.headphones_take_over);
+    assert_eq!(out["reclaim"], serde_json::json!(["AirPods Max"]), "{out}");
+    assert_eq!(out["reclaimEnabled"], serde_json::json!(false), "{out}");
+}
+
+#[test]
+fn a_hold_list_parked_behind_false_survives_an_unrelated_save() {
+    let raw = r#"{"outputVolumeHoldAgainst":["Zoom","Parallels Desktop"],"outputVolumeHoldEnabled":false}"#;
+    let out = save_untouched(raw, |d| d.headphones_take_over = !d.headphones_take_over);
+    assert_eq!(out["outputVolumeHoldAgainst"], serde_json::json!(["Zoom", "Parallels Desktop"]), "{out}");
+    assert_eq!(out["outputVolumeHoldEnabled"], serde_json::json!(false), "{out}");
+}
+
+#[test]
+fn touching_a_parked_switch_writes_what_the_window_shows() {
+    let raw = r#"{"reclaim":["AirPods Max"],"reclaimEnabled":false,"outputVolumeHoldAgainst":["Zoom"],"outputVolumeHoldEnabled":false}"#;
+    let on = save_untouched(raw, |d| {
+        d.set_reclaim_enabled(true);
+        d.set_hold_enabled(true);
+    });
+    assert_eq!(on["reclaim"], serde_json::json!(["AirPods Max"]), "{on}");
+    assert_eq!(on["outputVolumeHoldAgainst"], serde_json::json!(["Zoom"]), "{on}");
+    assert!(on.get("reclaimEnabled").is_none() && on.get("outputVolumeHoldEnabled").is_none(), "{on}");
+    let off = save_untouched(raw, |d| {
+        d.set_reclaim_enabled(false);
+        d.set_hold_enabled(false);
+    });
+    assert_eq!(off["reclaim"], serde_json::json!([]), "{off}");
+    assert!(off.get("outputVolumeHoldAgainst").is_none(), "{off}");
+}

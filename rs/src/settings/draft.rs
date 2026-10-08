@@ -180,6 +180,10 @@ pub struct SettingsDraft {
     pub balance: f64,
     pub hold_enabled: bool,
     pub hold_against: Vec<String>,
+    /// Off only because the file says `reclaimEnabled: false` / `outputVolumeHoldEnabled: false`
+    /// over a non-empty list, and the switch is untouched: the list key is carried verbatim.
+    pub reclaim_parked: bool,
+    pub hold_parked: bool,
 }
 
 pub const DEFAULT_HOLD_AGAINST: &str = "Parallels Desktop";
@@ -222,6 +226,8 @@ impl SettingsDraft {
             balance: config.balance.or(live.balance.map(round2)).unwrap_or(0.5),
             hold_enabled: config.output_volume_hold_enabled && !hold.is_empty(),
             hold_against: if hold.is_empty() { vec![DEFAULT_HOLD_AGAINST.into()] } else { hold.clone() },
+            reclaim_parked: !config.reclaim_enabled && !config.reclaim.is_empty(),
+            hold_parked: !config.output_volume_hold_enabled && !hold.is_empty(),
         }
     }
 
@@ -290,6 +296,10 @@ impl SettingsDraft {
             },
             balance: self.balance_enabled.then(|| round2(self.balance)),
             hold_against: (self.hold_enabled && !self.hold_against.is_empty()).then(|| self.hold_against.clone()),
+            carried: [(self.reclaim_parked, "reclaim"), (self.hold_parked, "outputVolumeHoldAgainst")]
+                .into_iter()
+                .filter_map(|(parked, key)| parked.then_some(key))
+                .collect(),
         }
     }
 
@@ -302,6 +312,7 @@ impl SettingsDraft {
 
     pub fn set_hold_enabled(&mut self, on: bool) {
         self.hold_enabled = on;
+        self.hold_parked = false;
         if on && self.hold_against.is_empty() {
             self.hold_against = vec![DEFAULT_HOLD_AGAINST.into()];
         }
@@ -324,6 +335,7 @@ impl SettingsDraft {
     /// Turning reclaim on with nothing ticked ticks the first connected headset, else the first.
     pub fn set_reclaim_enabled(&mut self, on: bool) {
         self.reclaim_enabled = on;
+        self.reclaim_parked = false;
         if on && !self.headsets.iter().any(|h| h.is_selected) {
             let index = self.headsets.iter().position(|h| h.is_connected).or((!self.headsets.is_empty()).then_some(0));
             if let Some(i) = index {
