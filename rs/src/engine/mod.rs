@@ -258,6 +258,7 @@ impl Engine {
         let output = if headphones_takeover::has_eligible_arrival(&snap, &self.config) {
             // 1. An arriving headset outranks everything else on the output side.
             self.set_stuck(Side::Output, None, &mut held);
+            self.stuck.output_paused = None;
             headphones_takeover::reconcile(&snap, &self.config)
         } else {
             self.pin_side(Side::Output, &snap, now, &mut held)

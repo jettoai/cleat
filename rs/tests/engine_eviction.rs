@@ -284,3 +284,101 @@ fn mac_studio_replay_end_to_end() {
     assert_eq!(c, Vec::<String>::new());
     assert_eq!(d, vec!["output:95"]);
 }
+
+fn wireless_flip(live: bool) -> Event {
+    Event::LivenessFlip { uid: wireless().uid, name: wireless().name, live }
+}
+
+fn input_writes(h: &Harness) -> usize {
+    h.writes().iter().filter(|w| w.starts_with("input:")).count()
+}
+
+/// PM probe R6: macOS keeps putting AirPods Max back as the input for 40 s while the wireless
+/// microphone's signal flips ten times (someone talking with pauses). The flips lift the pause once.
+#[test]
+fn a_flapping_microphone_lifts_an_input_tug_only_once() {
+    let snap = inputs(mac_studio(true, true, true, true), &air_pods());
+    let mut h = Harness::new(&albert_config(), snap, granted());
+    let mut live = false;
+    for i in 0..40 {
+        h.set(|s| s.default_input = Some(air_pods().id));
+        h.advance(Duration::from_millis(1000));
+        if i % 4 == 0 {
+            live = !live;
+            h.engine.handle(wireless_flip(live));
+        } else {
+            h.reconcile();
+        }
+    }
+    assert_eq!(input_writes(&h), 6, "{:?}", h.writes());
+}
+
+/// After a device change a new tug of war starts, and a flip may lift its pause once again.
+#[test]
+fn a_device_change_lets_a_flip_lift_the_next_tug_once() {
+    let snap = inputs(vec![air_pods(), wireless(), mac_mic()], &wireless());
+    let mut h = Harness::new(&pinned_input(), snap, granted());
+    h.engine.handle(wireless_flip(false));
+    air_pods_come_back(&mut h, 5);
+    h.engine.handle(wireless_flip(false));
+    air_pods_come_back(&mut h, 5);
+    assert_eq!(count(&h, "input:81"), 6, "{:?}", h.writes());
+    h.engine.handle(wireless_flip(false));
+    air_pods_come_back(&mut h, 5);
+    assert_eq!(count(&h, "input:81"), 6, "{:?}", h.writes());
+    h.set(|s| s.devices.push(zoom()));
+    air_pods_come_back(&mut h, 5);
+    h.engine.handle(wireless_flip(false));
+    air_pods_come_back(&mut h, 5);
+    assert_eq!(count(&h, "input:81"), 12, "{:?}", h.writes());
+}
+
+/// PM probe O1: the output is the tug, the microphone's signal has nothing to do with it.
+#[test]
+fn a_microphone_flip_never_lifts_an_output_tug() {
+    let config = Config {
+        input: s(&["Wireless microphone"]),
+        blocked_output: s(&["Mac Studio的揚聲器"]),
+        headphones_take_over: true,
+        liveness: albert_config().liveness,
+        launch_at_login: false,
+        ..Config::default()
+    };
+    let snap = DeviceSnapshot {
+        devices: vec![air_pods(), wired_headphones(), mac_studio_speakers(), dell(), wireless()],
+        default_output: Some(mac_studio_speakers().id),
+        default_input: Some(wireless().id),
+        ..Default::default()
+    };
+    let mut h = Harness::new(&config, snap, granted());
+    h.audio.output_writes_stick.set(true);
+    let mut live = false;
+    for i in 0..40 {
+        h.set(|s| s.default_output = Some(mac_studio_speakers().id));
+        h.advance(Duration::from_millis(1000));
+        if i % 4 == 0 {
+            live = !live;
+            h.engine.handle(wireless_flip(live));
+        } else {
+            h.reconcile();
+        }
+    }
+    assert_eq!(h.writes().iter().filter(|w| w.starts_with("output:")).count(), 3, "{:?}", h.writes());
+}
+
+/// PM M4: while the cooldown leaves AirPods Max in place, status.json says so; a device change
+/// ends the pause and the field goes back to null.
+#[test]
+fn a_paused_eviction_shows_in_status() {
+    let mut h = Harness::new(&input_config(), inputs(vec![air_pods(), mac_mic()], &air_pods()), Opts::default());
+    air_pods_come_back(&mut h, 5);
+    let v = serde_json::to_value(h.status()).unwrap();
+    assert_eq!(v["stuck"]["inputPaused"], "AirPods Max", "{v}");
+    assert_eq!(v["stuck"]["outputPaused"], serde_json::Value::Null, "{v}");
+    assert!(h.rule("inputPin").ends_with(", paused on AirPods Max (keeps coming back)"), "{}", h.rule("inputPin"));
+    h.set(|s| s.devices.push(zoom()));
+    h.reconcile();
+    let v = serde_json::to_value(h.status()).unwrap();
+    assert_eq!(v["stuck"]["inputPaused"], serde_json::Value::Null, "{v}");
+    assert!(!h.rule("inputPin").contains("paused"), "{}", h.rule("inputPin"));
+}

@@ -41,9 +41,15 @@ pub struct Status {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StuckStatus {
     pub input: Option<String>,
     pub output: Option<String>,
+    /// The device the eviction cooldown leaves in place ("keeps coming back"), or null.
+    #[serde(default)]
+    pub input_paused: Option<String>,
+    #[serde(default)]
+    pub output_paused: Option<String>,
 }
 
 impl Status {
@@ -71,7 +77,12 @@ fn name_of(snap: &DeviceSnapshot, id: Option<u32>) -> Option<String> {
 
 impl Engine {
     pub(super) fn write_status(&self, snap: &DeviceSnapshot) {
-        let stuck = StuckStatus { input: self.stuck.input.clone(), output: self.stuck.output.clone() };
+        let stuck = StuckStatus {
+            input: self.stuck.input.clone(),
+            output: self.stuck.output.clone(),
+            input_paused: self.stuck.input_paused.clone(),
+            output_paused: self.stuck.output_paused.clone(),
+        };
         let status = Status {
             pid: std::process::id() as i32,
             updated_at: iso8601_utc(self.clock.wall()),
@@ -102,8 +113,14 @@ pub fn rule_summaries(
     stuck: &StuckStatus,
 ) -> BTreeMap<String, String> {
     let mut rules = BTreeMap::new();
-    rules.insert("inputPin".into(), pin_summary(&config.input, &config.blocked_input, stuck.input.as_deref()));
-    rules.insert("outputPin".into(), pin_summary(&config.output, &config.blocked_output, stuck.output.as_deref()));
+    rules.insert(
+        "inputPin".into(),
+        pin_summary(&config.input, &config.blocked_input, stuck.input.as_deref(), stuck.input_paused.as_deref()),
+    );
+    rules.insert(
+        "outputPin".into(),
+        pin_summary(&config.output, &config.blocked_output, stuck.output.as_deref(), stuck.output_paused.as_deref()),
+    );
     rules.insert("headphones".into(), headphones_summary(config));
     rules.insert("reclaim".into(), reclaim);
     rules.insert(
@@ -148,7 +165,7 @@ pub fn headphones_summary(config: &Config) -> String {
     s + ")"
 }
 
-pub fn pin_summary(priority: &[String], blocked: &[String], stuck: Option<&str>) -> String {
+pub fn pin_summary(priority: &[String], blocked: &[String], stuck: Option<&str>, paused: Option<&str>) -> String {
     let mut s = if priority.is_empty() {
         if blocked.is_empty() {
             "off".into()
@@ -164,6 +181,9 @@ pub fn pin_summary(priority: &[String], blocked: &[String], stuck: Option<&str>)
     };
     if let Some(n) = stuck {
         s += &format!(", stuck on {n} (no other usable device)");
+    }
+    if let Some(n) = paused {
+        s += &format!(", paused on {n} (keeps coming back)");
     }
     s
 }

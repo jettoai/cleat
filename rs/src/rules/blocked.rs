@@ -1,8 +1,10 @@
 //! The "not used" lists (B-1287): the one place that says what a blocked device is, and what
 //! happens when a side's default is one. Pure, like every rule.
 //!
-//! Two halves, both here and nowhere else. Never a target: `is_blocked` is the predicate the pin
-//! rules, headphone takeover and reclaim consult when they pick a device. Always moved off:
+//! Two halves. Never a target: `is_blocked` is the predicate the pin rules and headphone takeover
+//! consult when they pick a device; reclaim works on Bluetooth headsets, not `AudioDevice`s, and
+//! checks the same `blockedOutput` list itself (`BluetoothHeadset::is_listed`, which matches
+//! through `device_name::matches` as `is_blocked` does, plus the headset's address). Always moved off:
 //! `reconcile` sends a blocked default to the first device in `escape`, and says `Stuck` when
 //! there is nowhere to go, so the user can be told instead of guessing.
 

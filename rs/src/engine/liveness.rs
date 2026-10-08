@@ -101,9 +101,9 @@ impl Engine {
         }
         self.liveness_state.insert(uid.to_string(), if live { Liveness::Live } else { Liveness::Silent });
         self.note(&format!("liveness: {name} -> {}", if live { "live" } else { "silent" }));
-        // A microphone's signal changing is news: a device held in place by the cooldown gets
-        // another chance (B-1287, PM 0209 #3).
-        self.eviction.lift_all();
+        // A microphone's signal changing is news: an input device held in place by the cooldown
+        // gets one more chance, input side only and once per tug of war (B-1287, PM 0209 #3).
+        self.eviction.lift_input_on_signal();
         self.reconcile(false, None);
     }
 
