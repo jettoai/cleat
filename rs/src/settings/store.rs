@@ -5,6 +5,8 @@
 use std::path::PathBuf;
 
 use crate::config::{paths, Config};
+use crate::identity::Identity;
+use crate::launch::{AgentService, AgentStatus, SmApp};
 use crate::model::AudioDevice;
 
 use super::document::{self, Origin, WriteError};
@@ -36,6 +38,8 @@ pub struct Store {
     origin: Option<Origin>,
     pending: Option<(Config, Option<Vec<u8>>)>,
     sampler: Sampler,
+    /// The bundle's launchd agent; `None` in development builds, which never register.
+    agent: Option<Box<dyn AgentService>>,
 }
 
 impl Default for Store {
@@ -46,6 +50,13 @@ impl Default for Store {
 
 impl Store {
     pub fn new() -> Self {
+        let identity = Identity::current();
+        let agent: Option<Box<dyn AgentService>> = (!identity.is_development_build())
+            .then(|| Box::new(SmApp::agent(&format!("{}.plist", identity.label()))) as Box<dyn AgentService>);
+        Self::with_paths(paths::config_path(), paths::status_path(), agent)
+    }
+
+    pub fn with_paths(config_path: PathBuf, status_path: PathBuf, agent: Option<Box<dyn AgentService>>) -> Self {
         Self {
             phase: Phase::Loading,
             draft: SettingsDraft::make(&Config::disabled(), &[], &[], &LiveLevels::default()),
@@ -56,12 +67,13 @@ impl Store {
             last_revert: None,
             stuck: sources::Stuck::default(),
             vitals: DaemonVitals::with_state(VitalsState::NotRunning),
-            config_path: paths::config_path(),
-            status_path: paths::status_path(),
+            config_path,
+            status_path,
             baseline: None,
             origin: None,
             pending: None,
             sampler: Sampler::default(),
+            agent,
         }
     }
 
@@ -129,12 +141,26 @@ impl Store {
             Ok(bytes) => {
                 self.baseline = Some(bytes);
                 self.error_message = None;
+                self.register_if_switched_on();
             }
             Err(WriteError::ChangedOnDisk) => {
                 self.has_conflict = true;
                 self.error_message = Some(WriteError::ChangedOnDisk.to_string());
             }
             Err(e) => self.error_message = Some(e.to_string()),
+        }
+    }
+
+    /// The daemon unregisters the agent and exits when `launchAtLogin` goes off, so nothing reads
+    /// the file when the switch goes back on: the window registers the agent itself, only after the
+    /// write (launchd starts the daemon at once, and it must read on, not the old off). B-1316.
+    fn register_if_switched_on(&mut self) {
+        let Some(agent) = self.agent.as_ref().filter(|_| self.draft.launch_at_login) else { return };
+        if agent.status() == AgentStatus::Enabled {
+            return;
+        }
+        if let Err(e) = agent.register() {
+            self.error_message = Some(format!("開機自動啟動沒有設定成功：{e}"));
         }
     }
 
