@@ -6,7 +6,7 @@ use objc2_core_audio::{
     kAudioDeviceTransportTypeBuiltIn, kAudioDeviceTransportTypeDisplayPort, kAudioDeviceTransportTypeHDMI,
 };
 
-use super::draft::{DeviceRow, Side};
+use super::draft::{DeviceRow, HeadsetBox, ReclaimHint, Side};
 use super::vitals::{DaemonVitals, VitalsState};
 use crate::state::reaction_clock::DaemonPerformance;
 
@@ -63,9 +63,29 @@ pub const OUTPUT_LEVELS_FOOTER: &str = "輸出音量：名單上的程式改了�
 pub const VOLUMES_FOOTER: &str = "單獨設定的麥克風優先於預設音量。";
 pub const OTHERS_NOTE: &str = "系統沒說是什麼的藍牙裝置。喇叭或耳機不在上面時，到這裡勾；手機、電腦不用勾。";
 pub const HEADSET_BLOCKED_NOTE: &str = "輸出設為不使用，不會拉回";
-/// The note under the row of the device a side is left on (B-1287); the page header says why.
+pub const HEADSET_BLOCKED_OFF_NOTE: &str = "輸出設為不使用";
+/// The orange line under the name of the device a side is left on (B-1287); the page header says why.
 pub const STUCK_ROW_NOTE: &str = "暫時還在用這台";
 pub const ALL_HEADSETS_BLOCKED: &str = "勾選的耳機都設為不使用，不會有動作";
+
+/// The grey words after a headset's name: why it is greyed out, or that it is not connected.
+pub fn headset_note(shown: HeadsetBox, connected: bool) -> Option<&'static str> {
+    match shown {
+        HeadsetBox::BlockedTicked => Some(HEADSET_BLOCKED_NOTE),
+        HeadsetBox::BlockedOff => Some(HEADSET_BLOCKED_OFF_NOTE),
+        HeadsetBox::Plain(_) => (!connected).then_some("未連線"),
+    }
+}
+
+/// The line under the headphones list while reclaim is on but will do nothing (B-1287).
+pub fn reclaim_hint_text(hint: ReclaimHint) -> &'static str {
+    match hint {
+        ReclaimHint::NoHeadsets => "還沒有配對過的耳機，不會有動作",
+        ReclaimHint::AllHeadsetsBlocked => "所有耳機都設為不使用，不會有動作。到「輸出」頁取消「不使用」即可。",
+        ReclaimHint::NoneTicked => "請至少勾選一副耳機，否則不會有動作",
+        ReclaimHint::AllTickedBlocked => ALL_HEADSETS_BLOCKED,
+    }
+}
 
 /// The page header's orange lines for one side (B-1287): left on a "not used" device because
 /// nothing else is usable, and a "not used" device the eviction cooldown leaves in place. Each says
@@ -74,14 +94,14 @@ pub fn stuck_header(side: Side, stuck: Option<&str>, paused: Option<&str>) -> Ve
     let noun = noun(side);
     let mut lines = vec![];
     if let Some(n) = stuck {
-        lines.push(format!("沒有其他可用的{noun}裝置，暫時還在用 {n}。接上或連上清單裡的其他裝置，Cleat 就會切過去。"));
+        lines.push(format!("沒有其他可用的{noun}裝置，暫時還在用 {n}。取消其他裝置的「不使用」並加入順序，或接上清單內的裝置。"));
     }
     if let Some(n) = paused {
         let until = match side {
             Side::Input => "裝置增減、設定改變，或麥克風有聲無聲翻轉",
             Side::Output => "裝置增減或設定改變",
         };
-        lines.push(format!("{n} 一直被切回來，Cleat 先暫停把它換掉，直到{until}才再試。想馬上再試，拔插一個裝置即可。"));
+        lines.push(format!("其他程式或裝置一直把{noun}切回 {n}，Cleat 先暫停把它換掉，直到{until}才再試。想馬上再試，拔插一個裝置即可。"));
     }
     lines
 }
@@ -228,15 +248,45 @@ pub fn byline(version: &str) -> String {
 /// The attribution, also the About panel's credits.
 pub const BYLINE_CREDIT: &str = "by Jetto";
 
-/// A device row's badge and whether it is the accent one. The device in use reads "使用中" even
-/// when it is "not used" (B-1287: the side is left on it), so the row, the header and the level line
-/// name the same device; any other "not used" device reads "已排除".
-pub fn device_row_tag(r: &DeviceRow, current: Option<&str>) -> Option<(&'static str, bool)> {
-    if r.is_connected && current.is_some_and(|c| crate::model::device_name::matches(&r.display_name, c, "")) {
-        Some(("使用中", true))
-    } else if r.is_blocked() {
-        Some(("已排除", false))
-    } else {
-        None
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tone {
+    Accent,
+    Warning,
+    Plain,
+}
+
+/// The row is the device the side is on right now.
+pub fn in_use(r: &DeviceRow, current: Option<&str>) -> bool {
+    r.is_connected && current.is_some_and(|c| crate::model::device_name::matches(&r.display_name, c, ""))
+}
+
+/// Why the daemon left a side on this row, from the running daemon's `stuck` block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowReason {
+    Stuck,
+    Paused,
+    None,
+}
+
+/// A device row's badges. The device in use reads "使用中" even when it is "not used" (B-1287: the
+/// side is left on it), so the row, the header and the level line name the same device; an orange
+/// badge says why when the daemon reports it, else "已排除" stays grey. Any other "not used" device
+/// reads "已排除".
+pub fn device_row_tags(r: &DeviceRow, current: Option<&str>, reason: RowReason) -> Vec<(&'static str, Tone)> {
+    let why = match reason {
+        RowReason::Stuck => ("已勾不使用，但沒有其他裝置可切", Tone::Warning),
+        RowReason::Paused => ("已勾不使用，被切回來、暫停中", Tone::Warning),
+        RowReason::None => ("已排除", Tone::Plain),
+    };
+    match (in_use(r, current), r.is_blocked()) {
+        (true, true) => vec![("使用中", Tone::Accent), why],
+        (true, false) => vec![("使用中", Tone::Accent)],
+        (false, true) => vec![("已排除", Tone::Plain)],
+        (false, false) => vec![],
     }
+}
+
+/// Only a "not used" device the side is not on is greyed out; the one in use stays readable.
+pub fn row_dimmed(r: &DeviceRow, current: Option<&str>) -> bool {
+    r.is_blocked() && !in_use(r, current)
 }

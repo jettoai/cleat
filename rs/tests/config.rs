@@ -240,7 +240,10 @@ fn output_volume_hold_is_off_unless_asked() {
 #[test]
 fn switches_are_kept_apart_from_their_lists() {
     let c = decode("{}").unwrap();
-    assert!(c.reclaim_enabled && c.output_volume_hold_enabled);
+    assert!(c.reclaim_enabled.is_none() && c.output_volume_hold_enabled);
+    // B-1287: the window's switch left on with nothing ticked; the daemon has nothing to ask for.
+    let c = decode(r#"{"reclaimEnabled": true, "reclaim": []}"#).unwrap();
+    assert!(c.validate().is_ok() && c.reclaim_active().is_empty());
     let c = decode(r#"{"reclaimEnabled": false, "reclaim": ["AirPods Max"]}"#).unwrap();
     assert_eq!(c.reclaim, s(&["AirPods Max"]));
     assert!(c.reclaim_active().is_empty());

@@ -424,13 +424,14 @@ pub fn keycap(mtm: MainThreadMarker, text: &str, w: f64) -> (Retained<NSView>, R
 }
 
 /// "使用中" / "已排除" capsules.
-pub fn tag(mtm: MainThreadMarker, text: &str, accent: bool) -> Retained<NSView> {
-    let color = if accent { NSColor::controlAccentColor() } else { NSColor::secondaryLabelColor() };
-    let fill_color = if accent {
-        NSColor::controlAccentColor().colorWithAlphaComponent(0.14)
-    } else {
-        NSColor::quaternaryLabelColor()
+pub fn tag(mtm: MainThreadMarker, text: &str, tone: super::super::text::Tone) -> Retained<NSView> {
+    use super::super::text::Tone;
+    let color = match tone {
+        Tone::Accent => NSColor::controlAccentColor(),
+        Tone::Warning => NSColor::systemOrangeColor(),
+        Tone::Plain => NSColor::secondaryLabelColor(),
     };
+    let fill_color = if tone == Tone::Plain { NSColor::quaternaryLabelColor() } else { color.colorWithAlphaComponent(0.14) };
     let l = label(mtm, text, 10.0, semibold(), &color);
     let b = rounded_box(mtm, 8.0, &fill_color, None);
     let inner = stack(mtm, false, 0.0, &[&l]);

@@ -97,11 +97,12 @@ impl Managed {
                 m.insert("headphonesTakeOver".into(), Value::Bool(self.headphones_take_over));
             }
             // Off with nothing ticked is Swift's `[]`; off with a list keeps it behind the Rust-only
-            // `false`, so switching back on finds it.
+            // `false`, so switching back on finds it; on with nothing ticked is the Rust-only `true`,
+            // so the window reopens with the switch on (B-1287).
             Unit::Reclaim => {
                 m.insert("reclaim".into(), strings(&self.reclaim));
-                if !self.reclaim_on && !self.reclaim.is_empty() {
-                    m.insert("reclaimEnabled".into(), Value::Bool(false));
+                if self.reclaim_on == self.reclaim.is_empty() {
+                    m.insert("reclaimEnabled".into(), Value::Bool(self.reclaim_on));
                 }
             }
             Unit::Hold => {

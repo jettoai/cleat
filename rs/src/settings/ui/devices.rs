@@ -15,13 +15,26 @@ use super::widgets::{
 use super::{app, App};
 use crate::model::device_name;
 
-/// The note under a row the daemon could not move off (B-1287); the page header says why.
-fn stuck_row(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Option<Retained<NSView>> {
-    let stuck = a.store.borrow().stuck.side(side).0.map(String::from)?;
-    device_name::matches(&r.entry, &stuck, "").then(|| {
-        let note = secondary(mtm, text::STUCK_ROW_NOTE, 11.0);
-        to_view(&plain_row(mtm, &[&note, &spacer(mtm)]))
-    })
+/// Whether the daemon left the side on this row, and why (B-1287); the page header says more.
+fn reason(a: &App, side: Side, r: &DeviceRow) -> text::RowReason {
+    let s = a.store.borrow();
+    let (stuck, paused) = s.stuck.side(side);
+    let named = |n: Option<&str>| n.is_some_and(|n| device_name::matches(&r.entry, n, ""));
+    if named(stuck) {
+        text::RowReason::Stuck
+    } else if named(paused) {
+        text::RowReason::Paused
+    } else {
+        text::RowReason::None
+    }
+}
+
+fn current(a: &App, side: Side) -> Option<String> {
+    let s = a.store.borrow();
+    match side {
+        Side::Input => s.live.input_device.clone(),
+        Side::Output => s.live.output_device.clone(),
+    }
 }
 
 fn list_of(a: &App, side: Side) -> super::super::draft::DeviceList {
@@ -32,13 +45,8 @@ fn list_of(a: &App, side: Side) -> super::super::draft::DeviceList {
     }
 }
 
-fn tags(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Option<Retained<NSView>> {
-    let s = a.store.borrow();
-    let current = match side {
-        Side::Input => s.live.input_device.clone(),
-        Side::Output => s.live.output_device.clone(),
-    };
-    text::device_row_tag(r, current.as_deref()).map(|(t, on)| tag(mtm, t, on))
+fn tags(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Vec<Retained<NSView>> {
+    text::device_row_tags(r, current(a, side).as_deref(), reason(a, side, r)).into_iter().map(|(t, tone)| tag(mtm, t, tone)).collect()
 }
 
 fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Retained<NSView> {
@@ -47,15 +55,22 @@ fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Ret
     let name = if symbol_exists(wanted) { wanted } else { "speaker.wave.2" };
     let v = icon(mtm, name, 20.0, &NSColor::secondaryLabelColor());
     let v = if name == "mic" { lowered(mtm, &v, 1.0) } else { v };
-    if r.is_blocked() {
+    if text::row_dimmed(r, current(a, side).as_deref()) {
         v.setAlphaValue(0.4);
     }
     v
 }
 
-fn label_view(mtm: MainThreadMarker, r: &DeviceRow) -> Retained<NSView> {
-    let v = device_label(mtm, &r.display_name, r.is_connected);
-    if r.is_blocked() {
+/// The name, with the orange "暫時還在用這台" under it on the row the side is left on.
+fn label_view(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Retained<NSView> {
+    let name = device_label(mtm, &r.display_name, r.is_connected);
+    let v = if reason(a, side, r) == text::RowReason::Stuck {
+        let note = label(mtm, text::STUCK_ROW_NOTE, 11.0, regular(), &NSColor::systemOrangeColor());
+        to_view(&stack(mtm, true, 2.0, &[&name, &note]))
+    } else {
+        name
+    };
+    if text::row_dimmed(r, current(a, side).as_deref()) {
         v.setAlphaValue(0.4);
     }
     v
@@ -108,11 +123,9 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
             handle,
             to_view(&number),
             device_icon(a, mtm, side, r),
-            label_view(mtm, r),
+            label_view(a, mtm, side, r),
         ];
-        if let Some(t) = tags(a, mtm, side, r) {
-            views.push(t);
-        }
+        views.extend(tags(a, mtm, side, r));
         views.push(spacer(mtm));
         let entry = r.entry.clone();
         let act = ctx.act(move |_| {
@@ -136,7 +149,6 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
         // SAFETY: the menu outlives the row (both are rebuilt together).
         unsafe { line.setMenu(Some(&menu)) };
         rows.push(to_view(&line));
-        rows.extend(stuck_row(a, mtm, side, r));
     }
     let header = format!("{}優先順序", noun(side));
     let symbol = match side {
@@ -160,10 +172,8 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
             app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, true))
         });
         let add = order_button(mtm, &act, "plus.circle", "加入順序");
-        let mut views: Vec<Retained<NSView>> = vec![device_icon(a, mtm, side, r), label_view(mtm, r)];
-        if let Some(t) = tags(a, mtm, side, r) {
-            views.push(t);
-        }
+        let mut views: Vec<Retained<NSView>> = vec![device_icon(a, mtm, side, r), label_view(a, mtm, side, r)];
+        views.extend(tags(a, mtm, side, r));
         views.push(spacer(mtm));
         views.push(add);
         views.push(to_view(&block_toggle(mtm, ctx, side, r)));
@@ -171,7 +181,6 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
         let line = row(mtm, &refs);
         line.setCustomSpacing_afterView(18.0, &views[views.len() - 2]);
         rows.push(to_view(&line));
-        rows.extend(stuck_row(a, mtm, side, r));
     }
     let header = format!("其他{}裝置", noun(side));
     Some(section(mtm, Some(("ellipsis.circle", &header)), &rows, None))

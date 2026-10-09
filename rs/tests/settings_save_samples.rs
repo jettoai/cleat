@@ -145,18 +145,29 @@ fn n4_an_untouched_unit_keeps_its_values() {
     assert!(out.get("output").is_none() && out.get("blockedOutput").is_none(), "{out}");
 }
 
+/// B-1287: unticking the last headset leaves the switch on, through a save and a reopen; the
+/// daemon then has nothing to ask for.
 #[test]
-fn n5_unticking_the_last_headset_turns_reclaim_off() {
+fn n5_unticking_the_last_headset_keeps_reclaim_on() {
     let mut x = Session::open(r#"{"reclaim":["AirPods Max"]}"#, &present(), &air_pods());
     x.draft.set_headset("AirPods Max", false);
-    assert!(!x.draft.reclaim_enabled);
-    x.save();
-    assert!(!x.reopen(&present(), &air_pods()).reclaim_enabled, "{}", x.file);
+    assert!(x.draft.reclaim_enabled);
+    let out = x.save();
+    assert_eq!((&out["reclaim"], &out["reclaimEnabled"]), (&json!([]), &json!(true)), "{out}");
+    assert!(x.reopen(&present(), &air_pods()).reclaim_enabled, "{}", x.file);
+    assert!(x.config().reclaim_active().is_empty());
 }
 
+/// B-1287: with no headset at all the switch still goes on and stays on after a reopen.
 #[test]
-fn n5_reclaim_stays_off_without_a_headset() {
+fn n5_reclaim_goes_on_without_a_headset() {
     let mut x = Session::open("{}", &[], &[]);
     x.draft.set_reclaim_enabled(true);
-    assert!(!x.draft.reclaim_enabled);
+    assert!(x.draft.reclaim_enabled);
+    x.save();
+    assert!(x.reopen(&[], &[]).reclaim_enabled, "{}", x.file);
+    x.draft.set_reclaim_enabled(false);
+    let out = x.save();
+    assert!(out.get("reclaimEnabled").is_none(), "off with nothing ticked is Swift's []: {out}");
+    assert!(!x.reopen(&[], &[]).reclaim_enabled, "{}", x.file);
 }

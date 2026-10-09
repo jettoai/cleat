@@ -76,8 +76,9 @@ pub struct Config {
     pub reclaim: Vec<String>,
     pub launch_at_login: bool,
     pub error_reports: bool,
-    /// Rust only (§6.6): turns reclaim off without emptying `reclaim`. Read through `reclaim_active`.
-    pub reclaim_enabled: bool,
+    /// Rust only (§6.6): `false` turns reclaim off without emptying `reclaim`; `true` keeps the
+    /// settings window's switch on with an empty list (B-1287). Read through `reclaim_active`.
+    pub reclaim_enabled: Option<bool>,
     /// Writers whose output volume changes are reverted. Off unless asked for (Swift 0.3.10).
     pub output_volume_hold_against: Vec<String>,
     /// Rust only (§6.6): turns the hold off without emptying its list. Read through `hold_against_active`.
@@ -98,7 +99,7 @@ impl Default for Config {
             reclaim: vec![],
             launch_at_login: true,
             error_reports: false,
-            reclaim_enabled: true,
+            reclaim_enabled: None,
             output_volume_hold_against: vec![],
             output_volume_hold_enabled: true,
         }
@@ -114,9 +115,9 @@ impl Config {
         Self::default()
     }
 
-    /// The reclaim list when the switch is on; the only reader of `reclaim_enabled`.
+    /// The reclaim list when the switch is on; the daemon's only reader of `reclaim_enabled`.
     pub fn reclaim_active(&self) -> &[String] {
-        if self.reclaim_enabled { &self.reclaim } else { &[] }
+        if self.reclaim_enabled == Some(false) { &[] } else { &self.reclaim }
     }
 
     /// The hold list when the switch is on; the only reader of `output_volume_hold_enabled`.

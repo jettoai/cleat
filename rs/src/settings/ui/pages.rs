@@ -193,12 +193,7 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
     // SAFETY: target and selector match `Action::fire:`.
     let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns(&h.display_name), Some(&act), Some(sel!(fire:)), mtm) };
     let title = attributed(&h.display_name, 15.0, &NSColor::labelColor());
-    let note = if blocked {
-        Some(format!(" {}", text::HEADSET_BLOCKED_NOTE))
-    } else {
-        (!h.is_connected).then(|| " 未連線".to_string())
-    };
-    if let Some(note) = note {
+    if let Some(note) = text::headset_note(shown, h.is_connected).map(|n| format!(" {n}")) {
         let full = objc2_foundation::NSMutableAttributedString::from_attributed_nsstring(&title);
         full.appendAttributedString(&attributed(&note, 13.0, &NSColor::secondaryLabelColor()));
         b.setAttributedTitle(&full);
@@ -232,7 +227,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         switch_row(mtm, "藍牙耳機連上時自動切過去", d.headphones_take_over, true, |on| {
             app().edit(move |s| s.draft.headphones_take_over = on)
         }),
-        switch_row(mtm, "耳機被其他裝置拿走時要回來", d.reclaim_enabled, d.reclaim_enabled || !d.headsets.is_empty(), |on| {
+        switch_row(mtm, "耳機被其他裝置拿走時要回來", d.reclaim_enabled, true, |on| {
             app().edit(move |s| s.draft.set_reclaim_enabled(on))
         }),
     ];
@@ -292,11 +287,8 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
             }
         }
     }
-    if reclaim && !d.headsets.is_empty() && !d.headsets.iter().any(|h| h.is_selected) {
-        let r = plain_row(mtm, &[&secondary(mtm, "請至少勾選一副耳機，否則不會有動作", 13.0), &spacer(mtm)]);
-        rows.push(to_view(&r));
-    } else if d.all_ticked_blocked() {
-        let r = plain_row(mtm, &[&secondary(mtm, text::ALL_HEADSETS_BLOCKED, 13.0), &spacer(mtm)]);
+    if let Some(hint) = d.reclaim_hint() {
+        let r = plain_row(mtm, &[&secondary(mtm, text::reclaim_hint_text(hint), 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
     section(mtm, Some(("headphones", "耳機")), &rows, None)

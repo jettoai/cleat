@@ -1,6 +1,6 @@
 use cleat_rs::config::Config;
 use cleat_rs::model::AudioDevice;
-use cleat_rs::settings::draft::{DeviceList, HeadsetBox, LiveLevels, PairedDevice, SettingsDraft, Stance, DEFAULT_HOLD_AGAINST};
+use cleat_rs::settings::draft::{DeviceList, HeadsetBox, LiveLevels, PairedDevice, ReclaimHint, SettingsDraft, Stance, DEFAULT_HOLD_AGAINST};
 
 fn out(id: u32, name: &str) -> AudioDevice {
     AudioDevice::new(id, name, &format!("uid-{id}"), false, true)
@@ -116,7 +116,7 @@ fn unset_values_start_from_the_live_reading() {
 
 #[test]
 fn a_rust_only_switch_left_off_reads_as_off() {
-    let config = Config { reclaim: s(&["A"]), reclaim_enabled: false, ..Config::disabled() };
+    let config = Config { reclaim: s(&["A"]), reclaim_enabled: Some(false), ..Config::disabled() };
     let d = SettingsDraft::make(&config, &[], &[], &LiveLevels::default());
     assert!(!d.reclaim_enabled);
 }
@@ -136,7 +136,7 @@ fn entries_naming_one_device_are_one_row_the_way_the_daemon_matches() {
 fn a_headset_whose_output_is_not_used_reads_as_blocked() {
     let config = Config {
         reclaim: s(&["AirPods Max"]),
-        reclaim_enabled: true,
+        reclaim_enabled: Some(true),
         blocked_output: s(&["AirPods\u{00A0}Max"]),
         ..Config::disabled()
     };
@@ -155,7 +155,7 @@ fn a_headset_whose_output_is_not_used_reads_as_blocked() {
 fn blocked_headsets_unblocked_partly_blocked_and_all_blocked() {
     let p = [paired("AirPods Max", true, Some("Headphones")), paired("Bose", true, Some("Headphones"))];
     let make = |reclaim: &[&str], blocked: &[&str]| {
-        let config = Config { reclaim: s(reclaim), reclaim_enabled: true, blocked_output: s(blocked), ..Config::disabled() };
+        let config = Config { reclaim: s(reclaim), reclaim_enabled: Some(true), blocked_output: s(blocked), ..Config::disabled() };
         SettingsDraft::make(&config, &[out(3, "AirPods Max")], &p, &LiveLevels::default())
     };
     let boxes = |d: &SettingsDraft| d.headsets.iter().map(|h| d.headset_box(h)).collect::<Vec<_>>();
@@ -200,4 +200,39 @@ fn turning_reclaim_on_skips_a_blocked_headset() {
     let mut d = make(&["AirPods Max", "Bose"]);
     d.set_reclaim_enabled(true);
     assert!(ticked(&d).is_empty(), "every headset blocked: nothing to tick");
+    assert!(d.reclaim_enabled, "the switch stays on and the page says why");
+    assert_eq!(d.reclaim_hint(), Some(ReclaimHint::AllHeadsetsBlocked));
+}
+
+/// B-1287: with reclaim on but nothing it can act on, the page names which of four reasons; off
+/// or acting, it says nothing. A classless device (a phone) is never ticked on Albert's behalf.
+#[test]
+fn reclaim_hint_names_why_nothing_will_happen() {
+    let p = [paired("AirPods Max", true, Some("Headphones")), paired("Bose", true, Some("Headphones")), paired("Phone", true, None)];
+    let make = |reclaim: &[&str], blocked: &[&str], paired: &[PairedDevice]| {
+        let config = Config { reclaim: s(reclaim), blocked_output: s(blocked), ..Config::disabled() };
+        SettingsDraft::make(&config, &[out(3, "AirPods Max")], paired, &LiveLevels::default())
+    };
+
+    let mut d = make(&[], &[], &[]);
+    assert_eq!(d.reclaim_hint(), None, "off says nothing");
+    d.set_reclaim_enabled(true);
+    assert_eq!((d.reclaim_enabled, d.reclaim_hint()), (true, Some(ReclaimHint::NoHeadsets)));
+
+    let mut d = make(&[], &["AirPods Max", "Bose"], &p);
+    d.set_reclaim_enabled(true);
+    assert_eq!(d.reclaim_hint(), Some(ReclaimHint::AllHeadsetsBlocked));
+    assert!(!d.headsets.iter().any(|h| h.is_selected), "the phone is not ticked for him");
+
+    let mut d = make(&["AirPods Max"], &[], &p);
+    assert_eq!(d.reclaim_hint(), None, "a ticked usable headset acts");
+    d.set_headset("AirPods Max", false);
+    assert_eq!((d.reclaim_enabled, d.reclaim_hint()), (true, Some(ReclaimHint::NoneTicked)));
+
+    let d = make(&["AirPods Max"], &["AirPods Max"], &p);
+    assert_eq!(d.reclaim_hint(), Some(ReclaimHint::AllTickedBlocked));
+
+    let mut d = make(&["AirPods Max"], &["AirPods Max"], &p);
+    d.set_reclaim_enabled(false);
+    assert_eq!(d.reclaim_hint(), None, "off says nothing");
 }

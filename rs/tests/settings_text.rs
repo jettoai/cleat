@@ -72,11 +72,11 @@ fn stuck_and_paused_reach_the_page_header_only_while_running() {
     assert!(stuck_header(Side::Input, None, None).is_empty());
     assert_eq!(
         stuck_header(Side::Input, Some("AirPods Max"), None),
-        ["沒有其他可用的輸入裝置，暫時還在用 AirPods Max。接上或連上清單裡的其他裝置，Cleat 就會切過去。"]
+        ["沒有其他可用的輸入裝置，暫時還在用 AirPods Max。取消其他裝置的「不使用」並加入順序，或接上清單內的裝置。"]
     );
     assert_eq!(
         stuck_header(Side::Output, None, Some("MacBook Pro Speakers")),
-        ["MacBook Pro Speakers 一直被切回來，Cleat 先暫停把它換掉，直到裝置增減或設定改變才再試。想馬上再試，拔插一個裝置即可。"]
+        ["其他程式或裝置一直把輸出切回 MacBook Pro Speakers，Cleat 先暫停把它換掉，直到裝置增減或設定改變才再試。想馬上再試，拔插一個裝置即可。"]
     );
     let input_paused = stuck_header(Side::Input, None, Some("AirPods Max"));
     assert!(input_paused[0].contains("麥克風有聲無聲翻轉"), "{input_paused:?}");
@@ -90,12 +90,53 @@ fn stuck_and_paused_reach_the_page_header_only_while_running() {
 #[test]
 fn the_device_in_use_reads_in_use_even_when_not_used() {
     use cleat_rs::settings::draft::{DeviceRow, Stance};
-    use cleat_rs::settings::text::device_row_tag;
-    let row = |stance| DeviceRow { entry: "Wireless microphone".into(), display_name: "Wireless microphone".into(), is_connected: true, stance };
+    use cleat_rs::settings::text::{device_row_tags as tags3, row_dimmed, RowReason, Tone};
+    let device_row_tags = |r: &DeviceRow, c: Option<&str>| tags3(r, c, RowReason::Stuck);
+    let row = |stance, is_connected| DeviceRow { entry: "Wireless microphone".into(), display_name: "Wireless microphone".into(), is_connected, stance };
     let now = Some("Wireless microphone");
-    assert_eq!(device_row_tag(&row(Stance::Blocked), now), Some(("使用中", true)));
-    assert_eq!(device_row_tag(&row(Stance::Blocked), Some("MacBook Pro Microphone")), Some(("已排除", false)));
-    assert_eq!(device_row_tag(&row(Stance::Blocked), None), Some(("已排除", false)));
-    assert_eq!(device_row_tag(&row(Stance::Listed), now), Some(("使用中", true)));
-    assert_eq!(device_row_tag(&row(Stance::Listed), Some("MacBook Pro Microphone")), None);
+    let other = Some("MacBook Pro Microphone");
+    // In use and "not used": both badges, not greyed out (B-1287 round 2).
+    assert_eq!(device_row_tags(&row(Stance::Blocked, true), now), [("使用中", Tone::Accent), ("已勾不使用，但沒有其他裝置可切", Tone::Warning)]);
+    assert!(!row_dimmed(&row(Stance::Blocked, true), now));
+    // In use, not blocked.
+    assert_eq!(device_row_tags(&row(Stance::Listed, true), now), [("使用中", Tone::Accent)]);
+    assert!(!row_dimmed(&row(Stance::Listed, true), now));
+    // Not in use and "not used": greyed out.
+    assert_eq!(device_row_tags(&row(Stance::Blocked, true), other), [("已排除", Tone::Plain)]);
+    assert_eq!(device_row_tags(&row(Stance::Blocked, true), None), [("已排除", Tone::Plain)]);
+    assert!(row_dimmed(&row(Stance::Blocked, true), other));
+    assert!(device_row_tags(&row(Stance::Listed, true), other).is_empty());
+    // Not connected: never in use, even when the name matches.
+    assert_eq!(device_row_tags(&row(Stance::Blocked, false), now), [("已排除", Tone::Plain)]);
+    assert!(row_dimmed(&row(Stance::Blocked, false), now));
+    assert!(device_row_tags(&row(Stance::Listed, false), now).is_empty());
+}
+
+/// B-1287 round 2: the orange badge follows why the daemon left the side there; without a reason
+/// (daemon not running, the instant before eviction) the in-use "not used" row keeps a grey "已排除".
+#[test]
+fn the_in_use_not_used_badge_follows_the_reason() {
+    use cleat_rs::settings::draft::{DeviceRow, Stance};
+    use cleat_rs::settings::text::{device_row_tags, RowReason, Tone};
+    let r = DeviceRow { entry: "外接耳機".into(), display_name: "外接耳機".into(), is_connected: true, stance: Stance::Blocked };
+    let now = Some("外接耳機");
+    assert_eq!(device_row_tags(&r, now, RowReason::Stuck), [("使用中", Tone::Accent), ("已勾不使用，但沒有其他裝置可切", Tone::Warning)]);
+    assert_eq!(device_row_tags(&r, now, RowReason::Paused), [("使用中", Tone::Accent), ("已勾不使用，被切回來、暫停中", Tone::Warning)]);
+    assert_eq!(device_row_tags(&r, now, RowReason::None), [("使用中", Tone::Accent), ("已排除", Tone::Plain)]);
+    assert_eq!(device_row_tags(&r, Some("DELL U3223QE"), RowReason::Paused), [("已排除", Tone::Plain)], "not in use: no reason badge");
+}
+
+/// B-1287 round 2: a blocked headset's note follows its tick; the four reasons have their words.
+#[test]
+fn headset_notes_and_reclaim_hints() {
+    use cleat_rs::settings::draft::{HeadsetBox, ReclaimHint};
+    use cleat_rs::settings::text::{headset_note, reclaim_hint_text, ALL_HEADSETS_BLOCKED};
+    assert_eq!(headset_note(HeadsetBox::BlockedTicked, true), Some("輸出設為不使用，不會拉回"));
+    assert_eq!(headset_note(HeadsetBox::BlockedOff, true), Some("輸出設為不使用"));
+    assert_eq!(headset_note(HeadsetBox::Plain(true), false), Some("未連線"));
+    assert_eq!(headset_note(HeadsetBox::Plain(false), true), None);
+    assert_eq!(reclaim_hint_text(ReclaimHint::AllHeadsetsBlocked), "所有耳機都設為不使用，不會有動作。到「輸出」頁取消「不使用」即可。");
+    assert_eq!(reclaim_hint_text(ReclaimHint::NoneTicked), "請至少勾選一副耳機，否則不會有動作");
+    assert_eq!(reclaim_hint_text(ReclaimHint::AllTickedBlocked), ALL_HEADSETS_BLOCKED);
+    assert_eq!(reclaim_hint_text(ReclaimHint::NoHeadsets), "還沒有配對過的耳機，不會有動作");
 }

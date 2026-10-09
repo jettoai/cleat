@@ -477,7 +477,7 @@ fn headset_already_the_output_when_playback_starts_is_not_timed() {
 #[test]
 fn reclaim_switched_off_keeps_the_list_and_asks_nothing() {
     let mut config = reclaim_config(&["AirPods Max"]);
-    config.reclaim_enabled = false;
+    config.reclaim_enabled = Some(false);
     let mut w = common::engine::Harness::new(
         &config,
         playing(),
@@ -488,7 +488,7 @@ fn reclaim_switched_off_keeps_the_list_and_asks_nothing() {
     assert_eq!(w.rule("reclaim"), "off");
     assert_eq!(w.count("running@"), 0);
 
-    config.reclaim_enabled = true;
+    config.reclaim_enabled = Some(true);
     std::fs::write(w.dir.join("config.json"), serde_json::to_string(&config).unwrap()).unwrap();
     w.engine.handle(Event::ConfigTouched { received: std::time::SystemTime::now() });
     w.drive(400);
