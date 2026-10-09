@@ -108,9 +108,13 @@ impl EvictionBook {
             times.pop_front();
         }
         if book.paused.contains(&current.uid) || times.len() >= EVICTION_LIMIT {
+            let until = match side {
+                Side::Input => "a device is added or removed, the config reloads, or a microphone's signal changes",
+                Side::Output => "a device is added or removed or the config reloads",
+            };
             let note = book.paused.insert(current.uid.clone()).then(|| {
                 format!(
-                    "{}: {} keeps coming back ({EVICTION_LIMIT} evictions in {} s), leaving it until a device is added or removed, the config reloads, or a microphone's signal changes",
+                    "{}: {} keeps coming back ({EVICTION_LIMIT} evictions in {} s), leaving it until {until}",
                     action.label(),
                     current.name,
                     EVICTION_WINDOW.as_secs()

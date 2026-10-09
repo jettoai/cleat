@@ -62,6 +62,11 @@ pub fn device_list_footer(side: Side) -> &'static str {
 pub const OUTPUT_LEVELS_FOOTER: &str = "輸出音量：名單上的程式改了音量，Cleat 會拉回原本的值；你自己調的不會被拉回。左右平衡：打開「固定」後，被別的 app 或藍牙重連改掉時 Cleat 會改回來。";
 pub const VOLUMES_FOOTER: &str = "單獨設定的麥克風優先於預設音量。";
 pub const OTHERS_NOTE: &str = "系統沒說是什麼的藍牙裝置。喇叭或耳機不在上面時，到這裡勾；手機、電腦不用勾。";
+pub const HEADSET_BLOCKED_NOTE: &str = "輸出設為不使用，不會拉回";
+/// A side left on a "not used" device because nothing else is usable (B-1287).
+pub fn stuck_note(name: &str) -> String {
+    format!("沒有其他可用的裝置，暫時還在用 {name}")
+}
 pub const BLOCK_HELP: &str = "勾了之後，Cleat 永遠不會切到這個裝置";
 pub const CPU_HELP: &str = "Cleat 常駐程式占一顆核心的百分比，跟活動監視器同一個算法；取最近 60 秒的平均，剛打開視窗時是打開以來的平均";
 pub const MEMORY_HELP: &str = "與活動監視器「記憶體」欄同一個值";

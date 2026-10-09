@@ -15,6 +15,24 @@ use super::widgets::{
 use super::{app, App};
 use crate::model::device_name;
 
+/// The device status.json says this side is left on although "not used" (B-1287).
+pub fn stuck_on(a: &App, side: Side) -> Option<String> {
+    let s = a.store.borrow();
+    match side {
+        Side::Input => s.stuck.0.clone(),
+        Side::Output => s.stuck.1.clone(),
+    }
+}
+
+/// The note under a row the daemon could not move off.
+fn stuck_row(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Option<Retained<NSView>> {
+    let stuck = stuck_on(a, side)?;
+    device_name::matches(&r.entry, &stuck, "").then(|| {
+        let note = secondary(mtm, &text::stuck_note(&r.display_name), 11.0);
+        to_view(&plain_row(mtm, &[&note, &spacer(mtm)]))
+    })
+}
+
 fn list_of(a: &App, side: Side) -> super::super::draft::DeviceList {
     let s = a.store.borrow();
     match side {
@@ -133,6 +151,7 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
         // SAFETY: the menu outlives the row (both are rebuilt together).
         unsafe { line.setMenu(Some(&menu)) };
         rows.push(to_view(&line));
+        rows.extend(stuck_row(a, mtm, side, r));
     }
     let header = format!("{}優先順序", noun(side));
     let symbol = match side {
@@ -167,6 +186,7 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
         let line = row(mtm, &refs);
         line.setCustomSpacing_afterView(18.0, &views[views.len() - 2]);
         rows.push(to_view(&line));
+        rows.extend(stuck_row(a, mtm, side, r));
     }
     let header = format!("其他{}裝置", noun(side));
     Some(section(mtm, Some(("ellipsis.circle", &header)), &rows, None))

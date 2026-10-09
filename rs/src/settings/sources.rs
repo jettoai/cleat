@@ -76,6 +76,14 @@ pub fn performance(data: &[u8]) -> Option<DaemonPerformance> {
     serde_json::from_value(v.get("performance")?.clone()).ok()
 }
 
+/// status.json `stuck` (B-1287): the device each side is left on because it is "not used" and
+/// nothing else is usable, as (input, output).
+pub fn stuck(data: &[u8]) -> (Option<String>, Option<String>) {
+    let Ok(v) = serde_json::from_slice::<Value>(data) else { return (None, None) };
+    let pick = |k: &str| v.get("stuck")?.get(k)?.as_str().map(String::from);
+    (pick("input"), pick("output"))
+}
+
 pub fn status_pid(data: &[u8]) -> Option<i32> {
     let v: Value = serde_json::from_slice(data).ok()?;
     v.get("pid")?.as_i64().map(|p| p as i32)

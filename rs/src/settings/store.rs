@@ -27,6 +27,8 @@ pub struct Store {
     pub present: Vec<AudioDevice>,
     pub live: LiveLevels,
     pub last_revert: Option<String>,
+    /// status.json `stuck`, as (input, output).
+    pub stuck: (Option<String>, Option<String>),
     pub vitals: DaemonVitals,
     config_path: PathBuf,
     status_path: PathBuf,
@@ -52,6 +54,7 @@ impl Store {
             present: vec![],
             live: LiveLevels::default(),
             last_revert: None,
+            stuck: (None, None),
             vitals: DaemonVitals::with_state(VitalsState::NotRunning),
             config_path: paths::config_path(),
             status_path: paths::status_path(),
@@ -96,11 +99,12 @@ impl Store {
         self.phase = Phase::Ready;
     }
 
-    /// Device levels, and one read of status.json for both the revert line and the vitals.
+    /// Device levels, and one read of status.json for the revert line, the stuck note and the vitals.
     pub fn refresh_live(&mut self) {
         self.live = sources::live_levels();
         let data = std::fs::read(&self.status_path).ok();
         self.last_revert = data.as_deref().and_then(sources::last_revert);
+        self.stuck = data.as_deref().map(sources::stuck).unwrap_or_default();
         let pid = data.as_deref().and_then(sources::status_pid);
         self.vitals = self.sampler.sample(pid, read_process);
         if self.vitals.state != VitalsState::NotRunning {

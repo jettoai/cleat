@@ -35,6 +35,17 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     };
     put(pane_header(mtm, page));
     put(card(mtm, &[vitals_band(mtm, &a.store.borrow().vitals)]));
+    // The window's status line for a side left on a "not used" device (B-1287).
+    let side = match page {
+        Page::Output => Some(Side::Output),
+        Page::Input => Some(Side::Input),
+        Page::Headphones => None,
+    };
+    if let Some(name) = side.and_then(|s| devices::stuck_on(a, s)) {
+        let orange = NSColor::systemOrangeColor();
+        let line = stack(mtm, false, 6.0, &[&icon(mtm, "exclamationmark.circle", 14.0, &orange), &wrapping(mtm, &text::stuck_note(&name), 13.0, &orange)]);
+        put(card(mtm, &[to_view(&padded_column(mtm, 0.0, 10.0, &[&line]))]));
+    }
     match page {
         Page::Output => {
             put(devices::priority(a, ctx, Side::Output));
@@ -161,7 +172,7 @@ pub fn device_label(mtm: MainThreadMarker, name: &str, connected: bool) -> Retai
     to_view(&s)
 }
 
-fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim: bool) -> Retained<NSView> {
+fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim: bool, blocked: bool) -> Retained<NSView> {
     let entry = h.entry.clone();
     let act = ctx.act(move |sender| {
         let on = sender.downcast_ref::<NSButton>().is_some_and(|b| b.state() == NSControlStateValueOn);
@@ -171,15 +182,20 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
     // SAFETY: target and selector match `Action::fire:`.
     let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns(&h.display_name), Some(&act), Some(sel!(fire:)), mtm) };
     let title = attributed(&h.display_name, 15.0, &NSColor::labelColor());
-    if !h.is_connected {
+    let note = if blocked {
+        Some(format!(" {}", text::HEADSET_BLOCKED_NOTE))
+    } else {
+        (!h.is_connected).then(|| " 未連線".to_string())
+    };
+    if let Some(note) = note {
         let full = objc2_foundation::NSMutableAttributedString::from_attributed_nsstring(&title);
-        full.appendAttributedString(&attributed(" 未連線", 13.0, &NSColor::secondaryLabelColor()));
+        full.appendAttributedString(&attributed(&note, 13.0, &NSColor::secondaryLabelColor()));
         b.setAttributedTitle(&full);
     } else {
         b.setAttributedTitle(&title);
     }
     b.setState(if h.is_selected { NSControlStateValueOn } else { NSControlStateValueOff });
-    if !reclaim {
+    if !reclaim || blocked {
         b.setEnabled(false);
     }
     let r = plain_row(mtm, &[&b, &spacer(mtm)]);
@@ -213,7 +229,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         rows.push(to_view(&r));
     }
     for h in audio {
-        rows.push(headset_row(mtm, ctx, h, reclaim));
+        rows.push(headset_row(mtm, ctx, h, reclaim, d.headset_blocked(h)));
     }
     if !others.is_empty() {
         let expanded = a.others_expanded.get();
@@ -253,7 +269,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         rows.push(to_view(&r));
         if expanded {
             for h in others {
-                rows.push(headset_row(mtm, ctx, h, reclaim));
+                rows.push(headset_row(mtm, ctx, h, reclaim, d.headset_blocked(h)));
             }
         }
     }
