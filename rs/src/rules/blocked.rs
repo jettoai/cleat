@@ -89,12 +89,17 @@ pub fn escape<'a>(side: Side, snapshot: &'a DeviceSnapshot, config: &Config) -> 
     }
 }
 
-pub fn reconcile(side: Side, snapshot: &DeviceSnapshot, config: &Config) -> Verdict {
-    let current_id = match side {
+/// The side's default device, when it is among the present devices.
+pub fn current(side: Side, snapshot: &DeviceSnapshot) -> Option<&AudioDevice> {
+    let id = match side {
         Side::Input => snapshot.default_input,
         Side::Output => snapshot.default_output,
     };
-    let Some(current) = current_id.and_then(|id| snapshot.device(id)) else { return Verdict::Clear };
+    id.and_then(|id| snapshot.device(id))
+}
+
+pub fn reconcile(side: Side, snapshot: &DeviceSnapshot, config: &Config) -> Verdict {
+    let Some(current) = current(side, snapshot) else { return Verdict::Clear };
     // A blocked virtual, aggregate, Continuity or AirPlay device (a meeting app's own) is only
     // never chosen: an app that switches to it itself is not overruled, as in the Swift version
     // (PM ruling 2026-10-09, B-1287). An unknown transport (the HAL failed to say) is still moved

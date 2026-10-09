@@ -40,6 +40,8 @@ pub struct Status {
     pub stuck: Option<StuckStatus>,
 }
 
+/// The device each side is left on because it is "not used" and nothing else is usable, and the
+/// one the cooldown currently leaves in place instead of evicting. Also the engine's own record.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StuckStatus {
@@ -77,12 +79,6 @@ fn name_of(snap: &DeviceSnapshot, id: Option<u32>) -> Option<String> {
 
 impl Engine {
     pub(super) fn write_status(&self, snap: &DeviceSnapshot) {
-        let stuck = StuckStatus {
-            input: self.stuck.input.clone(),
-            output: self.stuck.output.clone(),
-            input_paused: self.stuck.input_paused.clone(),
-            output_paused: self.stuck.output_paused.clone(),
-        };
         let status = Status {
             pid: std::process::id() as i32,
             updated_at: iso8601_utc(self.clock.wall()),
@@ -92,7 +88,7 @@ impl Engine {
             default_input: name_of(snap, snap.default_input),
             default_output: name_of(snap, snap.default_output),
             rules: {
-                let mut rules = rule_summaries(&self.config, snap, self.reclaim_summary(), &stuck);
+                let mut rules = rule_summaries(&self.config, snap, self.reclaim_summary(), &self.stuck);
                 rules.insert("outputVolume".into(), self.output_volume_summary());
                 rules
             },
@@ -100,7 +96,7 @@ impl Engine {
             recent_events: self.recent_events.clone(),
             output_volume: Some(self.output_volume_status()),
             performance: Some(self.reactions.summary()),
-            stuck: Some(stuck),
+            stuck: Some(self.stuck.clone()),
         };
         // Observe mode must not pass itself off as the running daemon in the file the window reads.
         if self.mode == super::Mode::Observe {

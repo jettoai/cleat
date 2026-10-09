@@ -14,6 +14,8 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSEdgeInsets, NSPoint, NSRect, NSSize, NSString};
 
+use super::super::text::Tone;
+
 pub struct ActionIvars {
     f: Box<dyn Fn(&AnyObject)>,
 }
@@ -424,8 +426,7 @@ pub fn keycap(mtm: MainThreadMarker, text: &str, w: f64) -> (Retained<NSView>, R
 }
 
 /// "使用中" / "已排除" capsules.
-pub fn tag(mtm: MainThreadMarker, text: &str, tone: super::super::text::Tone) -> Retained<NSView> {
-    use super::super::text::Tone;
+pub fn tag(mtm: MainThreadMarker, text: &str, tone: Tone) -> Retained<NSView> {
     let color = match tone {
         Tone::Accent => NSColor::controlAccentColor(),
         Tone::Warning => NSColor::systemOrangeColor(),

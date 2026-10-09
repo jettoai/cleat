@@ -8,15 +8,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Duration;
 
-use super::Engine;
+use super::{Engine, StuckStatus};
 use crate::model::{Action, DeviceSnapshot};
-use crate::rules::blocked::{self, Verdict};
+use crate::rules::blocked::{self, Side, Verdict};
 use crate::rules::{input_pin, output_pin};
 
 pub const EVICTION_WINDOW: Duration = Duration::from_secs(60);
 pub const EVICTION_LIMIT: usize = 3;
-
-pub(crate) use crate::rules::blocked::Side;
 
 #[derive(Default)]
 struct SideBook {
@@ -94,11 +92,11 @@ impl EvictionBook {
         snap: &DeviceSnapshot,
         now: Duration,
     ) -> (Option<Action>, Option<String>) {
-        let (book, current_id) = match side {
-            Side::Input => (&mut self.input, snap.default_input),
-            Side::Output => (&mut self.output, snap.default_output),
+        let book = match side {
+            Side::Input => &mut self.input,
+            Side::Output => &mut self.output,
         };
-        let Some(current) = current_id.and_then(|id| snap.device(id)) else { return (Some(action), None) };
+        let Some(current) = blocked::current(side, snap) else { return (Some(action), None) };
         let target = match &action {
             Action::SetDefaultInput(id, _) | Action::SetDefaultOutput(id, _) => *id,
             _ => return (Some(action), None),
@@ -128,17 +126,7 @@ impl EvictionBook {
     }
 }
 
-/// The device each side is left on because it is "not used" and nothing else is usable, and the
-/// one the cooldown currently leaves in place instead of evicting.
-#[derive(Debug, Default)]
-pub(crate) struct Stuck {
-    pub input: Option<String>,
-    pub output: Option<String>,
-    pub input_paused: Option<String>,
-    pub output_paused: Option<String>,
-}
-
-impl Stuck {
+impl StuckStatus {
     pub(super) fn paused_mut(&mut self, side: Side) -> &mut Option<String> {
         match side {
             Side::Input => &mut self.input_paused,
@@ -157,9 +145,14 @@ impl Engine {
         now: Duration,
         held: &mut Vec<String>,
     ) -> Vec<Action> {
-        let (actions, paused) = match blocked::reconcile(side, snap, &self.config) {
+        let verdict = blocked::reconcile(side, snap, &self.config);
+        let stuck = match &verdict {
+            Verdict::Stuck(device) => Some(device.name.clone()),
+            _ => None,
+        };
+        self.set_stuck(side, stuck, held);
+        let (actions, paused) = match verdict {
             Verdict::Clear => {
-                self.set_stuck(side, None, held);
                 let actions = match side {
                     Side::Input => input_pin::reconcile(snap, &self.config),
                     Side::Output => output_pin::reconcile(snap, &self.config),
@@ -167,20 +160,12 @@ impl Engine {
                 (actions, None)
             }
             Verdict::Evict(action) => {
-                self.set_stuck(side, None, held);
                 let (kept, note) = self.eviction.gate(side, action, snap, now);
                 held.extend(note);
-                let current = match side {
-                    Side::Input => snap.default_input,
-                    Side::Output => snap.default_output,
-                };
-                let paused = kept.is_none().then(|| current.and_then(|id| snap.device(id)).map(|d| d.name.clone()));
-                (kept.into_iter().collect(), paused.flatten())
+                let paused = if kept.is_none() { blocked::current(side, snap).map(|d| d.name.clone()) } else { None };
+                (kept.into_iter().collect(), paused)
             }
-            Verdict::Stuck(device) => {
-                self.set_stuck(side, Some(device.name), held);
-                (vec![], None)
-            }
+            Verdict::Stuck(_) => (vec![], None),
         };
         *self.stuck.paused_mut(side) = paused;
         actions

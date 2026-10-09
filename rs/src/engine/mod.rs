@@ -96,7 +96,7 @@ pub struct Engine {
     reclaim: reclaim::ReclaimBook,
     eviction: eviction::EvictionBook,
     /// Sides left on a "not used" device because nothing else is usable (status.json `stuck`).
-    stuck: eviction::Stuck,
+    stuck: StuckStatus,
     writer_source: WriterSourceFactory,
     outvol: output_volume::OutputVolumeHold,
     events: Option<Sender<Event>>,
@@ -141,7 +141,7 @@ impl Engine {
             inventory: deps.inventory,
             reclaim: reclaim::ReclaimBook::default(),
             eviction: eviction::EvictionBook::default(),
-            stuck: eviction::Stuck::default(),
+            stuck: StuckStatus::default(),
             writer_source: deps.writer_source,
             outvol: output_volume::OutputVolumeHold::default(),
             events: deps.events,

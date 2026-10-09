@@ -45,10 +45,6 @@ fn list_of(a: &App, side: Side) -> super::super::draft::DeviceList {
     }
 }
 
-fn tags(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Vec<Retained<NSView>> {
-    text::device_row_tags(r, current(a, side).as_deref(), reason(a, side, r)).into_iter().map(|(t, tone)| tag(mtm, t, tone)).collect()
-}
-
 fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Retained<NSView> {
     let transport = a.store.borrow().transport_of(&r.display_name);
     let wanted = text::device_symbol(&r.display_name, transport, side);
@@ -64,13 +60,15 @@ fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Ret
 /// The name and its badges; on the row the side is left on, the orange "暫時還在用這台" goes
 /// under that line so the badges stay level with the name (B-1287).
 fn label_views(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Vec<Retained<NSView>> {
+    let current = current(a, side);
+    let reason = reason(a, side, r);
     let name = device_label(mtm, &r.display_name, r.is_connected);
-    if text::row_dimmed(r, current(a, side).as_deref()) {
+    if text::row_dimmed(r, current.as_deref()) {
         name.setAlphaValue(0.4);
     }
     let mut views = vec![name];
-    views.extend(tags(a, mtm, side, r));
-    if reason(a, side, r) != text::RowReason::Stuck {
+    views.extend(text::device_row_tags(r, current.as_deref(), reason).into_iter().map(|(t, tone)| tag(mtm, t, tone)));
+    if reason != text::RowReason::Stuck {
         return views;
     }
     let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
