@@ -61,19 +61,22 @@ fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Ret
     v
 }
 
-/// The name, with the orange "暫時還在用這台" under it on the row the side is left on.
-fn label_view(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Retained<NSView> {
+/// The name and its badges; on the row the side is left on, the orange "暫時還在用這台" goes
+/// under that line so the badges stay level with the name (B-1287).
+fn label_views(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Vec<Retained<NSView>> {
     let name = device_label(mtm, &r.display_name, r.is_connected);
-    let v = if reason(a, side, r) == text::RowReason::Stuck {
-        let note = label(mtm, text::STUCK_ROW_NOTE, 11.0, regular(), &NSColor::systemOrangeColor());
-        to_view(&stack(mtm, true, 2.0, &[&name, &note]))
-    } else {
-        name
-    };
     if text::row_dimmed(r, current(a, side).as_deref()) {
-        v.setAlphaValue(0.4);
+        name.setAlphaValue(0.4);
     }
-    v
+    let mut views = vec![name];
+    views.extend(tags(a, mtm, side, r));
+    if reason(a, side, r) != text::RowReason::Stuck {
+        return views;
+    }
+    let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
+    let line = stack(mtm, false, 8.0, &refs);
+    let note = label(mtm, text::STUCK_ROW_NOTE, 11.0, regular(), &NSColor::systemOrangeColor());
+    vec![to_view(&stack(mtm, true, 2.0, &[&line, &note]))]
 }
 
 fn block_toggle(mtm: MainThreadMarker, ctx: &mut Ctx, side: Side, r: &DeviceRow) -> Retained<NSButton> {
@@ -123,9 +126,8 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
             handle,
             to_view(&number),
             device_icon(a, mtm, side, r),
-            label_view(a, mtm, side, r),
         ];
-        views.extend(tags(a, mtm, side, r));
+        views.extend(label_views(a, mtm, side, r));
         views.push(spacer(mtm));
         let entry = r.entry.clone();
         let act = ctx.act(move |_| {
@@ -172,8 +174,8 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
             app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, true))
         });
         let add = order_button(mtm, &act, "plus.circle", "加入順序");
-        let mut views: Vec<Retained<NSView>> = vec![device_icon(a, mtm, side, r), label_view(a, mtm, side, r)];
-        views.extend(tags(a, mtm, side, r));
+        let mut views: Vec<Retained<NSView>> = vec![device_icon(a, mtm, side, r)];
+        views.extend(label_views(a, mtm, side, r));
         views.push(spacer(mtm));
         views.push(add);
         views.push(to_view(&block_toggle(mtm, ctx, side, r)));
