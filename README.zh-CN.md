@@ -24,22 +24,22 @@ macOS 总是把音频设备换掉。连上 AirPods Max，麦克风就被它抢�
 - **错误报告要你开启才发送。** 默认关闭。关闭时，还在排队的报告会删除，发送到一半的会中止。
 
 <p align="center">
-  <img src="assets/screenshot-output.png" alt="Cleat 设置窗口的“输出”页，深色模式、繁体中文界面：左侧栏有输出、输入、耳机三页；顶部状态卡显示 CPU、内存和拉回速度；输出优先级第一个是“外接耳機”（外接耳机）并标着使用中；下方其他输出设备里，Mac Studio 的扬声器和 Maono AI Microphone 勾了不使用；最下面的输出音量与平衡卡片，对 Parallels Desktop 开启了音量拉回，左右平衡设为固定，并注明当前的输出“外接耳機”不支持左右平衡，所以 Cleat 不动它" width="720">
+  <img src="assets/screenshot-output.png" alt="Cleat 设置窗口的“输出”页，深色模式、英文界面：左侧栏有 Output、Input、Headphones、General 四页；顶部状态卡写着 Cleat is running，显示 CPU、内存和拉回速度（还没有拉回记录）；输出优先级第一个是“外接耳機”（这台 Mac 上 macOS 给外接耳机的名称），标着 In use；下方其他输出设备里，Mac Studio的揚聲器（Mac Studio 的扬声器）和 Maono AI Microphone 标着 Excluded；最下面的输出音量与平衡卡片，对 Parallels Desktop 开启了音量拉回，左右平衡设为 Hold，并注明当前的输出“外接耳機”不支持左右平衡，Cleat 不动它" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-input.png" alt="Cleat 设置窗口的“输入”页，深色模式、繁体中文界面：输入优先级依次是 Wireless microphone（使用中）、Brio 100、AirPods Max（未连接、已排除）；其他输入设备中 Microsoft Teams Audio 和 ZoomAudioDevice 已排除；输入音量卡片把所有麦克风固定在 100%，当前读数是 Wireless microphone 100%" width="720">
+  <img src="assets/screenshot-input.png" alt="Cleat 设置窗口的“输入”页，深色模式、英文界面：输入优先级依次是 Wireless microphone（In use）、Brio 100；其他输入设备中 AirPods Max（Offline）、Microsoft Teams Audio 和 ZoomAudioDevice 标着 Excluded，另有 Maono AI Microphone；输入音量卡片把所有麦克风的默认音量固定在 100%，当前读数是 Wireless microphone 100%" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-headphones.png" alt="Cleat 设置窗口的“耳机”页，深色模式、繁体中文界面：“蓝牙耳机连上时自动切过去”和“耳机被其他设备拿走时要回来”两个开关都已打开；AirPods Max 和 AirPods Pro（未连接）已勾选；下方是折叠的“其他蓝牙设备（3）”" width="720">
+  <img src="assets/screenshot-headphones.png" alt="Cleat 设置窗口的“耳机”页，深色模式、英文界面：“蓝牙耳机连上时自动切过去”和“耳机被其他设备拿走时要回来”两个开关都已打开；AirPods Max 和 AirPods Pro（Offline）已勾选；下方是折叠的“其他蓝牙设备（3）”和何时要勾的说明" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-output-light.png" alt="同一个“输出”页的浅色模式，繁体中文界面" width="720">
+  <img src="assets/screenshot-output-light.png" alt="同一个“输出”页的浅色模式，英文界面" width="720">
 </p>
 
-<p align="center"><sub>设置窗口目前只有繁体中文界面。配置文件和 <code>cleat</code> 命令是英文。</sub></p>
+<p align="center"><sub>设置窗口和菜单栏跟随系统语言：系统是繁体中文时用繁体中文，其他语言一律英文。配置文件和 <code>cleat</code> 命令是英文。</sub></p>
 
 ## 它固定哪些东西
 

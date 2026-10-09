@@ -24,22 +24,22 @@ macOS는 오디오 장치를 계속 바꿔 놓습니다. AirPods Max를 연결�
 - **오류 보고는 원할 때만.** 기본값은 꺼짐입니다. 끄면 보내려고 대기 중인 보고서는 지워지고, 보내는 중인 것은 중단됩니다.
 
 <p align="center">
-  <img src="assets/screenshot-output.png" alt="Cleat 설정 창의 '출력' 페이지, 다크 모드, 번체 중국어 인터페이스: 사이드바에 출력, 입력, 헤드폰 세 페이지. 위쪽 상태 카드에 CPU, 메모리, 되돌리기 속도. 출력 우선순위 첫 번째는 '外接耳機'(외장 헤드폰)이고 사용 중 표시. 아래 기타 출력 장치에서 Mac Studio 스피커와 Maono AI Microphone에 '사용 안 함' 체크. 맨 아래 출력 음량과 밸런스 카드에서 Parallels Desktop에 대한 음량 되돌리기가 켜져 있고 밸런스는 고정. 지금 출력인 '外接耳機'는 밸런스를 지원하지 않아 Cleat가 건드리지 않는다는 안내 포함" width="720">
+  <img src="assets/screenshot-output.png" alt="Cleat 설정 창의 '출력' 페이지, 다크 모드, 영어 인터페이스: 사이드바에 Output, Input, Headphones, General 네 페이지. 위쪽 상태 카드에 Cleat is running과 CPU, 메모리, 되돌리기 속도(아직 되돌린 기록 없음). 출력 우선순위 첫 번째는 '外接耳機'(이 Mac에서 macOS가 외장 헤드폰에 붙인 이름)이고 In use 표시. 아래 기타 출력 장치에서 Mac Studio的揚聲器(Mac Studio 스피커)와 Maono AI Microphone은 Excluded. 맨 아래 출력 음량과 밸런스 카드에서 Parallels Desktop에 대한 음량 되돌리기가 켜져 있고 밸런스는 Hold. 지금 출력인 '外接耳機'는 밸런스를 지원하지 않아 Cleat가 건드리지 않는다는 안내 포함" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-input.png" alt="Cleat 설정 창의 '입력' 페이지, 다크 모드, 번체 중국어 인터페이스: 입력 우선순위는 Wireless microphone(사용 중), Brio 100, AirPods Max(연결 안 됨, 제외됨) 순서. 기타 입력 장치에서 Microsoft Teams Audio와 ZoomAudioDevice는 제외됨. 입력 음량 카드는 모든 마이크를 100%로 고정하고, 현재 값은 Wireless microphone 100%" width="720">
+  <img src="assets/screenshot-input.png" alt="Cleat 설정 창의 '입력' 페이지, 다크 모드, 영어 인터페이스: 입력 우선순위는 Wireless microphone(In use), Brio 100 순서. 기타 입력 장치에서 AirPods Max(Offline), Microsoft Teams Audio, ZoomAudioDevice는 Excluded이고, Maono AI Microphone도 있음. 입력 음량 카드는 모든 마이크의 기본 음량을 100%로 고정하고, 현재 값은 Wireless microphone 100%" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-headphones.png" alt="Cleat 설정 창의 '헤드폰' 페이지, 다크 모드, 번체 중국어 인터페이스: '블루투스 헤드폰이 연결되면 자동 전환'과 '다른 기기가 가져간 헤드폰 되찾기' 두 스위치가 모두 켜짐. AirPods Max와 AirPods Pro(연결 안 됨)에 체크. 그 아래 접혀 있는 '기타 블루투스 기기(3)'" width="720">
+  <img src="assets/screenshot-headphones.png" alt="Cleat 설정 창의 '헤드폰' 페이지, 다크 모드, 영어 인터페이스: '블루투스 헤드폰이 연결되면 자동 전환'과 '다른 기기가 가져간 헤드폰 되찾기' 두 스위치가 모두 켜짐. AirPods Max와 AirPods Pro(Offline)에 체크. 그 아래 접혀 있는 '기타 블루투스 기기(3)'와 언제 체크하는지에 대한 안내" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-output-light.png" alt="같은 '출력' 페이지의 라이트 모드, 번체 중국어 인터페이스" width="720">
+  <img src="assets/screenshot-output-light.png" alt="같은 '출력' 페이지의 라이트 모드, 영어 인터페이스" width="720">
 </p>
 
-<p align="center"><sub>설정 창은 현재 번체 중국어 인터페이스만 있습니다. 설정 파일과 <code>cleat</code> 명령은 영어입니다.</sub></p>
+<p align="center"><sub>설정 창과 메뉴는 시스템 언어를 따릅니다. 시스템이 번체 중국어이면 번체 중국어, 그 밖에는 영어입니다. 설정 파일과 <code>cleat</code> 명령은 영어입니다.</sub></p>
 
 ## 유지하는 것
 

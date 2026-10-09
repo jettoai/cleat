@@ -21,7 +21,7 @@ nothing at all.
 **What Cleat does**
 
 - **Output priority list.** Sound plays from the first connected device on your list. While a device
-  on your list is connected, devices marked "never use" are moved off, even when macOS lands on
+  on your list is connected, devices ticked "Exclude" are moved off, even when macOS lands on
   them by itself.
 - **Microphone priority list.** The first connected microphone on your list is the default input;
   while one of them is connected, a blocklist keeps AirPods Max (or Zoom's and Teams' virtual
@@ -46,22 +46,22 @@ nothing at all.
   waiting to go and cuts off one already on its way.
 
 <p align="center">
-  <img src="assets/screenshot-output.png" alt="Cleat's settings window, Output page, in dark mode with a Traditional Chinese interface: a sidebar with Output, Input and Headphones; a status card with CPU, memory and reclaim speed; an output priority list with 外接耳機 (external headphones) first and marked in use; other output devices below it, with Mac Studio's speakers and the Maono AI Microphone ticked never use; and an output volume and balance card holding the volume against Parallels Desktop and the balance pinned, with a note that the current output, 外接耳機, has no balance control, so Cleat leaves it alone" width="720">
+  <img src="assets/screenshot-output.png" alt="Cleat's settings window, Output page, in dark mode with the English interface: a sidebar with Output, Input, Headphones and General; a status card reading Cleat is running, with CPU, memory and reclaim speed (nothing put back yet); an output priority list with 外接耳機 (the name macOS gives the external headphones on this Mac) first and marked In use; other output devices below it, with Mac Studio的揚聲器 (Mac Studio's speakers) and the Maono AI Microphone marked Excluded; and an output volume and balance card undoing volume changes made by Parallels Desktop and holding the balance, with the note that the current output, 外接耳機, has no balance control, left alone" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-input.png" alt="Cleat's settings window, Input page, in dark mode with a Traditional Chinese interface: an input priority list of Wireless microphone (in use), Brio 100 and AirPods Max (not connected, excluded); other input devices with Microsoft Teams Audio and ZoomAudioDevice excluded; and an input volume card holding every microphone at 100 percent, with the current reading Wireless microphone 100%" width="720">
+  <img src="assets/screenshot-input.png" alt="Cleat's settings window, Input page, in dark mode with the English interface: an input priority list of Wireless microphone (In use) and Brio 100; other input devices with AirPods Max (Offline), Microsoft Teams Audio and ZoomAudioDevice marked Excluded, and the Maono AI Microphone; and an input volume card holding the default level for every microphone at 100 percent, with the reading Now: Wireless microphone 100%" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-headphones.png" alt="Cleat's settings window, Headphones page, in dark mode with a Traditional Chinese interface: switches for taking over the output when Bluetooth headphones connect and for asking a headset back when another device has taken it, both on; AirPods Max and AirPods Pro (not connected) ticked; and a collapsed row of three other Bluetooth devices" width="720">
+  <img src="assets/screenshot-headphones.png" alt="Cleat's settings window, Headphones page, in dark mode with the English interface: the switches Switch to Bluetooth headphones when they connect and Ask for headphones back from other devices, both on; AirPods Max and AirPods Pro (Offline) ticked; and a collapsed row, Other Bluetooth devices (3), with a note on when to tick one" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-output-light.png" alt="The same Output page of Cleat's settings window in light mode, Traditional Chinese interface" width="720">
+  <img src="assets/screenshot-output-light.png" alt="The same Output page of Cleat's settings window in light mode, English interface" width="720">
 </p>
 
-<p align="center"><sub>The settings window is in Traditional Chinese for now. The config file and the <code>cleat</code> commands are in English.</sub></p>
+<p align="center"><sub>The settings window and the menu follow the system language: Traditional Chinese on a Traditional Chinese system, English otherwise. The config file and the <code>cleat</code> commands are in English.</sub></p>
 
 ## What it holds
 
@@ -96,8 +96,8 @@ minute, the same figure Activity Monitor shows), its memory (the same as Activit
 column), and its reclaim speed (how long Cleat takes to put a setting back after something changed
 it, the median of the recent ones).
 
-- **Output**: the priority list, every other output device with an "add to order" button and a
-  "never use" box, the programs whose volume changes are undone (with the time of the last undo),
+- **Output**: the priority list, every other output device with an "Add to order" button and an
+  "Exclude" box, the programs whose volume changes are undone (with the time of the last undo),
   and the balance with a live reading.
 - **Input**: the microphone priority list, every other input device, and the gain: one slider for
   every microphone plus a slider for each device you add.

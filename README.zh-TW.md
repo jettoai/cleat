@@ -24,22 +24,22 @@ macOS 老是把音訊裝置換掉。連上 AirPods Max，麥克風就被它搶�
 - **錯誤回報要你開才送。** 預設關閉。關掉時，還在排隊的報告會刪掉，送到一半的會中止。
 
 <p align="center">
-  <img src="assets/screenshot-output.png" alt="Cleat 設定視窗的「輸出」頁，深色模式、繁體中文介面：左側欄有輸出、輸入、耳機三頁；上方狀態卡顯示 CPU、記憶體與拉回速度；輸出優先順序第一個是「外接耳機」並標著使用中；下方其他輸出裝置裡，Mac Studio的揚聲器與 Maono AI Microphone 勾了不使用；最下面的輸出音量與平衡卡片，對 Parallels Desktop 開著音量拉回，左右平衡設為固定，並註明目前的輸出「外接耳機」不支援左右平衡，所以 Cleat 不動它" width="720">
+  <img src="assets/screenshot-output.png" alt="Cleat 設定視窗的「輸出」頁，深色模式、英文介面：左側欄有 Output、Input、Headphones、General 四頁；上方狀態卡寫著 Cleat is running，顯示 CPU、記憶體與拉回速度（還沒有拉回紀錄）；輸出優先順序第一個是「外接耳機」（這台 Mac 上 macOS 給外接耳機的名稱），標著 In use；下方其他輸出裝置裡，Mac Studio的揚聲器與 Maono AI Microphone 標著 Excluded；最下面的輸出音量與平衡卡片，對 Parallels Desktop 開著音量拉回，左右平衡設為 Hold，並註明目前的輸出「外接耳機」不支援左右平衡，Cleat 不動它" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-input.png" alt="Cleat 設定視窗的「輸入」頁，深色模式、繁體中文介面：輸入優先順序依序是 Wireless microphone（使用中）、Brio 100、AirPods Max（未連線、已排除）；其他輸入裝置中 Microsoft Teams Audio 與 ZoomAudioDevice 已排除；輸入音量卡片把所有麥克風固定在 100%，目前讀數是 Wireless microphone 100%" width="720">
+  <img src="assets/screenshot-input.png" alt="Cleat 設定視窗的「輸入」頁，深色模式、英文介面：輸入優先順序依序是 Wireless microphone（In use）、Brio 100；其他輸入裝置中 AirPods Max（Offline）、Microsoft Teams Audio 與 ZoomAudioDevice 標著 Excluded，另有 Maono AI Microphone；輸入音量卡片把所有麥克風的預設音量固定在 100%，目前讀數是 Wireless microphone 100%" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-headphones.png" alt="Cleat 設定視窗的「耳機」頁，深色模式、繁體中文介面：「藍牙耳機連上時自動切過去」與「耳機被其他裝置拿走時要回來」兩個開關都打開；AirPods Max 與 AirPods Pro（未連線）已勾選；下方是收合的「其他藍牙裝置（3）」" width="720">
+  <img src="assets/screenshot-headphones.png" alt="Cleat 設定視窗的「耳機」頁，深色模式、英文介面：「藍牙耳機連上時自動切過去」與「耳機被其他裝置拿走時要回來」兩個開關都打開；AirPods Max 與 AirPods Pro（Offline）已勾選；下方是收合的「其他藍牙裝置（3）」與何時要勾的說明" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-output-light.png" alt="同一個「輸出」頁的淺色模式，繁體中文介面" width="720">
+  <img src="assets/screenshot-output-light.png" alt="同一個「輸出」頁的淺色模式，英文介面" width="720">
 </p>
 
-<p align="center"><sub>設定視窗目前只有繁體中文介面。設定檔與 <code>cleat</code> 指令是英文。</sub></p>
+<p align="center"><sub>設定視窗與選單列跟著系統語言：系統是繁體中文時用繁體中文，其他語言一律英文。設定檔與 <code>cleat</code> 指令是英文。</sub></p>
 
 ## 它固定哪些東西
 

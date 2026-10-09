@@ -24,22 +24,22 @@ macOS はオーディオデバイスを勝手に動かします。AirPods Max �
 - **エラーレポートは頼んだときだけ。** 既定はオフです。オフにすると、送信待ちのレポートは削除され、送信中のものは中断されます。
 
 <p align="center">
-  <img src="assets/screenshot-output.png" alt="Cleat の設定ウインドウ「出力」ページ、ダークモード、繁体字中国語の UI：サイドバーに出力・入力・ヘッドフォンの 3 ページ。上部のステータスカードに CPU、メモリ、引き戻し速度。出力の優先順位の 1 番目は「外接耳機」（外付けヘッドフォン）で使用中の表示。その下のほかの出力デバイスでは、Mac Studio のスピーカーと Maono AI Microphone に「使わない」のチェック。最下部の出力音量とバランスのカードでは、Parallels Desktop に対する音量の引き戻しがオンで、バランスは固定。いまの出力「外接耳機」はバランスに対応していないので Cleat は触らない、という注記つき" width="720">
+  <img src="assets/screenshot-output.png" alt="Cleat の設定ウインドウ「出力」ページ、ダークモード、英語の UI：サイドバーに Output・Input・Headphones・General の 4 ページ。上部のステータスカードに Cleat is running と CPU、メモリ、引き戻し速度（まだ引き戻しの記録なし）。出力の優先順位の 1 番目は「外接耳機」（この Mac で macOS が外付けヘッドフォンに付けた名前）で In use の表示。その下のほかの出力デバイスでは、Mac Studio的揚聲器（Mac Studio のスピーカー）と Maono AI Microphone が Excluded。最下部の出力音量とバランスのカードでは、Parallels Desktop に対する音量の引き戻しがオンで、バランスは Hold。いまの出力「外接耳機」はバランスに対応していないので Cleat は触らない、という注記つき" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-input.png" alt="Cleat の設定ウインドウ「入力」ページ、ダークモード、繁体字中国語の UI：入力の優先順位は Wireless microphone（使用中）、Brio 100、AirPods Max（未接続、除外済み）の順。ほかの入力デバイスでは Microsoft Teams Audio と ZoomAudioDevice が除外済み。入力音量のカードはすべてのマイクを 100% に固定し、現在の値は Wireless microphone 100%" width="720">
+  <img src="assets/screenshot-input.png" alt="Cleat の設定ウインドウ「入力」ページ、ダークモード、英語の UI：入力の優先順位は Wireless microphone（In use）、Brio 100 の順。ほかの入力デバイスでは AirPods Max（Offline）、Microsoft Teams Audio、ZoomAudioDevice が Excluded で、ほかに Maono AI Microphone。入力音量のカードはすべてのマイクの既定の音量を 100% に固定し、現在の値は Wireless microphone 100%" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-headphones.png" alt="Cleat の設定ウインドウ「ヘッドフォン」ページ、ダークモード、繁体字中国語の UI：「Bluetooth ヘッドフォンが接続されたら自動で切り替え」と「ほかのデバイスに取られたヘッドフォンを取り戻す」の 2 つのスイッチがともにオン。AirPods Max と AirPods Pro（未接続）にチェック。その下に折りたたまれた「ほかの Bluetooth デバイス（3）」" width="720">
+  <img src="assets/screenshot-headphones.png" alt="Cleat の設定ウインドウ「ヘッドフォン」ページ、ダークモード、英語の UI：「Bluetooth ヘッドフォンが接続されたら自動で切り替え」と「ほかのデバイスに取られたヘッドフォンを取り戻す」の 2 つのスイッチがともにオン。AirPods Max と AirPods Pro（Offline）にチェック。その下に折りたたまれた「ほかの Bluetooth デバイス（3）」と、チェックする場面の説明" width="720">
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-output-light.png" alt="同じ「出力」ページのライトモード、繁体字中国語の UI" width="720">
+  <img src="assets/screenshot-output-light.png" alt="同じ「出力」ページのライトモード、英語の UI" width="720">
 </p>
 
-<p align="center"><sub>設定ウインドウは現在、繁体字中国語の UI のみです。設定ファイルと <code>cleat</code> コマンドは英語です。</sub></p>
+<p align="center"><sub>設定ウインドウとメニューはシステムの言語に合わせます。システムが繁体字中国語なら繁体字中国語、それ以外は英語です。設定ファイルと <code>cleat</code> コマンドは英語です。</sub></p>
 
 ## 保つもの
 
