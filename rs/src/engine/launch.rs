@@ -1,14 +1,17 @@
 //! Who keeps the daemon alive (Swift `Engine+LaunchAgent.swift`, branch for branch, log lines word
-//! for word).
+//! for word), except that a missing config file counts as the defaults here (B-1224).
 
 use super::Engine;
 use crate::launch::{domain_target, failure_detail, is_registered, needs_reregistration, AgentStatus};
 
 impl Engine {
-    /// `launchAtLogin` registers the launchd agent inside the bundle. Development builds (`.dev`,
-    /// `.rs`) never touch any of this.
+    /// `launchAtLogin` registers the launchd agent inside the bundle. A missing file is the
+    /// defaults, `launchAtLogin` on among them, so opening a downloaded copy once keeps it running
+    /// (B-1224); a file that did not load says nothing about what the person wants and leaves the
+    /// agent alone. Development builds (`.dev`, `.rs`) never touch any of this.
     pub(super) fn sync_launch_at_login(&mut self) {
-        if self.identity.is_development_build() || self.config_state != "ok" {
+        let config_read = matches!(self.config_state.as_str(), "ok" | "missing");
+        if self.identity.is_development_build() || !config_read {
             return;
         }
         self.retire_login_item();

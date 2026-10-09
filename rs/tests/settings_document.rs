@@ -21,6 +21,16 @@ fn no_file_writes_keys_in_order_with_integer_volumes() {
 }
 
 #[test]
+fn launch_at_login_on_writes_no_key_and_off_writes_false() {
+    let on = text(None, &default_managed());
+    assert!(!on.contains("launchAtLogin"), "{on}");
+    let mut m = default_managed();
+    m.launch_at_login = false;
+    let off = text(None, &m);
+    assert!(off.contains("  \"reclaim\": [],\n  \"launchAtLogin\": false\n"), "{off}");
+}
+
+#[test]
 fn unknown_keys_and_liveness_are_carried_after_the_known_order() {
     let raw = r#"{"zeta":1,"liveness":{"Mic":{"zeroSeconds":5}},"alpha":"x","output":["A"]}"#;
     let out = text(Some(raw), &default_managed());

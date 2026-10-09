@@ -234,6 +234,7 @@ pub struct SettingsDraft {
     pub balance: f64,
     pub hold_enabled: bool,
     pub hold_against: Vec<String>,
+    pub launch_at_login: bool,
 }
 
 pub const DEFAULT_HOLD_AGAINST: &str = "Parallels Desktop";
@@ -276,6 +277,7 @@ impl SettingsDraft {
             balance: config.balance.or(live.balance.map(round2)).unwrap_or(0.5),
             hold_enabled: config.output_volume_hold_enabled && !hold.is_empty(),
             hold_against: if hold.is_empty() { vec![DEFAULT_HOLD_AGAINST.into()] } else { hold.clone() },
+            launch_at_login: config.launch_at_login,
         }
     }
 
@@ -301,6 +303,7 @@ impl SettingsDraft {
             balance: self.balance_enabled.then(|| round2(self.balance)),
             hold_against: if placeholder { vec![] } else { self.hold_against.clone() },
             hold_on: self.hold_enabled,
+            launch_at_login: self.launch_at_login,
         }
     }
 

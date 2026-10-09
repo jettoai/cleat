@@ -120,12 +120,14 @@ impl AgentService for FakeAgent {
     }
 }
 
-/// No job loaded, nothing to hand over to.
-pub struct FakeLaunchd;
+/// A job that is loaded or not; never one with a pid, so there is nothing to hand over to.
+pub struct FakeLaunchd {
+    pub loaded: bool,
+}
 
 impl Launchd for FakeLaunchd {
     fn loaded_job(&self) -> (bool, Option<i32>) {
-        (false, None)
+        (self.loaded, None)
     }
     fn kickstart(&self) -> (i32, String) {
         (1, String::new())
@@ -252,6 +254,7 @@ pub struct Opts {
     pub identity: Identity,
     pub agent_status: AgentStatus,
     pub microphone: MicrophonePermission,
+    pub job_loaded: bool,
 }
 
 impl Default for Opts {
@@ -267,6 +270,7 @@ impl Default for Opts {
             identity: Identity::default(),
             agent_status: AgentStatus::NotRegistered,
             microphone: MicrophonePermission::Granted,
+            job_loaded: false,
         }
     }
 }
@@ -298,10 +302,21 @@ impl Harness {
 
     /// Writes the config file and runs `start` (load, side effects, baseline pass).
     pub fn with_json(config_json: &str, snapshot: DeviceSnapshot, opts: Opts) -> Self {
+        Self::build(Some(config_json), snapshot, opts)
+    }
+
+    /// No config file at all: the first launch of a downloaded copy.
+    pub fn without_config(snapshot: DeviceSnapshot, opts: Opts) -> Self {
+        Self::build(None, snapshot, opts)
+    }
+
+    fn build(config_json: Option<&str>, snapshot: DeviceSnapshot, opts: Opts) -> Self {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir().join(format!("cleat-rs-engine-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("config.json"), config_json).unwrap();
+        if let Some(json) = config_json {
+            std::fs::write(dir.join("config.json"), json).unwrap();
+        }
         let audio = Rc::new(FakeAudioState {
             snapshot: RefCell::new(snapshot),
             writes: RefCell::default(),
@@ -336,7 +351,7 @@ impl Harness {
             identity: opts.identity,
             agent: Box::new(FakeAgent(agent.clone())),
             login_item: Box::new(FakeAgent(login_item.clone())),
-            launchd: Box::new(FakeLaunchd),
+            launchd: Box::new(FakeLaunchd { loaded: opts.job_loaded }),
             error_reports_changed: Box::new(move |v| sink.borrow_mut().push(v)),
             detectors: Box::new(move |device, _rate, zero_seconds| {
                 log.made.set(log.made.get() + 1);

@@ -90,8 +90,8 @@ virtual device), Cleat leaves it alone.
 The daemon puts an item in the menu bar. Its menu shows the output and input in use right now,
 opens the settings window, shows About, and quits Cleat.
 
-The settings window has three pages: Output, Input and Headphones. Across the top of each page is
-a status card: whether Cleat is running, its CPU (one core is 100 percent, averaged over the last
+The settings window has four pages: Output, Input, Headphones and General. Across the top of each
+page is a status card: whether Cleat is running, its CPU (one core is 100 percent, averaged over the last
 minute, the same figure Activity Monitor shows), its memory (the same as Activity Monitor's Memory
 column), and its reclaim speed (how long Cleat takes to put a setting back after something changed
 it, the median of the recent ones).
@@ -104,6 +104,7 @@ it, the median of the recent ones).
 - **Headphones**: the takeover switch, the reclaim switch, and a box for each paired Bluetooth
   headset. Bluetooth devices the system does not identify as audio sit in a collapsed group,
   for speakers or headphones that do not announce themselves.
+- **General**: whether Cleat starts at login and restarts when it dies (`launchAtLogin`).
 
 Right-click a device in a priority list to move it up or down. Every change is written to the
 config file a moment later, and the daemon picks it up from there; keys the window does not show
@@ -115,15 +116,21 @@ Spotlight or Raycast while the daemon is running. Only one settings window is op
 
 ## Install
 
+Download the zip from [Releases](https://github.com/jettoai/cleat/releases), unzip it into
+`/Applications`, and open Cleat once from Finder. That first launch asks for the microphone and
+registers the launchd agent that ships inside the bundle, so from then on Cleat starts at login and
+starts again if it is ever killed or crashes. The switch on the settings window's General page
+turns that off. Opening the app again while the agent is running opens the settings window, so
+there is never a second daemon.
+
+Or install it with Homebrew, which also puts `cleat` on your path:
+
 ```sh
 brew tap jettoai/tap
 # Homebrew requires third-party taps to be trusted before it will load their casks.
 brew trust jettoai/tap
 brew install --cask cleat
 ```
-
-Or download the zip from [Releases](https://github.com/jettoai/cleat/releases), unzip it into
-`/Applications`, and open it once.
 
 Then write a config and start it:
 
@@ -148,10 +155,6 @@ crashes. A clean quit (the menu's Quit, or `brew upgrade` replacing the old copy
 purpose; Cleat comes back at the next login, when you open the app again, or with `cleat restart`.
 `cleat status` says which agent state you are in. Setting `launchAtLogin` to `false` unregisters
 the agent, and Cleat exits with it.
-
-Installing by hand instead: open the app once from Finder, which is both the first microphone
-prompt and the moment it registers its agent. Opening the app again while the agent is running
-opens the settings window, so there is never a second daemon.
 
 ## Config
 

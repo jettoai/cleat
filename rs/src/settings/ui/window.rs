@@ -1,4 +1,4 @@
-//! The window: 720 x 560, a source-list sidebar of the three panes, the detail pane on the right
+//! The window: 720 x 560, a source-list sidebar of the four panes, the detail pane on the right
 //! (Swift `SettingsWindow.makeWindow`, `SettingsView.body`).
 
 use std::cell::OnceCell;
@@ -235,6 +235,7 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     let start = match debug_env("CLEAT_SETTINGS_PAGE").as_deref() {
         Some("input") => Page::Input,
         Some("headphones") => Page::Headphones,
+        Some("general") => Page::General,
         _ => Page::Output,
     };
     app.page.set(start);

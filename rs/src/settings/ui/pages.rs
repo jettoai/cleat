@@ -39,7 +39,7 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let side = match page {
         Page::Output => Some(Side::Output),
         Page::Input => Some(Side::Input),
-        Page::Headphones => None,
+        Page::Headphones | Page::General => None,
     };
     let notes = side.map(|s| {
         let st = a.store.borrow().stuck.clone();
@@ -71,6 +71,7 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
             put(levels::volumes(a, ctx));
         }
         Page::Headphones => put(headphones(a, ctx)),
+        Page::General => put(general(a, ctx)),
     }
     if a.store.borrow().phase != Phase::Ready {
         disable_tree(&content);
@@ -292,4 +293,12 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         rows.push(to_view(&r));
     }
     section(mtm, Some(("headphones", "耳機")), &rows, None)
+}
+
+/// Whether launchd starts Cleat at login and restarts it when it dies (`launchAtLogin`).
+fn general(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
+    let mtm = ctx.mtm;
+    let on = a.store.borrow().draft.launch_at_login;
+    let rows = [switch_row(mtm, "開機自動啟動", on, true, |on| app().edit(move |s| s.draft.launch_at_login = on))];
+    section(mtm, Some(("power", "啟動")), &rows, Some(text::LAUNCH_AT_LOGIN_NOTE))
 }

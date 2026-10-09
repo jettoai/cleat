@@ -1,5 +1,5 @@
 //! Writes the settings window's keys back into the config file, leaving every other key exactly as
-//! it was (Swift `ConfigDocument.swift`). The window owns seven units, each a group of keys that
+//! it was (Swift `ConfigDocument.swift`). The window owns eight units, each a group of keys that
 //! state one feature together (`UNITS`). A unit that still encodes as it did when the window
 //! loaded is written back as the file had it then; a changed unit is written whole from the draft.
 
@@ -14,7 +14,7 @@ use crate::config::Config;
 
 /// The window's values, unit by unit. `reclaim` and `hold_against` are the lists, kept while their
 /// switch is off; an empty `hold_against` writes no hold keys at all.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Managed {
     pub input: Vec<String>,
     pub blocked_input: Vec<String>,
@@ -27,6 +27,7 @@ pub struct Managed {
     pub balance: Option<f64>,
     pub hold_against: Vec<String>,
     pub hold_on: bool,
+    pub launch_at_login: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,10 +39,11 @@ pub enum Unit {
     Hold,
     InputVolume,
     Balance,
+    LaunchAtLogin,
 }
 
 /// Every key the window owns, by the unit it belongs to. A unit is written whole or not at all.
-pub const UNITS: [(Unit, &[&str]); 7] = [
+pub const UNITS: [(Unit, &[&str]); 8] = [
     (Unit::InputStance, &["input", "blockedInput"]),
     (Unit::OutputStance, &["output", "blockedOutput"]),
     (Unit::Takeover, &["headphonesTakeOver"]),
@@ -49,6 +51,7 @@ pub const UNITS: [(Unit, &[&str]); 7] = [
     (Unit::Hold, &["outputVolumeHoldAgainst", "outputVolumeHoldEnabled"]),
     (Unit::InputVolume, &["inputVolume"]),
     (Unit::Balance, &["balance"]),
+    (Unit::LaunchAtLogin, &["launchAtLogin"]),
 ];
 
 /// Canonical top-level order; keys outside it follow, sorted.
@@ -122,6 +125,13 @@ impl Managed {
             Unit::Balance => {
                 if let Some(b) = self.balance {
                     m.insert("balance".into(), number(b));
+                }
+            }
+            // On is the default and writes no key, so the first save from a window opened with no
+            // file leaves the agent the daemon just registered alone (B-1224). Only off is written.
+            Unit::LaunchAtLogin => {
+                if !self.launch_at_login {
+                    m.insert("launchAtLogin".into(), Value::Bool(false));
                 }
             }
         }

@@ -236,3 +236,12 @@ fn reclaim_hint_names_why_nothing_will_happen() {
     d.set_reclaim_enabled(false);
     assert_eq!(d.reclaim_hint(), None, "off says nothing");
 }
+
+#[test]
+fn launch_at_login_comes_from_the_config_and_goes_back_out() {
+    let on = SettingsDraft::make(&Config::disabled(), &[], &[], &LiveLevels::default());
+    assert!(on.launch_at_login && on.managed().launch_at_login);
+    let off = Config { launch_at_login: false, ..Config::default() };
+    let d = SettingsDraft::make(&off, &[], &[], &LiveLevels::default());
+    assert!(!d.launch_at_login && !d.managed().launch_at_login);
+}

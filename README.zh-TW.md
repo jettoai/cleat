@@ -62,11 +62,12 @@ macOS 老是把音訊裝置換掉。連上 AirPods Max，麥克風就被它搶�
 
 常駐程式會在選單列放一個圖示。選單上顯示目前使用中的輸出與輸入，可以開啟設定視窗、顯示「關於」，以及結束 Cleat。
 
-設定視窗有三頁：輸出、輸入、耳機。每一頁最上方是一張狀態卡：Cleat 有沒有在執行；它的 CPU（一顆核心滿載算 100%，取最近一分鐘的平均，與「活動監視器」同一個算法）；記憶體（與「活動監視器」的「記憶體」欄同一個值）；以及拉回速度（設定被其他東西改掉後，Cleat 改回來要多久，取最近幾次的中位數）。
+設定視窗有四頁：輸出、輸入、耳機、一般。每一頁最上方是一張狀態卡：Cleat 有沒有在執行；它的 CPU（一顆核心滿載算 100%，取最近一分鐘的平均，與「活動監視器」同一個算法）；記憶體（與「活動監視器」的「記憶體」欄同一個值）；以及拉回速度（設定被其他東西改掉後，Cleat 改回來要多久，取最近幾次的中位數）。
 
 - **輸出**：優先順序清單；其他每一個輸出裝置，各附「加入順序」按鈕與「不使用」勾選框；改了音量會被拉回的程式名單（附最近一次拉回的時間）；左右平衡與即時讀數。
 - **輸入**：麥克風優先順序清單；其他每一個輸入裝置；音量：所有麥克風共用一條滑桿，另外每加一個裝置多一條滑桿。
 - **耳機**：自動切換開關、要回耳機開關，以及每一副配對過的藍牙耳機的勾選框。系統沒辨識成音訊裝置的藍牙裝置收在一個收合的群組裡，給沒有自報身分的喇叭或耳機用。
+- **一般**：開機時要不要自動啟動 Cleat、當掉時要不要重開（`launchAtLogin`）。
 
 在優先順序清單的裝置上按右鍵，可以上移或下移。每個修改都會在片刻後寫進設定檔，常駐程式再從那裡讀到；視窗沒顯示的鍵完全照原樣保留。視窗開著時設定檔在磁碟上被改過，視窗就停止寫入，並提供「重新載入」。
 
@@ -74,14 +75,16 @@ macOS 老是把音訊裝置換掉。連上 AirPods Max，麥克風就被它搶�
 
 ## 安裝
 
+從 [Releases](https://github.com/jettoai/cleat/releases) 下載 zip，解壓到 `/Applications`，從 Finder 打開 Cleat 一次。第一次打開會詢問麥克風權限，並註冊 app 內附的 launchd agent；之後 Cleat 會在開機登入時啟動，被殺掉或當掉時也會再啟動。設定視窗「一般」頁的開關可以關掉這件事。agent 執行中再打開 app，開的是設定視窗，所以永遠不會有第二個常駐程式。
+
+或用 Homebrew 安裝，它也會把 `cleat` 指令放進路徑：
+
 ```sh
 brew tap jettoai/tap
 # Homebrew requires third-party taps to be trusted before it will load their casks.
 brew trust jettoai/tap
 brew install --cask cleat
 ```
-
-或從 [Releases](https://github.com/jettoai/cleat/releases) 下載 zip，解壓到 `/Applications`，打開一次。
 
 接著寫一份設定檔並啟動：
 
@@ -94,8 +97,6 @@ cleat restart
 ```
 
 `cleat restart` 會註冊 app 內附的 launchd agent，並透過它啟動常駐程式；之後 launchd 會在登入時啟動 Cleat，被殺掉或當掉時也會再把它啟動。正常結束（選單的「結束 Cleat」，或 `brew upgrade` 換掉舊版）是刻意不重啟的；Cleat 會在下次登入、你再次打開 app，或執行 `cleat restart` 時回來。`cleat status` 會顯示目前 agent 處於哪個狀態。把 `launchAtLogin` 設成 `false` 會取消註冊 agent，Cleat 也會跟著結束。
-
-改用手動安裝的話：從 Finder 打開 app 一次，這同時是第一次詢問麥克風權限、也是它註冊 agent 的時候。agent 執行中再打開 app，開的是設定視窗，所以永遠不會有第二個常駐程式。
 
 ## 設定檔
 

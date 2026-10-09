@@ -118,6 +118,7 @@ fn single_unit_variants() -> Vec<(Unit, Vec<Variant>)> {
     let volume = [json!({}), json!({"Brio 100": 33}), json!({"Brio 100": 33.5}), json!({"*": 72.4}), json!({"*": 72, "Brio 100": 33.5})];
     let volume = std::iter::once(vec![]).chain(volume.into_iter().map(|v| vec![("inputVolume", v)])).collect();
     let balance = vec![vec![], vec![("balance", json!(0.45))], vec![("balance", json!(0.455))]];
+    let launch = vec![vec![], vec![("launchAtLogin", json!(true))], vec![("launchAtLogin", json!(false))]];
     vec![
         (Unit::Reclaim, reclaim_variants()),
         (Unit::Hold, hold_variants()),
@@ -126,12 +127,13 @@ fn single_unit_variants() -> Vec<(Unit, Vec<Variant>)> {
         (Unit::Takeover, takeover),
         (Unit::InputVolume, volume),
         (Unit::Balance, balance),
+        (Unit::LaunchAtLogin, launch),
     ]
 }
 
 /// One-unit variants with the rest missing, plus reclaim x hold in full; each with the units it varies.
 fn states() -> Vec<(Value, Vec<Unit>)> {
-    let fixed = json!({"liveness": {"Wireless microphone": {"zeroSeconds": 5}}, "launchAtLogin": false, "zeta": 1});
+    let fixed = json!({"liveness": {"Wireless microphone": {"zeroSeconds": 5}}, "zeta": 1});
     let build = |parts: &[&Variant]| {
         let mut o = fixed.as_object().unwrap().clone();
         for part in parts {
@@ -169,7 +171,7 @@ fn first_volume(d: &mut SettingsDraft) {
     }
 }
 
-/// The 26 edits the window can make (plan §2.2), each with the unit it belongs to.
+/// The 27 edits the window can make (plan §2.2), each with the unit it belongs to.
 fn edits() -> Vec<(&'static str, Unit, Edit)> {
     vec![
         ("in.move", Unit::InputStance, |d| d.input.move_listed(1, 0)),
@@ -201,6 +203,7 @@ fn edits() -> Vec<(&'static str, Unit, Edit)> {
             }
         }),
         ("balance", Unit::Balance, |d| d.balance_enabled = !d.balance_enabled),
+        ("launch", Unit::LaunchAtLogin, |d| d.launch_at_login = !d.launch_at_login),
         ("takeover", Unit::Takeover, |d| d.headphones_take_over = !d.headphones_take_over),
     ]
 }
@@ -411,6 +414,9 @@ fn run() -> &'static Report {
                     let hold = if m.hold_on { m.hold_against.clone() } else { vec![] };
                     if saved.hold_against_active() != hold {
                         i3.push(format!("hold active {:?} vs shown {hold:?}", saved.hold_against_active()));
+                    }
+                    if saved.launch_at_login != m.launch_at_login {
+                        i3.push(format!("launchAtLogin {} vs shown {}", saved.launch_at_login, m.launch_at_login));
                     }
                     // Written from the draft (not kept as loaded) when it no longer encodes as at load.
                     let written = |u: Unit| at_load.unit(u) != m.unit(u);

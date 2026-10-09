@@ -199,8 +199,8 @@ impl Engine {
         self.sync_error_reports();
     }
 
-    /// A malformed or out-of-range file never replaces a good one; a missing file disables
-    /// everything.
+    /// A malformed or out-of-range file never replaces a good one; a missing file turns every rule
+    /// off and leaves `launchAtLogin` at its default, on.
     fn load_config(&mut self) {
         if !self.config_path.exists() {
             self.config_state = "missing".into();

@@ -15,16 +15,18 @@ pub enum Page {
     Output,
     Input,
     Headphones,
+    General,
 }
 
 impl Page {
-    pub const ALL: [Page; 3] = [Page::Output, Page::Input, Page::Headphones];
+    pub const ALL: [Page; 4] = [Page::Output, Page::Input, Page::Headphones, Page::General];
 
     pub fn title(self) -> &'static str {
         match self {
             Page::Output => "輸出",
             Page::Input => "輸入",
             Page::Headphones => "耳機",
+            Page::General => "一般",
         }
     }
 
@@ -33,6 +35,7 @@ impl Page {
             Page::Output => "speaker.wave.2",
             Page::Input => "mic",
             Page::Headphones => "beats.headphones",
+            Page::General => "gearshape",
         }
     }
 
@@ -41,6 +44,7 @@ impl Page {
             Page::Output => "Cleat 讓聲音一直從你排第一的裝置出來",
             Page::Input => "Cleat 讓你排第一的麥克風一直是預設輸入，音量停在你設定的值",
             Page::Headphones => "藍牙耳機被手機或 iPad 拿走時，Cleat 把它要回來",
+            Page::General => "Cleat 什麼時候執行",
         }
     }
 }
@@ -61,6 +65,7 @@ pub fn device_list_footer(side: Side) -> &'static str {
 
 pub const OUTPUT_LEVELS_FOOTER: &str = "輸出音量：名單上的程式改了音量，Cleat 會拉回原本的值；你自己調的不會被拉回。左右平衡：打開「固定」後，被別的 app 或藍牙重連改掉時 Cleat 會改回來。";
 pub const VOLUMES_FOOTER: &str = "單獨設定的麥克風優先於預設音量。";
+pub const LAUNCH_AT_LOGIN_NOTE: &str = "開著時，開機登入後就會啟動 Cleat，當掉也會自動重開。關掉後 Cleat 會結束，之後要用時從「應用程式」資料夾打開。";
 pub const OTHERS_NOTE: &str = "系統沒說是什麼的藍牙裝置。喇叭或耳機不在上面時，到這裡勾；手機、電腦不用勾。";
 pub const HEADSET_BLOCKED_NOTE: &str = "輸出設為不使用，不會拉回";
 pub const HEADSET_BLOCKED_OFF_NOTE: &str = "輸出設為不使用";
