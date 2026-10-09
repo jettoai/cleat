@@ -217,7 +217,8 @@ by Cleat, and when macOS makes it the default anyway, Cleat moves off it:
 
 - Input: to the first listed microphone with signal, else to the built-in microphone, else to a
   listed microphone that is silent or still being measured (it gives way once a listed one has
-  signal). A microphone that is not on `input` is never used as the way out.
+  signal). Apart from the built-in microphone, a microphone that is not on `input` is never
+  used as the way out.
 - Output: to the first listed output, else to any physical output, built-in first, then by name.
   Virtual, aggregate, Continuity and AirPlay devices, and a headset that `headphonesTakeOver`
   owns, are never used as the way out.
