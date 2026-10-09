@@ -17,7 +17,7 @@ objc2-core-audio = { version = "0.3.2", default-features = false, features = ["s
 objc2-core-audio-types = { version = "0.3.2", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFRunLoop", "CFBundle", "CFURL"] }
 objc2 = "0.6.5"
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSArray", "NSAttributedString", "NSDictionary", "NSData", "NSGeometry", "NSObjCRuntime", "NSURL", "NSPathUtilities", "NSBundle", "NSTimer", "NSDate", "NSRunLoop", "NSValue", "NSIndexSet", "NSNotification", "NSEnumerator", "NSRange", "NSThread", "block2", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSError", "NSArray", "NSAttributedString", "NSDictionary", "NSData", "NSGeometry", "NSObjCRuntime", "NSURL", "NSPathUtilities", "NSBundle", "NSTimer", "NSDate", "NSRunLoop", "NSValue", "NSLocale", "NSIndexSet", "NSNotification", "NSEnumerator", "NSRange", "NSThread", "block2", "objc2-core-foundation"] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "std", "objc2-core-foundation", "objc2-uniform-type-identifiers", "block2", "libc",
   "NSApplication", "NSResponder", "NSRunningApplication", "NSWindow", "NSView", "NSViewController",

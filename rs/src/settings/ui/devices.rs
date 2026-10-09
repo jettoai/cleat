@@ -6,7 +6,9 @@ use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{NSButton, NSColor, NSControlSize, NSControlStateValueOff, NSControlStateValueOn, NSMenu, NSMenuItem, NSView};
 
 use super::super::draft::{DeviceRow, Side};
-use super::super::text::{self, device_list_footer, noun};
+use super::super::lang::{self, Lang};
+use super::super::text::{self, device_list_footer};
+use super::super::words::W;
 use super::pages::device_label;
 use super::widgets::{
     to_view, attributed, fill, icon, label, lowered, ns, plain_row, regular, row, secondary, section, spacer, stack, symbol_exists, tag,
@@ -57,9 +59,10 @@ fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Ret
     v
 }
 
-/// The name and its badges; on the row the side is left on, the orange "暫時還在用這台" goes
+/// The name and its badges; on the row the side is left on, the orange "still in use" note goes
 /// under that line so the badges stay level with the name (B-1287).
 fn label_views(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Vec<Retained<NSView>> {
+    let l = lang::current();
     let current = current(a, side);
     let reason = reason(a, side, r);
     let name = device_label(mtm, &r.display_name, r.is_connected);
@@ -67,13 +70,13 @@ fn label_views(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Vec
         name.setAlphaValue(0.4);
     }
     let mut views = vec![name];
-    views.extend(text::device_row_tags(r, current.as_deref(), reason).into_iter().map(|(t, tone)| tag(mtm, t, tone)));
+    views.extend(text::device_row_tags(r, current.as_deref(), reason, l).into_iter().map(|(t, tone)| tag(mtm, t, tone)));
     if reason != text::RowReason::Stuck {
         return views;
     }
     let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
     let line = stack(mtm, false, 8.0, &refs);
-    let note = label(mtm, text::STUCK_ROW_NOTE, 11.0, regular(), &NSColor::systemOrangeColor());
+    let note = label(mtm, W::StuckRowNote.get(l), 11.0, regular(), &NSColor::systemOrangeColor());
     vec![to_view(&stack(mtm, true, 2.0, &[&line, &note]))]
 }
 
@@ -84,12 +87,13 @@ fn block_toggle(mtm: MainThreadMarker, ctx: &mut Ctx, side: Side, r: &DeviceRow)
         let entry = entry.clone();
         app().edit(move |s| s.draft.list_mut(side).set_blocked(&entry, on));
     });
+    let l = lang::current();
     // SAFETY: target and selector match `Action::fire:`.
-    let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns("不使用"), Some(&act), Some(sel!(fire:)), mtm) };
+    let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns(W::NeverUse.get(l)), Some(&act), Some(sel!(fire:)), mtm) };
     b.setControlSize(NSControlSize::Small);
-    b.setAttributedTitle(&attributed("不使用", 10.0, &NSColor::secondaryLabelColor()));
+    b.setAttributedTitle(&attributed(W::NeverUse.get(l), 10.0, &NSColor::secondaryLabelColor()));
     b.setState(if r.is_blocked() { NSControlStateValueOn } else { NSControlStateValueOff });
-    b.setToolTip(Some(&ns(text::BLOCK_HELP)));
+    b.setToolTip(Some(&ns(W::BlockHelp.get(l))));
     b
 }
 
@@ -107,10 +111,12 @@ fn menu_item(ctx: &mut Ctx, title: &str, enabled: bool, f: impl Fn() + 'static) 
 
 pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
     let mtm = ctx.mtm;
+    let l: Lang = lang::current();
+    let by_side = |output: W, input: W| if side == Side::Output { output } else { input }.get(l);
     let listed = list_of(a, side).listed();
     let mut rows = vec![];
     if listed.is_empty() {
-        let r = plain_row(mtm, &[&secondary(mtm, &format!("尚未設定，Cleat 不會切換{}", noun(side)), 13.0), &spacer(mtm)]);
+        let r = plain_row(mtm, &[&secondary(mtm, by_side(W::NotSetUpOutput, W::NotSetUpInput), 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
     let count = listed.len();
@@ -132,17 +138,17 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
             let entry = entry.clone();
             app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, false))
         });
-        views.push(order_button(mtm, &act, "minus.circle", "移出順序"));
+        views.push(order_button(mtm, &act, "minus.circle", W::RemoveFromOrder.get(l)));
         views.push(to_view(&block_toggle(mtm, ctx, side, r)));
         let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
         let line = row(mtm, &refs);
         line.setCustomSpacing_afterView(18.0, &views[views.len() - 2]);
         let menu = NSMenu::new(mtm);
         menu.setAutoenablesItems(false);
-        menu.addItem(&menu_item(ctx, "上移", i > 0, move || app().edit(move |s| s.draft.list_mut(side).move_listed(i, i.wrapping_sub(1)))));
-        menu.addItem(&menu_item(ctx, "下移", i + 1 < count, move || app().edit(move |s| s.draft.list_mut(side).move_listed(i, i + 2))));
+        menu.addItem(&menu_item(ctx, W::MoveUp.get(l), i > 0, move || app().edit(move |s| s.draft.list_mut(side).move_listed(i, i.wrapping_sub(1)))));
+        menu.addItem(&menu_item(ctx, W::MoveDown.get(l), i + 1 < count, move || app().edit(move |s| s.draft.list_mut(side).move_listed(i, i + 2))));
         let entry = r.entry.clone();
-        menu.addItem(&menu_item(ctx, "移出優先順序", true, move || {
+        menu.addItem(&menu_item(ctx, W::RemoveFromPriority.get(l), true, move || {
             let entry = entry.clone();
             app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, false))
         }));
@@ -150,16 +156,17 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
         unsafe { line.setMenu(Some(&menu)) };
         rows.push(to_view(&line));
     }
-    let header = format!("{}優先順序", noun(side));
+    let header = by_side(W::PriorityOutput, W::PriorityInput);
     let symbol = match side {
         Side::Output => "speaker.wave.2",
         Side::Input => "mic",
     };
-    section(mtm, Some((symbol, &header)), &rows, Some(device_list_footer(side)))
+    section(mtm, Some((symbol, header)), &rows, Some(device_list_footer(side, l)))
 }
 
 pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
     let mtm = ctx.mtm;
+    let l = lang::current();
     let others = list_of(a, side).others();
     if others.is_empty() {
         return None;
@@ -171,7 +178,7 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
             let entry = entry.clone();
             app().edit(move |s| s.draft.list_mut(side).set_listed(&entry, true))
         });
-        let add = order_button(mtm, &act, "plus.circle", "加入順序");
+        let add = order_button(mtm, &act, "plus.circle", W::AddToOrder.get(l));
         let mut views: Vec<Retained<NSView>> = vec![device_icon(a, mtm, side, r)];
         views.extend(label_views(a, mtm, side, r));
         views.push(spacer(mtm));
@@ -182,11 +189,11 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
         line.setCustomSpacing_afterView(18.0, &views[views.len() - 2]);
         rows.push(to_view(&line));
     }
-    let header = format!("其他{}裝置", noun(side));
-    Some(section(mtm, Some(("ellipsis.circle", &header)), &rows, None))
+    let header = if side == Side::Output { W::OthersOutput } else { W::OthersInput }.get(l);
+    Some(section(mtm, Some(("ellipsis.circle", header)), &rows, None))
 }
 
-/// Swift's "加入順序" (and its mirror "移出順序"): a caption `Label` in a borderless button, icon
+/// Swift's "add to order" (and its mirror "remove"): a caption `Label` in a borderless button, icon
 /// and words 13.5 pt apart, drawn as faint as tertiary text so five of them in a column stay quiet.
 fn order_button(mtm: MainThreadMarker, act: &Action, symbol: &str, title: &str) -> Retained<NSView> {
     let tint = NSColor::tertiaryLabelColor();

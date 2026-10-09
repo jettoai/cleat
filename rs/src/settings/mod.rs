@@ -4,12 +4,14 @@
 pub mod document;
 pub mod draft;
 pub mod jetto;
+pub mod lang;
 pub mod single;
 pub mod sources;
 pub mod store;
 pub mod text;
 pub mod ui;
 pub mod vitals;
+pub mod words;
 
 use std::cell::RefCell;
 
@@ -26,6 +28,7 @@ use objc2_foundation::{NSNotification, NSTimer};
 use ui::widgets::ns;
 use ui::window::Sidebar;
 use ui::{app, App};
+use words::W;
 
 define_class!(
     #[unsafe(super(NSObject))]
@@ -61,9 +64,26 @@ fn keep(o: Retained<NSObject>) {
     KEEP.with(|k| k.borrow_mut().push(o));
 }
 
+/// macOS defaults on the command line (`-AppleLanguages '(en)'`, Xcode's `-NS...` pairs) are
+/// NSUserDefaults' to read, not ours: each flag and the value after it are skipped.
+pub fn without_defaults_args(args: &[String]) -> Vec<String> {
+    let mut out = vec![];
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        if (a.starts_with("-Apple") || a.starts_with("-NS")) && a.len() > 3 {
+            i += 2;
+            continue;
+        }
+        out.push(a.clone());
+        i += 1;
+    }
+    out
+}
+
 /// `cleat settings`; `--snapshot <dir>` is not ported (B-1209 deviation list).
 pub fn run(args: &[String]) -> i32 {
-    if let Some(unexpected) = args.first() {
+    if let Some(unexpected) = without_defaults_args(args).first() {
         eprintln!("cleat settings: unexpected argument '{unexpected}'");
         return 2;
     }
@@ -133,17 +153,18 @@ fn menu_item(mtm: MainThreadMarker, title: &str, action: objc2::runtime::Sel, ke
     unsafe { NSMenuItem::initWithTitle_action_keyEquivalent(NSMenuItem::alloc(mtm), &ns(title), Some(action), &ns(key)) }
 }
 
-/// "結束 Cleat 設定" ⌘Q and "檔案 > 關閉視窗" ⌘W.
+/// "Quit Cleat Settings" ⌘Q and "File > Close Window" ⌘W.
 fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
+    let l = lang::current();
     let bar = NSMenu::new(mtm);
     let app_item = NSMenuItem::new(mtm);
     let app_menu = NSMenu::new(mtm);
-    app_menu.addItem(&menu_item(mtm, "結束 Cleat 設定", sel!(terminate:), "q"));
+    app_menu.addItem(&menu_item(mtm, W::QuitSettings.get(l), sel!(terminate:), "q"));
     app_item.setSubmenu(Some(&app_menu));
     bar.addItem(&app_item);
     let file_item = NSMenuItem::new(mtm);
-    let file_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &ns("檔案"));
-    file_menu.addItem(&menu_item(mtm, "關閉視窗", sel!(performClose:), "w"));
+    let file_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &ns(W::FileMenu.get(l)));
+    file_menu.addItem(&menu_item(mtm, W::CloseWindow.get(l), sel!(performClose:), "w"));
     file_item.setSubmenu(Some(&file_menu));
     bar.addItem(&file_item);
     bar

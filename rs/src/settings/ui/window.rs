@@ -16,7 +16,9 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSIndexSet, NSInteger, NSNotification, NSPoint, NSRange, NSRect, NSSize};
 
+use super::super::lang;
 use super::super::text::Page;
+use super::super::words::W;
 use super::widgets::{to_view, label, lowered, ns, overflowing_icon, regular, rounded_box, size, stack};
 use super::{app, App};
 
@@ -58,7 +60,7 @@ define_class!(
             let glyph = if page.symbol() == "mic" { lowered(mtm, &glyph, 1.0) } else { glyph };
             // SAFETY: an AppKit constant.
             let weight = if selected { unsafe { objc2_app_kit::NSFontWeightMedium } } else { regular() };
-            let title = label(mtm, page.title(), 15.0, weight, &color);
+            let title = label(mtm, page.title(lang::current()), 15.0, weight, &color);
             let line = stack(mtm, false, 8.0, &[&glyph, &title]);
             let fill_color = if selected { NSColor::labelColor().colorWithAlphaComponent(0.08) } else { NSColor::clearColor() };
             let cell = rounded_box(mtm, 8.0, &fill_color, None);
@@ -208,7 +210,7 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(NSWindow::alloc(mtm), rect, mask, NSBackingStoreType::Buffered, false)
     };
-    window.setTitle(&ns("Cleat 設定"));
+    window.setTitle(&ns(W::WindowTitle.get(lang::current())));
     window.setTitlebarAppearsTransparent(true);
     window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
     // SAFETY: the window is held by the App for the life of the process.

@@ -1,0 +1,158 @@
+balance:0.5	置中
+balance:0.49	偏左 2%
+balance:0.4	偏左 20%
+balance:0	偏左 100%
+balance:1	偏右 100%
+balance:0.75	偏右 50%
+now:none:out	現在：沒有預設輸出裝置
+now:none:in	現在：沒有預設輸入裝置
+now:noread	現在：Mic 讀不到這個值
+now:read	現在：Mic 62%
+stuck:out	沒有其他可用的輸出裝置，暫時還在用 AirPods Max。取消其他裝置的「不使用」並加入順序，或接上清單內的裝置。
+paused:out	其他程式或裝置一直把輸出切回 AirPods Max，Cleat 先暫停把它換掉，直到裝置增減或設定改變才再試。想馬上再試，拔插一個裝置即可。
+footer:out	有聲音要播時，Cleat 會切到清單中第一個已連線的裝置。勾「不使用」的裝置，Cleat 永遠不會切過去。
+notsetup:out	尚未設定，Cleat 不會切換輸出
+priority:out	輸出優先順序
+others:out	其他輸出裝置
+stuck:in	沒有其他可用的輸入裝置，暫時還在用 AirPods Max。取消其他裝置的「不使用」並加入順序，或接上清單內的裝置。
+paused:in	其他程式或裝置一直把輸入切回 AirPods Max，Cleat 先暫停把它換掉，直到裝置增減、設定改變，或麥克風有聲無聲翻轉才再試。想馬上再試，拔插一個裝置即可。
+footer:in	清單中第一個已連線的麥克風會成為預設輸入。勾「不使用」的裝置，Cleat 永遠不會切過去。
+notsetup:in	尚未設定，Cleat 不會切換輸入
+priority:in	輸入優先順序
+others:in	其他輸入裝置
+headset:bt	輸出設為不使用，不會拉回
+headset:bo	輸出設為不使用
+headset:nc	未連線
+hint:none	還沒有配對過的耳機，不會有動作
+hint:all	所有耳機都設為不使用，不會有動作。到「輸出」頁取消「不使用」即可。
+hint:tick	請至少勾選一副耳機，否則不會有動作
+hint:tb	勾選的耳機都設為不使用，不會有動作
+headline:run	Cleat 執行中
+headline:not	Cleat 未執行
+headline:unr	讀不到 Cleat 的用量
+cpu:measuring	量測中
+cpunote:none	一顆核心的百分比
+cpunote:60	最近 60 秒平均
+reaction:old:note	還沒有拉回紀錄
+reaction:old:help	這個版本的 Cleat 還不會量拉回速度
+reaction:fresh:help	還沒有拉回紀錄
+reaction:some:note	最近 2 次的中位數
+reaction:some:help	其他程式或系統改掉你的設定後，Cleat 改回來要多久。最近一次共 3.5 ms，其中 Cleat 自己處理 0.4 ms，其餘是刻意等裝置穩定
+reaction:stopped:help	Cleat 沒在執行
+write:obj	設定檔不是 JSON 物件，畫面不會覆寫它。
+write:changed	設定檔在畫面開著時被別處改過，請重新載入。
+write:invalid	寫出的設定不合法：x
+write:io	寫入失敗：x
+unreadable	設定檔無法讀取：x。修好檔案後按重新載入。
+otherbt	其他藍牙裝置（3）
+nobalance	現在：MacBook Pro Speakers不支援左右平衡，Cleat 不會動它
+revert:legacy	最近一次：13:40 x
+menu:out	輸出：AirPods Max
+menu:in	輸入：AirPods Max
+launchfail	開機自動啟動沒有設定成功：x
+lit	Cleat 什麼時候執行
+lit	Cleat 執行中
+lit	Cleat 常駐程式占一顆核心的百分比，跟活動監視器同一個算法；取最近 60 秒的平均，剛打開視窗時是打開以來的平均
+lit	Cleat 未執行
+lit	Cleat 沒在執行
+lit	Cleat 設定
+lit	Cleat 讓你排第一的麥克風一直是預設輸入，音量停在你設定的值
+lit	Cleat 讓聲音一直從你排第一的裝置出來
+lit	R 右
+lit	{} 拉回 {} 改的音量 {:.0}% → {:.0}%
+lit	{}優先順序
+lit	一般
+lit	一顆核心的百分比
+lit	上移
+lit	下移
+lit	不使用
+lit	使用中
+lit	偏右 
+lit	偏左 
+lit	其他{}裝置
+lit	其他程式或系統改掉你的設定後，Cleat 改回來要多久。最近一次共 {}，其中 Cleat 自己處理 {}，其餘是刻意等裝置穩定
+lit	其他程式或裝置一直把{noun}切回 {n}，Cleat 先暫停把它換掉，直到{until}才再試。想馬上再試，拔插一個裝置即可。
+lit	其他藍牙裝置（{}）
+lit	加入
+lit	加入程式…
+lit	加入順序
+lit	勾了之後，Cleat 永遠不會切到這個裝置
+lit	勾選的耳機都設為不使用，不會有動作
+lit	啟動
+lit	單獨設定的麥克風優先於預設音量。
+lit	固定
+lit	外接耳機
+lit	實體記憶體
+lit	寫入失敗：{r}
+lit	寫出的設定不合法：{r}
+lit	尚未設定，Cleat 不會切換{}
+lit	左 L
+lit	左右平衡
+lit	已勾不使用，但沒有其他裝置可切
+lit	已勾不使用，被切回來、暫停中
+lit	已排除
+lit	所有耳機都設為不使用，不會有動作。到「輸出」頁取消「不使用」即可。
+lit	所有麥克風的預設音量
+lit	拉回速度
+lit	新增麥克風
+lit	暫時還在用這台
+lit	最近 {s} 秒平均
+lit	最近 {} 次的中位數
+lit	最近一次：{t}
+lit	有聲音要播時，Cleat 會切到清單中第一個已連線的裝置。勾「不使用」的裝置，Cleat 永遠不會切過去。
+lit	未連線
+lit	檔案
+lit	沒有其他可用的{noun}裝置，暫時還在用 {n}。取消其他裝置的「不使用」並加入順序，或接上清單內的裝置。
+lit	沒有找到配對過的藍牙耳機
+lit	清單中第一個已連線的麥克風會成為預設輸入。勾「不使用」的裝置，Cleat 永遠不會切過去。
+lit	現在：{d} {r}
+lit	現在：{d} 讀不到這個值
+lit	現在：{}不支援左右平衡，Cleat 不會動它
+lit	現在：沒有預設{noun}裝置
+lit	移出優先順序
+lit	移出順序
+lit	系統沒說是什麼的藍牙裝置。喇叭或耳機不在上面時，到這裡勾；手機、電腦不用勾。
+lit	結束 Cleat
+lit	結束 Cleat 設定
+lit	置中
+lit	耳機
+lit	耳機被其他裝置拿走時要回來
+lit	與活動監視器「記憶體」欄同一個值
+lit	藍牙耳機被手機或 iPad 拿走時，Cleat 把它要回來
+lit	藍牙耳機連上時自動切過去
+lit	被其他程式改掉時拉回
+lit	裝置增減、設定改變，或麥克風有聲無聲翻轉
+lit	裝置增減或設定改變
+lit	記憶體
+lit	設定檔不是 JSON 物件，畫面不會覆寫它。
+lit	設定檔在畫面開著時被別處改過，請重新載入。
+lit	設定檔無法讀取：{r}。修好檔案後按重新載入。
+lit	請至少勾選一副耳機，否則不會有動作
+lit	讀不到 Cleat 的用量
+lit	讀取中…
+lit	輸入
+lit	輸入音量
+lit	輸入：Wireless microphone
+lit	輸入：{}
+lit	輸入：讀取中…
+lit	輸出
+lit	輸出設為不使用
+lit	輸出設為不使用，不會拉回
+lit	輸出音量
+lit	輸出音量與平衡
+lit	輸出音量：名單上的程式改了音量，Cleat 會拉回原本的值；你自己調的不會被拉回。左右平衡：打開「固定」後，被別的 app 或藍牙重連改掉時 Cleat 會改回來。
+lit	輸出：{}
+lit	輸出：外接耳機
+lit	輸出：讀取中…
+lit	這個版本的 Cleat 還不會量拉回速度
+lit	還沒有拉回紀錄
+lit	還沒有配對過的耳機，不會有動作
+lit	重新載入
+lit	量測中
+lit	開啟設定…
+lit	開機自動啟動
+lit	開機自動啟動沒有設定成功：{e}
+lit	開著時，開機登入後就會啟動 Cleat，當掉也會自動重開。關掉後 Cleat 會結束，之後要用時從「應用程式」資料夾打開。
+lit	關於 Cleat
+lit	關閉視窗
+lit	顯示器

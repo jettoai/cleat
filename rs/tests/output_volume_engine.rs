@@ -75,12 +75,35 @@ fn listed_app_write_is_reverted_and_reported() {
     assert!(line.starts_with("on (holding against Parallels Desktop); last revert "), "{line}");
     let block = status_block(&h);
     let keys: Vec<&String> = block.as_object().unwrap().keys().collect();
-    assert_eq!(keys, vec!["lastRevert", "state"]);
+    assert_eq!(keys, vec!["lastRevert", "lastRevertDetail", "state"]);
     assert_eq!(block["state"], "on (holding against Parallels Desktop)");
     let revert = block["lastRevert"].as_str().unwrap();
     let (clock, rest) = revert.split_at(5);
     assert!(clock.chars().enumerate().all(|(i, c)| if i == 2 { c == ':' } else { c.is_ascii_digit() }), "{revert}");
     assert_eq!(rest, " 拉回 Parallels Desktop 改的音量 43% → 50%");
+}
+
+/// B-1283: the window words `lastRevertDetail` itself; in Chinese it reads exactly as the daemon's
+/// own `lastRevert`, so an older window and a newer one agree. 0.125 sits on a rounding tie (12.5%),
+/// which only an unrounded `from` renders as `lastRevert` does.
+#[test]
+fn revert_detail_reads_as_the_legacy_line() {
+    use cleat_rs::settings::lang::Lang;
+    use cleat_rs::settings::sources::{last_revert, LastRevert};
+    use cleat_rs::settings::text::revert_line;
+    let mut h = start(&["Parallels Desktop"]);
+    emit(&mut h, PARALLELS, 0.5, 0.125, 8484, 262);
+    output_reads(&mut h, &[0.125, 0.125]);
+    h.drive(600);
+    let data = std::fs::read(h.dir.join("status.json")).unwrap();
+    let legacy = status_block(&h)["lastRevert"].as_str().unwrap().to_string();
+    let r = last_revert(&data).unwrap();
+    assert!(matches!(r, LastRevert::Detail(_)), "{r:?}");
+    assert_eq!(revert_line(Some(&r), Lang::ZhHant), format!("最近一次：{legacy}"));
+    let clock = &legacy[..5];
+    assert_eq!(revert_line(Some(&r), Lang::En), format!("Last undo {clock}: Parallels Desktop set 12%, put back to 50%"));
+    let old = br#"{"outputVolume":{"lastRevert":"13:40 \u62c9\u56de x"}}"#;
+    assert_eq!(revert_line(last_revert(old).as_ref(), Lang::En), "Last undo at 13:40");
 }
 
 #[test]

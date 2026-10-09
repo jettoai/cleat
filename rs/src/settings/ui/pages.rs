@@ -7,9 +7,11 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSBox, NSBoxType, NSButton, NSColor, NSControlStateValueMixed, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSFontDescriptor, NSView};
 
 use super::super::draft::{HeadsetBox, HeadsetOption, Side};
+use super::super::lang::{self, Lang};
 use super::super::store::Phase;
 use super::super::text::{self, Page};
 use super::super::vitals::{DaemonVitals, VitalsState};
+use super::super::words::W;
 use super::widgets::{to_view, 
     attributed, card, fill, icon, label, lowered, ns, padded_column, plain_row, row, row_note, row_title, secondary, section, semibold, spacer, stack,
     wrapping, AccentSwitch, Ctx,
@@ -44,7 +46,7 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let notes = side.map(|s| {
         let st = a.store.borrow().stuck.clone();
         let (stuck, paused) = st.side(s);
-        text::stuck_header(s, stuck, paused)
+        text::stuck_header(s, stuck, paused, lang::current())
     });
     if let Some(notes) = notes.filter(|n| !n.is_empty()) {
         let orange = NSColor::systemOrangeColor();
@@ -84,8 +86,9 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
 fn pane_header(mtm: MainThreadMarker, page: Page) -> Retained<NSView> {
     // SAFETY: an AppKit constant.
     let bold = unsafe { objc2_app_kit::NSFontWeightBold };
-    let title = label(mtm, page.title(), 26.0, bold, &NSColor::labelColor());
-    let words = stack(mtm, true, 4.0, &[&title, &secondary(mtm, page.subtitle(), 13.0)]);
+    let l = lang::current();
+    let title = label(mtm, page.title(l), 26.0, bold, &NSColor::labelColor());
+    let words = stack(mtm, true, 4.0, &[&title, &secondary(mtm, page.subtitle(l), 13.0)]);
     words.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 0.0, left: 2.0, bottom: 0.0, right: 0.0 });
     to_view(&words)
 }
@@ -127,12 +130,13 @@ fn vitals_band(mtm: MainThreadMarker, v: &DaemonVitals) -> Retained<NSView> {
         VitalsState::Unreadable => NSColor::systemYellowColor(),
     };
     let dot = icon(mtm, "circle.fill", 7.0, &dot_color);
-    let headline = label(mtm, text::vitals_headline(v.state), 10.0, semibold(), &NSColor::secondaryLabelColor());
+    let l = lang::current();
+    let headline = label(mtm, text::vitals_headline(v.state, l), 10.0, semibold(), &NSColor::secondaryLabelColor());
     let top = stack(mtm, false, 6.0, &[&dot, &headline]);
     let cells = [
-        cell(mtm, "CPU", &text::vitals_cpu(v), &text::vitals_cpu_note(v), text::CPU_HELP),
-        cell(mtm, "記憶體", &text::vitals_memory(v), "實體記憶體", text::MEMORY_HELP),
-        cell(mtm, "拉回速度", &text::reaction_value(v), &text::reaction_note(v), &text::reaction_help(v)),
+        cell(mtm, "CPU", &text::vitals_cpu(v, l), &text::vitals_cpu_note(v, l), W::CpuHelp.get(l)),
+        cell(mtm, W::Memory.get(l), &text::vitals_memory(v), W::PhysicalMemory.get(l), W::MemoryHelp.get(l)),
+        cell(mtm, W::ReclaimSpeed.get(l), &text::reaction_value(v), &text::reaction_note(v, l), &text::reaction_help(v, l)),
     ];
     let grid = stack(mtm, false, 0.0, &[&cells[0], &divider(mtm), &cells[1], &divider(mtm), &cells[2]]);
     grid.setAlignment(objc2_app_kit::NSLayoutAttribute::Top);
@@ -144,6 +148,7 @@ fn vitals_band(mtm: MainThreadMarker, v: &DaemonVitals) -> Retained<NSView> {
 
 fn error_banner(a: &App, ctx: &mut Ctx) -> Option<Retained<NSView>> {
     let mtm = ctx.mtm;
+    let l = lang::current();
     let s = a.store.borrow();
     let unreadable = match &s.phase {
         Phase::Unreadable(r) => Some(r.clone()),
@@ -151,7 +156,7 @@ fn error_banner(a: &App, ctx: &mut Ctx) -> Option<Retained<NSView>> {
     };
     let message = unreadable
         .as_ref()
-        .map(|r| format!("設定檔無法讀取：{r}。修好檔案後按重新載入。"))
+        .map(|r| text::fill(W::Unreadable.get(l), &[r]))
         .or(s.error_message.clone())?;
     let red = NSColor::systemRedColor();
     let line = stack(mtm, false, 6.0, &[&icon(mtm, "exclamationmark.triangle.fill", 16.0, &red), &wrapping(mtm, &message, 13.0, &red)]);
@@ -159,7 +164,7 @@ fn error_banner(a: &App, ctx: &mut Ctx) -> Option<Retained<NSView>> {
     if s.has_conflict || unreadable.is_some() {
         let act = ctx.act(|_| app().reload());
         // SAFETY: target and selector match `Action::fire:`.
-        let b = unsafe { NSButton::buttonWithTitle_target_action(&ns("重新載入"), Some(&act), Some(sel!(fire:)), mtm) };
+        let b = unsafe { NSButton::buttonWithTitle_target_action(&ns(W::Reload.get(l)), Some(&act), Some(sel!(fire:)), mtm) };
         rows.push(to_view(&plain_row(mtm, &[&b, &spacer(mtm)])));
     }
     Some(section(mtm, None, &rows, None))
@@ -173,11 +178,11 @@ pub fn switch_row(mtm: MainThreadMarker, title: &str, on: bool, enabled: bool, f
     to_view(&r)
 }
 
-/// A device name with "未連線" after it when nothing present matches.
+/// A device name with "not connected" after it when nothing present matches.
 pub fn device_label(mtm: MainThreadMarker, name: &str, connected: bool) -> Retained<NSView> {
     let s = stack(mtm, false, 6.0, &[&row_title(mtm, name)]);
     if !connected {
-        s.addArrangedSubview(&row_note(mtm, "未連線"));
+        s.addArrangedSubview(&row_note(mtm, W::NotConnected.get(lang::current())));
     }
     to_view(&s)
 }
@@ -194,7 +199,7 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
     // SAFETY: target and selector match `Action::fire:`.
     let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns(&h.display_name), Some(&act), Some(sel!(fire:)), mtm) };
     let title = attributed(&h.display_name, 15.0, &NSColor::labelColor());
-    if let Some(note) = text::headset_note(shown, h.is_connected).map(|n| format!(" {n}")) {
+    if let Some(note) = text::headset_note(shown, h.is_connected, lang::current()).map(|n| format!(" {n}")) {
         let full = objc2_foundation::NSMutableAttributedString::from_attributed_nsstring(&title);
         full.appendAttributedString(&attributed(&note, 13.0, &NSColor::secondaryLabelColor()));
         b.setAttributedTitle(&full);
@@ -223,12 +228,13 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
 
 fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let mtm = ctx.mtm;
+    let l = lang::current();
     let d = a.store.borrow().draft.clone();
     let mut rows = vec![
-        switch_row(mtm, "藍牙耳機連上時自動切過去", d.headphones_take_over, true, |on| {
+        switch_row(mtm, W::TakeOver.get(l), d.headphones_take_over, true, |on| {
             app().edit(move |s| s.draft.headphones_take_over = on)
         }),
-        switch_row(mtm, "耳機被其他裝置拿走時要回來", d.reclaim_enabled, true, |on| {
+        switch_row(mtm, W::Reclaim.get(l), d.reclaim_enabled, true, |on| {
             app().edit(move |s| s.draft.set_reclaim_enabled(on))
         }),
     ];
@@ -236,7 +242,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let audio: Vec<&HeadsetOption> = d.headsets.iter().filter(|h| !h.is_other).collect();
     let others: Vec<&HeadsetOption> = d.headsets.iter().filter(|h| h.is_other).collect();
     if audio.is_empty() {
-        let r = plain_row(mtm, &[&secondary(mtm, "沒有找到配對過的藍牙耳機", 13.0), &spacer(mtm)]);
+        let r = plain_row(mtm, &[&secondary(mtm, W::NoPairedHeadsets.get(l), 13.0), &spacer(mtm)]);
         r.setEdgeInsets(objc2_foundation::NSEdgeInsets { top: 10.0, left: 36.0, bottom: 10.0, right: 20.0 });
         if !reclaim {
             r.setAlphaValue(0.6);
@@ -253,11 +259,11 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
             a.others_expanded.set(!a.others_expanded.get());
             App::render_later();
         });
-        let title = row_title(mtm, &format!("其他藍牙裝置（{}）", others.len()));
+        let title = row_title(mtm, &text::fill(W::OtherBluetooth.get(l), &[&others.len().to_string()]));
         // The row is top-aligned for the two-line block; centre the chevron on the title line.
         let chevron = icon(mtm, if expanded { "chevron.down" } else { "chevron.right" }, 14.0, &NSColor::secondaryLabelColor());
         let chevron = lowered(mtm, &chevron, (title.fittingSize().height - 14.0) / 2.0);
-        let note = wrapping(mtm, text::OTHERS_NOTE, 13.0, &NSColor::secondaryLabelColor());
+        let note = wrapping(mtm, W::OthersNote.get(l), 13.0, &NSColor::secondaryLabelColor());
         let words = stack(mtm, true, 2.0, &[&title, &note]);
         fill(&words, &note, 0.0);
         // SAFETY: target and selector match `Action::fire:`.
@@ -289,16 +295,17 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         }
     }
     if let Some(hint) = d.reclaim_hint() {
-        let r = plain_row(mtm, &[&secondary(mtm, text::reclaim_hint_text(hint), 13.0), &spacer(mtm)]);
+        let r = plain_row(mtm, &[&secondary(mtm, text::reclaim_hint_text(hint, l), 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
-    section(mtm, Some(("headphones", "耳機")), &rows, None)
+    section(mtm, Some(("headphones", Page::Headphones.title(l))), &rows, None)
 }
 
 /// Whether launchd starts Cleat at login and restarts it when it dies (`launchAtLogin`).
 fn general(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let mtm = ctx.mtm;
+    let l: Lang = lang::current();
     let on = a.store.borrow().draft.launch_at_login;
-    let rows = [switch_row(mtm, "開機自動啟動", on, true, |on| app().edit(move |s| s.draft.launch_at_login = on))];
-    section(mtm, Some(("power", "啟動")), &rows, Some(text::LAUNCH_AT_LOGIN_NOTE))
+    let rows = [switch_row(mtm, W::LaunchAtLogin.get(l), on, true, |on| app().edit(move |s| s.draft.launch_at_login = on))];
+    section(mtm, Some(("power", W::StartupSection.get(l))), &rows, Some(W::LaunchAtLoginNote.get(l)))
 }

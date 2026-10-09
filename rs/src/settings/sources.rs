@@ -12,6 +12,7 @@ use super::draft::{LiveLevels, PairedDevice, Side};
 use super::vitals::VitalsState;
 use crate::audio::property::{self, address, global};
 use crate::audio::{CoreAudioSystem, VIRTUAL_MAIN_BALANCE};
+use crate::engine::RevertDetail;
 use crate::model::AudioDevice;
 use crate::rules::output_volume_hold::level;
 use crate::state::reaction_clock::DaemonPerformance;
@@ -65,10 +66,23 @@ pub fn parse_paired(data: &[u8]) -> Vec<PairedDevice> {
     })
 }
 
-/// status.json's `outputVolume.lastRevert`; None when the file, section or field is missing.
-pub fn last_revert(data: &[u8]) -> Option<String> {
+/// The output volume hold's last revert as the daemon reported it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LastRevert {
+    /// `outputVolume.lastRevertDetail`, which the window words in its own language.
+    Detail(RevertDetail),
+    /// `outputVolume.lastRevert` alone: a daemon older than the detail, its Chinese sentence.
+    Legacy(String),
+}
+
+/// status.json's `outputVolume.lastRevertDetail`, else `lastRevert`; None when neither is there.
+pub fn last_revert(data: &[u8]) -> Option<LastRevert> {
     let v: Value = serde_json::from_slice(data).ok()?;
-    v.get("outputVolume")?.get("lastRevert")?.as_str().map(String::from)
+    let block = v.get("outputVolume")?;
+    if let Some(d) = block.get("lastRevertDetail").and_then(|d| serde_json::from_value(d.clone()).ok()) {
+        return Some(LastRevert::Detail(d));
+    }
+    block.get("lastRevert")?.as_str().map(|s| LastRevert::Legacy(s.into()))
 }
 
 /// status.json `performance`; None for a file written before the measurement existed.

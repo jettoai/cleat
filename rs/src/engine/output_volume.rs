@@ -34,8 +34,22 @@ pub struct OutputVolumeHold {
 #[serde(rename_all = "camelCase")]
 pub struct OutputVolumeStatus {
     pub state: String,
+    /// The Swift-era sentence, kept word for word for older windows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_revert: Option<String>,
+    /// The same revert as data, so the window words it in its own language.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_revert_detail: Option<RevertDetail>,
+}
+
+/// `from` and `to` are unrounded percents; the window rounds them as `lastRevert` does.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevertDetail {
+    pub at: String,
+    pub writer: String,
+    pub from: f64,
+    pub to: f64,
 }
 
 fn clock(t: SystemTime, seconds: bool) -> String {
@@ -234,6 +248,12 @@ impl Engine {
                 f64::from(last.to) * 100.0
             )
         });
-        OutputVolumeStatus { state: self.output_volume_state(), last_revert }
+        let last_revert_detail = self.outvol.ledger.last_revert.as_ref().map(|last| RevertDetail {
+            at: clock(last.at, false),
+            writer: last.writer.clone(),
+            from: f64::from(last.from) * 100.0,
+            to: f64::from(last.to) * 100.0,
+        });
+        OutputVolumeStatus { state: self.output_volume_state(), last_revert, last_revert_detail }
     }
 }

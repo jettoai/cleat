@@ -4,13 +4,16 @@
 //! loaded is written back as the file had it then; a changed unit is written whole from the draft.
 
 use std::collections::BTreeMap;
-use std::fmt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 
 use crate::config::Config;
+
+use super::lang::Lang;
+use super::text::fill;
+use super::words::W;
 
 /// The window's values, unit by unit. `reclaim` and `hold_against` are the lists, kept while their
 /// switch is off; an empty `hold_against` writes no hold keys at all.
@@ -166,13 +169,14 @@ pub enum WriteError {
     Io(String),
 }
 
-impl fmt::Display for WriteError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl WriteError {
+    /// What the error banner says.
+    pub fn message(&self, l: Lang) -> String {
         match self {
-            WriteError::NotAnObject => write!(f, "設定檔不是 JSON 物件，畫面不會覆寫它。"),
-            WriteError::ChangedOnDisk => write!(f, "設定檔在畫面開著時被別處改過，請重新載入。"),
-            WriteError::Invalid(r) => write!(f, "寫出的設定不合法：{r}"),
-            WriteError::Io(r) => write!(f, "寫入失敗：{r}"),
+            WriteError::NotAnObject => W::WriteNotObject.get(l).into(),
+            WriteError::ChangedOnDisk => W::WriteChanged.get(l).into(),
+            WriteError::Invalid(r) => fill(W::WriteInvalid.get(l), &[r]),
+            WriteError::Io(r) => fill(W::WriteIo.get(l), &[r]),
         }
     }
 }

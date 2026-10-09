@@ -11,6 +11,7 @@ use cleat_rs::config::Config;
 use cleat_rs::engine::Status;
 use cleat_rs::model::DeviceSnapshot;
 use cleat_rs::settings::sources::performance;
+use cleat_rs::settings::lang::Lang::ZhHant;
 use cleat_rs::settings::text::{millis_text, reaction_help, reaction_note, reaction_value};
 use cleat_rs::settings::vitals::{DaemonVitals, VitalsState};
 use cleat_rs::state::reaction_clock::{DaemonPerformance, Reaction, ReactionClock};
@@ -240,23 +241,23 @@ fn running(p: Option<DaemonPerformance>) -> DaemonVitals {
 #[test]
 fn vitals_band_cell_has_swifts_three_branches() {
     let old = running(None);
-    assert_eq!((reaction_value(&old), reaction_note(&old)), ("—".into(), "還沒有拉回紀錄".into()));
-    assert_eq!(reaction_help(&old), "這個版本的 Cleat 還不會量拉回速度");
+    assert_eq!((reaction_value(&old), reaction_note(&old, ZhHant)), ("—".into(), "還沒有拉回紀錄".into()));
+    assert_eq!(reaction_help(&old, ZhHant), "這個版本的 Cleat 還不會量拉回速度");
 
     let fresh = running(Some(DaemonPerformance::default()));
     assert_eq!(reaction_value(&fresh), "—");
-    assert_eq!(reaction_help(&fresh), "還沒有拉回紀錄");
+    assert_eq!(reaction_help(&fresh, ZhHant), "還沒有拉回紀錄");
 
     let some = running(Some(swift_perf()));
-    assert_eq!((reaction_value(&some), reaction_note(&some)), ("3.0 ms".into(), "最近 2 次的中位數".into()));
+    assert_eq!((reaction_value(&some), reaction_note(&some, ZhHant)), ("3.0 ms".into(), "最近 2 次的中位數".into()));
     assert_eq!(
-        reaction_help(&some),
+        reaction_help(&some, ZhHant),
         "其他程式或系統改掉你的設定後，Cleat 改回來要多久。最近一次共 3.5 ms，其中 Cleat 自己處理 0.4 ms，其餘是刻意等裝置穩定"
     );
 
     let stopped = DaemonVitals { performance: Some(swift_perf()), ..DaemonVitals::with_state(VitalsState::NotRunning) };
     assert_eq!(reaction_value(&stopped), "—");
-    assert_eq!(reaction_help(&stopped), "Cleat 沒在執行");
+    assert_eq!(reaction_help(&stopped, ZhHant), "Cleat 沒在執行");
 }
 
 #[test]

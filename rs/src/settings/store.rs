@@ -11,7 +11,10 @@ use crate::model::AudioDevice;
 
 use super::document::{self, Origin, WriteError};
 use super::draft::{LiveLevels, PairedDevice, SettingsDraft};
-use super::sources;
+use super::lang;
+use super::sources::{self, LastRevert};
+use super::text::fill;
+use super::words::W;
 use super::vitals::{read_process, DaemonVitals, Sampler, VitalsState};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,7 +31,7 @@ pub struct Store {
     pub has_conflict: bool,
     pub present: Vec<AudioDevice>,
     pub live: LiveLevels,
-    pub last_revert: Option<String>,
+    pub last_revert: Option<LastRevert>,
     /// status.json `stuck`, empty unless the daemon that wrote it is running.
     pub stuck: sources::Stuck,
     pub vitals: DaemonVitals,
@@ -145,9 +148,9 @@ impl Store {
             }
             Err(WriteError::ChangedOnDisk) => {
                 self.has_conflict = true;
-                self.error_message = Some(WriteError::ChangedOnDisk.to_string());
+                self.error_message = Some(WriteError::ChangedOnDisk.message(lang::current()));
             }
-            Err(e) => self.error_message = Some(e.to_string()),
+            Err(e) => self.error_message = Some(e.message(lang::current())),
         }
     }
 
@@ -160,7 +163,7 @@ impl Store {
             return;
         }
         if let Err(e) = agent.register() {
-            self.error_message = Some(format!("開機自動啟動沒有設定成功：{e}"));
+            self.error_message = Some(fill(W::LaunchRegisterFailed.get(lang::current()), &[&e.to_string()]));
         }
     }
 

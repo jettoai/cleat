@@ -15,7 +15,7 @@ pub use listeners::{consumes_arrivals, BALANCE_SETTLE_MS, RETRY_MS, SETTLE_MS};
 pub use reclaim::{
     RECLAIM_BACKOFF, RECLAIM_INTERVAL, RECLAIM_RETRY_DELAY, RECLAIM_RETRY_SPAN, RECLAIM_SCORE, RETURN_TIMEOUT,
 };
-pub use output_volume::{OutputVolumeStatus, WriterSourceFactory, OUTPUT_VOLUME_SETTLE_MS};
+pub use output_volume::{OutputVolumeStatus, RevertDetail, WriterSourceFactory, OUTPUT_VOLUME_SETTLE_MS};
 pub use run_loop::{run, Event, Origin, Timer};
 pub use status::{Status, StuckStatus};
 

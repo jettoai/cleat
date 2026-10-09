@@ -8,8 +8,11 @@ use objc2_app_kit::{NSColor, NSMenu, NSMenuItem, NSModalResponseOK, NSOpenPanel,
 use objc2_foundation::{NSArray, NSPoint, NSURL};
 use objc2_uniform_type_identifiers::UTTypeApplication;
 
+use super::super::draft::Side;
+use super::super::lang::{self, Lang};
 use super::super::store::Store;
 use super::super::text::{self, balance_describe, now_text, percent_text};
+use super::super::words::W;
 use super::pages::device_label;
 use super::widgets::{to_view, body, icon, keycap, ns, padded_column, plain_button, row, row_note, row_title, secondary, section, spacer, stack, width, AccentSwitch, Ctx};
 use super::{app, App};
@@ -18,7 +21,7 @@ fn view<T: AsRef<NSView>>(v: &T) -> &NSView {
     v.as_ref()
 }
 
-/// `title ... 固定 [switch]`, the slider (dimmed while not fixed), and the now line.
+/// `title ... Hold [switch]`, the slider (dimmed while not fixed), and the now line.
 fn pinned_row(
     mtm: MainThreadMarker,
     title: &str,
@@ -28,7 +31,7 @@ fn pinned_row(
     now: &str,
 ) -> Retained<NSView> {
     let sw = AccentSwitch::new(mtm, fixed, true, on_fixed);
-    let top = stack(mtm, false, 6.0, &[&row_title(mtm, title), &spacer(mtm), &body(mtm, "固定"), &sw]);
+    let top = stack(mtm, false, 6.0, &[&row_title(mtm, title), &spacer(mtm), &body(mtm, W::Hold.get(lang::current())), &sw]);
     let mut views: Vec<Retained<NSView>> = vec![to_view(&top)];
     if let Some(c) = control {
         if !fixed {
@@ -70,20 +73,22 @@ fn percent_slider(mtm: MainThreadMarker, ctx: &mut Ctx, value: f64, set: impl Fn
 
 /// 0 (left) ... 1 (right); within 0.02 of the centre snaps to it.
 fn balance_slider(mtm: MainThreadMarker, ctx: &mut Ctx, value: f64) -> Retained<NSView> {
-    let (cap, cap_label) = keycap(mtm, &balance_describe(value), 72.0);
+    let l = lang::current();
+    // "Right 100%" needs 79 pt; the Chinese keycap stays as it was.
+    let (cap, cap_label) = keycap(mtm, &balance_describe(value, l), if l == Lang::En { 80.0 } else { 72.0 });
     let s = slider(mtm, ctx, value, 1.0, move |s| {
         let raw = s.doubleValue();
         let v = if (raw - 0.5).abs() < 0.02 { 0.5 } else { raw };
         if v != raw {
             s.setDoubleValue(v);
         }
-        cap_label.setStringValue(&ns(&balance_describe(v)));
+        cap_label.setStringValue(&ns(&balance_describe(v, l)));
         app().edit_quiet(|st| st.draft.balance = v);
     });
-    let left = secondary(mtm, "左 L", 10.0);
+    let left = secondary(mtm, W::BalanceLeft.get(l), 10.0);
     left.setTextColor(Some(&NSColor::labelColor()));
     width(&left, 30.0);
-    let right = secondary(mtm, "R 右", 10.0);
+    let right = secondary(mtm, W::BalanceRight.get(l), 10.0);
     right.setTextColor(Some(&NSColor::labelColor()));
     right.setAlignment(objc2_app_kit::NSTextAlignment::Right);
     width(&right, 30.0);
@@ -105,7 +110,7 @@ fn choose_app(mtm: MainThreadMarker) -> Option<String> {
     panel.setAllowedContentTypes(&NSArray::from_slice(&[app_type]));
     panel.setCanChooseDirectories(false);
     panel.setAllowsMultipleSelection(false);
-    panel.setPrompt(Some(&ns("加入")));
+    panel.setPrompt(Some(&ns(W::PanelAdd.get(lang::current()))));
     if panel.runModal() != NSModalResponseOK {
         return None;
     }
@@ -116,13 +121,14 @@ fn choose_app(mtm: MainThreadMarker) -> Option<String> {
 
 pub fn output_levels(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let mtm = ctx.mtm;
+    let l = lang::current();
     let (d, live, last_revert) = {
         let s = a.store.borrow();
         (s.draft.clone(), s.live.clone(), s.last_revert.clone())
     };
     let hold = d.hold_enabled;
     let sw = AccentSwitch::new(mtm, hold, true, |on| app().edit(move |s| s.draft.set_hold_enabled(on)));
-    let head = row(mtm, &[&row_title(mtm, "輸出音量"), &spacer(mtm), &body(mtm, "被其他程式改掉時拉回"), &sw]);
+    let head = row(mtm, &[&row_title(mtm, W::OutputVolume.get(l)), &spacer(mtm), &body(mtm, W::HoldAgainst.get(l)), &sw]);
     head.setCustomSpacing_afterView(6.0, &head.arrangedSubviews().objectAtIndex(2));
     let mut rows: Vec<Retained<NSView>> = vec![to_view(&head)];
     for name in &d.hold_against {
@@ -144,40 +150,41 @@ pub fn output_levels(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
             app().edit(move |s| s.draft.add_hold_app(&name));
         }
     });
-    let add = plain_button(mtm, "plus.circle", "加入程式…", 13.0, &NSColor::labelColor(), &act);
+    let add = plain_button(mtm, "plus.circle", W::AddApp.get(l), 13.0, &NSColor::labelColor(), &act);
     let r = row(mtm, &[view(&add), &spacer(mtm)]);
     if !hold {
         super::disable_tree(&r);
         r.setAlphaValue(0.6);
     }
     rows.push(to_view(&r));
-    let revert = last_revert.map_or_else(|| "還沒有拉回紀錄".to_string(), |t| format!("最近一次：{t}"));
+    let revert = text::revert_line(last_revert.as_ref(), l);
     rows.push(to_view(&row(mtm, &[&row_note(mtm, &revert), &spacer(mtm)])));
 
     let no_balance = live.output_device.is_some() && live.balance.is_none();
     let now = if no_balance {
-        format!("現在：{}不支援左右平衡，Cleat 不會動它", live.output_device.clone().unwrap_or_default())
+        text::fill(W::NoBalance.get(l), &[live.output_device.as_deref().unwrap_or_default()])
     } else {
-        let reading = live.balance.map(balance_describe);
-        now_text(live.output_device.as_deref(), reading.as_deref(), "輸出")
+        let reading = live.balance.map(|b| balance_describe(b, l));
+        now_text(live.output_device.as_deref(), reading.as_deref(), Side::Output, l)
     };
     let control = (!no_balance).then(|| balance_slider(mtm, ctx, d.balance));
-    rows.push(pinned_row(mtm, "左右平衡", d.balance_enabled, |on| app().edit(move |s| s.draft.balance_enabled = on), control, &now));
-    section(mtm, Some(("slider.horizontal.3", "輸出音量與平衡")), &rows, Some(text::OUTPUT_LEVELS_FOOTER))
+    rows.push(pinned_row(mtm, W::Balance.get(l), d.balance_enabled, |on| app().edit(move |s| s.draft.balance_enabled = on), control, &now));
+    section(mtm, Some(("slider.horizontal.3", W::OutputLevelsHeader.get(l))), &rows, Some(W::OutputLevelsFooter.get(l)))
 }
 
 pub fn volumes(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let mtm = ctx.mtm;
+    let l = lang::current();
     let (d, live, candidates) = {
         let s = a.store.borrow();
         (s.draft.clone(), s.live.clone(), s.volume_candidates())
     };
     let reading = live.input_volume.map(percent_text);
-    let now = now_text(live.input_device.as_deref(), reading.as_deref(), "輸入");
+    let now = now_text(live.input_device.as_deref(), reading.as_deref(), Side::Input, l);
     let wildcard = percent_slider(mtm, ctx, d.wildcard_percent, |s, v| s.draft.wildcard_percent = v);
     let mut rows = vec![pinned_row(
         mtm,
-        "所有麥克風的預設音量",
+        W::DefaultMicLevel.get(l),
         d.wildcard_enabled,
         |on| app().edit(move |s| s.draft.wildcard_enabled = on),
         Some(wildcard),
@@ -228,10 +235,10 @@ pub fn volumes(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         menu.popUpMenuPositioningItem_atLocation_inView(None, NSPoint::new(0.0, h + 4.0), Some(button));
         drop(keep);
     });
-    let add = plain_button(mtm, "plus.circle", "新增麥克風", 13.0, &NSColor::labelColor(), &act);
+    let add = plain_button(mtm, "plus.circle", W::AddMicrophone.get(l), 13.0, &NSColor::labelColor(), &act);
     if candidates.is_empty() {
         add.setEnabled(false);
     }
     rows.push(to_view(&row(mtm, &[view(&add), &spacer(mtm)])));
-    section(mtm, Some(("slider.horizontal.3", "輸入音量")), &rows, Some(text::VOLUMES_FOOTER))
+    section(mtm, Some(("slider.horizontal.3", W::InputVolume.get(l))), &rows, Some(W::VolumesFooter.get(l)))
 }

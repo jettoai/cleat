@@ -23,7 +23,9 @@ use objc2_foundation::{
 
 use crate::config::paths;
 use crate::engine::Status;
-use crate::settings::text::BYLINE_CREDIT;
+use crate::settings::lang::{self, Lang};
+use crate::settings::text::{fill, BYLINE_CREDIT};
+use crate::settings::words::W;
 
 /// The swap point for the icon: Contents/Resources/MenuBarIcon.png (+ MenuBarIcon@2x.png), copied
 /// from rs/bundle by scripts/bundle.sh, black on transparent at 18 pt. Replace those files to
@@ -34,11 +36,11 @@ pub const ICON_RESOURCE: &str = "MenuBarIcon";
 pub const FALLBACK_SYMBOL: &str = "slider.horizontal.3";
 
 /// The two read-only lines at the top of the menu.
-pub fn device_lines(status: Option<&Status>) -> [String; 2] {
-    let name = |v: Option<&String>| v.cloned().unwrap_or_else(|| "讀取中…".into());
+pub fn device_lines(status: Option<&Status>, l: Lang) -> [String; 2] {
+    let name = |v: Option<&String>| v.map_or(W::Loading.get(l).to_string(), String::clone);
     [
-        format!("輸出：{}", name(status.and_then(|s| s.default_output.as_ref()))),
-        format!("輸入：{}", name(status.and_then(|s| s.default_input.as_ref()))),
+        fill(W::MenuOutput.get(l), &[&name(status.and_then(|s| s.default_output.as_ref()))]),
+        fill(W::MenuInput.get(l), &[&name(status.and_then(|s| s.default_input.as_ref()))]),
     ]
 }
 
@@ -168,23 +170,24 @@ fn icon() -> Option<Retained<NSImage>> {
 
 fn rebuild(menu: &NSMenu, target: &MenuBar) {
     let mtm = MainThreadMarker::from(target);
+    let l = lang::current();
     menu.removeAllItems();
     let status = Status::read(&paths::status_path());
-    for line in device_lines(status.as_ref()) {
+    for line in device_lines(status.as_ref(), l) {
         let it = item(mtm, &line, None, "");
         it.setEnabled(false);
         menu.addItem(&it);
     }
     menu.addItem(&NSMenuItem::separatorItem(mtm));
-    let open = item(mtm, "開啟設定…", Some(sel!(openSettings:)), ",");
-    let about = item(mtm, "關於 Cleat", Some(sel!(showAbout:)), "");
+    let open = item(mtm, W::OpenSettings.get(l), Some(sel!(openSettings:)), ",");
+    let about = item(mtm, W::About.get(l), Some(sel!(showAbout:)), "");
     for it in [&open, &about] {
         // SAFETY: the target is kept alive in KEEP for the life of the process.
         unsafe { it.setTarget(Some(target)) };
         menu.addItem(it);
     }
     menu.addItem(&NSMenuItem::separatorItem(mtm));
-    let quit = item(mtm, "結束 Cleat", Some(sel!(terminate:)), "q");
+    let quit = item(mtm, W::Quit.get(l), Some(sel!(terminate:)), "q");
     // SAFETY: the shared application outlives the menu.
     unsafe { quit.setTarget(Some(&NSApplication::sharedApplication(mtm))) };
     menu.addItem(&quit);
@@ -254,13 +257,15 @@ mod tests {
     #[test]
     fn device_lines_from_status() {
         let s = status(Some("外接耳機"), Some("Wireless microphone"));
-        assert_eq!(device_lines(Some(&s)), ["輸出：外接耳機".to_string(), "輸入：Wireless microphone".to_string()]);
+        assert_eq!(device_lines(Some(&s), Lang::ZhHant), ["輸出：外接耳機".to_string(), "輸入：Wireless microphone".to_string()]);
+        assert_eq!(device_lines(Some(&s), Lang::En), ["Output: 外接耳機".to_string(), "Input: Wireless microphone".to_string()]);
     }
 
     #[test]
     fn device_lines_without_status() {
         let reading = ["輸出：讀取中…".to_string(), "輸入：讀取中…".to_string()];
-        assert_eq!(device_lines(None), reading);
-        assert_eq!(device_lines(Some(&status(None, None))), reading);
+        assert_eq!(device_lines(None, Lang::ZhHant), reading);
+        assert_eq!(device_lines(Some(&status(None, None)), Lang::ZhHant), reading);
+        assert_eq!(device_lines(None, Lang::En), ["Output: Reading…".to_string(), "Input: Reading…".to_string()]);
     }
 }
