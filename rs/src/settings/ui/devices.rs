@@ -15,20 +15,11 @@ use super::widgets::{
 use super::{app, App};
 use crate::model::device_name;
 
-/// The device status.json says this side is left on although "not used" (B-1287).
-pub fn stuck_on(a: &App, side: Side) -> Option<String> {
-    let s = a.store.borrow();
-    match side {
-        Side::Input => s.stuck.0.clone(),
-        Side::Output => s.stuck.1.clone(),
-    }
-}
-
-/// The note under a row the daemon could not move off.
+/// The note under a row the daemon could not move off (B-1287); the page header says why.
 fn stuck_row(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Option<Retained<NSView>> {
-    let stuck = stuck_on(a, side)?;
+    let stuck = a.store.borrow().stuck.side(side).0.map(String::from)?;
     device_name::matches(&r.entry, &stuck, "").then(|| {
-        let note = secondary(mtm, &text::stuck_note(&r.display_name), 11.0);
+        let note = secondary(mtm, text::STUCK_ROW_NOTE, 11.0);
         to_view(&plain_row(mtm, &[&note, &spacer(mtm)]))
     })
 }
@@ -47,13 +38,7 @@ fn tags(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Option<Ret
         Side::Input => s.live.input_device.clone(),
         Side::Output => s.live.output_device.clone(),
     };
-    if r.is_blocked() {
-        Some(tag(mtm, "已排除", false))
-    } else if r.is_connected && current.is_some_and(|c| device_name::matches(&r.display_name, &c, "")) {
-        Some(tag(mtm, "使用中", true))
-    } else {
-        None
-    }
+    text::device_row_tag(r, current.as_deref()).map(|(t, on)| tag(mtm, t, on))
 }
 
 fn device_icon(a: &App, mtm: MainThreadMarker, side: Side, r: &DeviceRow) -> Retained<NSView> {

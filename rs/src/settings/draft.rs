@@ -191,6 +191,14 @@ pub struct HeadsetOption {
     pub is_other: bool,
 }
 
+/// How a headset's checkbox shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeadsetBox {
+    Plain(bool),
+    BlockedTicked,
+    BlockedOff,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VolumeEntry {
     pub entry: String,
@@ -368,7 +376,9 @@ impl SettingsDraft {
     /// with no headset at all it stays off.
     pub fn set_reclaim_enabled(&mut self, on: bool) {
         if on && !self.headsets.iter().any(|h| h.is_selected) {
-            let index = self.headsets.iter().position(|h| h.is_connected).or((!self.headsets.is_empty()).then_some(0));
+            // A blocked headset is never ticked for Albert; with none left there is nothing to tick.
+            let open: Vec<usize> = (0..self.headsets.len()).filter(|&i| !self.headset_blocked(&self.headsets[i])).collect();
+            let index = open.iter().copied().find(|&i| self.headsets[i].is_connected).or(open.first().copied());
             let Some(i) = index else { return };
             self.headsets[i].is_selected = true;
         }
@@ -383,14 +393,33 @@ impl SettingsDraft {
         BluetoothHeadset { name: h.display_name.clone(), address, is_connected: h.is_connected }.is_listed(&self.output.blocked())
     }
 
-    /// Ignored while reclaim is off. Unticking the last headset turns reclaim off.
+    /// A blocked headset never shows a tick: ticked, it shows a dash and a click unticks it;
+    /// unticked, it cannot be ticked.
+    pub fn headset_box(&self, h: &HeadsetOption) -> HeadsetBox {
+        match (self.headset_blocked(h), h.is_selected) {
+            (false, on) => HeadsetBox::Plain(on),
+            (true, true) => HeadsetBox::BlockedTicked,
+            (true, false) => HeadsetBox::BlockedOff,
+        }
+    }
+
+    /// Reclaim is on and every ticked headset's output is "not used": nothing will happen.
+    pub fn all_ticked_blocked(&self) -> bool {
+        let mut ticked = self.headsets.iter().filter(|h| h.is_selected).peekable();
+        self.reclaim_enabled && ticked.peek().is_some() && ticked.all(|h| self.headset_blocked(h))
+    }
+
+    /// Ignored while reclaim is off, and ticking a blocked headset is ignored. Unticking the last
+    /// headset turns reclaim off.
     pub fn set_headset(&mut self, entry: &str, on: bool) {
         if !self.reclaim_enabled {
             return;
         }
-        if let Some(h) = self.headsets.iter_mut().find(|h| h.entry == entry) {
-            h.is_selected = on;
+        let Some(i) = self.headsets.iter().position(|h| h.entry == entry) else { return };
+        if on && self.headset_blocked(&self.headsets[i]) {
+            return;
         }
+        self.headsets[i].is_selected = on;
         if !self.headsets.iter().any(|h| h.is_selected) {
             self.reclaim_enabled = false;
         }

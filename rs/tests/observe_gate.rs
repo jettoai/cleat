@@ -120,3 +120,15 @@ fn observe_never_asks_for_a_headset_or_reads_writers_and_enforce_does() {
     assert_eq!(enforce.requests().len(), 1);
     assert_eq!(enforce.writer.made.get(), 1);
 }
+
+/// B-1287: observe mode writes its status beside the real one, never over it; enforce writes the
+/// real one.
+#[test]
+fn observe_never_writes_the_daemon_status_file() {
+    let observe = run(Mode::Observe, FOUR_RULES, four_rules_snapshot());
+    assert!(!observe.dir.join("status.json").exists());
+    assert!(observe.dir.join("status-observe.json").exists());
+    let enforce = run(Mode::Enforce, FOUR_RULES, four_rules_snapshot());
+    assert!(enforce.dir.join("status.json").exists());
+    assert!(!enforce.dir.join("status-observe.json").exists());
+}

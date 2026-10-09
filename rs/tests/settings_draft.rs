@@ -1,6 +1,6 @@
 use cleat_rs::config::Config;
 use cleat_rs::model::AudioDevice;
-use cleat_rs::settings::draft::{DeviceList, LiveLevels, PairedDevice, SettingsDraft, Stance, DEFAULT_HOLD_AGAINST};
+use cleat_rs::settings::draft::{DeviceList, HeadsetBox, LiveLevels, PairedDevice, SettingsDraft, Stance, DEFAULT_HOLD_AGAINST};
 
 fn out(id: u32, name: &str) -> AudioDevice {
     AudioDevice::new(id, name, &format!("uid-{id}"), false, true)
@@ -147,4 +147,57 @@ fn a_headset_whose_output_is_not_used_reads_as_blocked() {
     assert_eq!(blocked, [("AirPods Max".to_string(), true), ("Bose".to_string(), false)]);
     d.output.set_blocked("AirPods\u{00A0}Max", false);
     assert!(!d.headset_blocked(&d.headsets[0].clone()));
+}
+
+/// B-1287: a headset whose output is "not used" never shows a tick, can be unticked but not
+/// ticked, and when every ticked headset is blocked the page says nothing will happen.
+#[test]
+fn blocked_headsets_unblocked_partly_blocked_and_all_blocked() {
+    let p = [paired("AirPods Max", true, Some("Headphones")), paired("Bose", true, Some("Headphones"))];
+    let make = |reclaim: &[&str], blocked: &[&str]| {
+        let config = Config { reclaim: s(reclaim), reclaim_enabled: true, blocked_output: s(blocked), ..Config::disabled() };
+        SettingsDraft::make(&config, &[out(3, "AirPods Max")], &p, &LiveLevels::default())
+    };
+    let boxes = |d: &SettingsDraft| d.headsets.iter().map(|h| d.headset_box(h)).collect::<Vec<_>>();
+
+    let d = make(&["AirPods Max", "Bose"], &[]);
+    assert_eq!(boxes(&d), [HeadsetBox::Plain(true), HeadsetBox::Plain(true)]);
+    assert!(!d.all_ticked_blocked());
+
+    let mut d = make(&["AirPods Max", "Bose"], &["AirPods Max"]);
+    assert_eq!(boxes(&d), [HeadsetBox::BlockedTicked, HeadsetBox::Plain(true)]);
+    assert!(!d.all_ticked_blocked());
+    d.set_headset("AirPods Max", false);
+    assert_eq!(boxes(&d), [HeadsetBox::BlockedOff, HeadsetBox::Plain(true)]);
+    d.set_headset("AirPods Max", true);
+    assert_eq!(boxes(&d), [HeadsetBox::BlockedOff, HeadsetBox::Plain(true)], "a blocked headset cannot be ticked");
+
+    let mut d = make(&["AirPods Max"], &["AirPods Max"]);
+    assert_eq!(boxes(&d), [HeadsetBox::BlockedTicked, HeadsetBox::Plain(false)]);
+    assert!(d.all_ticked_blocked());
+    d.set_headset("Bose", true);
+    assert!(!d.all_ticked_blocked());
+}
+
+/// B-1287: turning reclaim on ticks the first connected headset that is not "not used".
+#[test]
+fn turning_reclaim_on_skips_a_blocked_headset() {
+    let p = [paired("AirPods Max", true, Some("Headphones")), paired("Bose", true, Some("Headphones"))];
+    let make = |blocked: &[&str]| {
+        let config = Config { blocked_output: s(blocked), ..Config::disabled() };
+        SettingsDraft::make(&config, &[out(3, "AirPods Max")], &p, &LiveLevels::default())
+    };
+    let ticked = |d: &SettingsDraft| d.headsets.iter().filter(|h| h.is_selected).map(|h| h.entry.clone()).collect::<Vec<_>>();
+
+    let mut d = make(&["AirPods Max"]);
+    d.set_reclaim_enabled(true);
+    assert_eq!(ticked(&d), ["Bose"]);
+
+    let mut d = make(&[]);
+    d.set_reclaim_enabled(true);
+    assert_eq!(ticked(&d), ["AirPods Max"]);
+
+    let mut d = make(&["AirPods Max", "Bose"]);
+    d.set_reclaim_enabled(true);
+    assert!(ticked(&d).is_empty(), "every headset blocked: nothing to tick");
 }

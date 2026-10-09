@@ -111,6 +111,11 @@ impl Sampler {
     }
 }
 
+/// `Cleat`, `Cleat Dev` and the `cleat-rs` development build all count, in any case.
+pub fn is_cleat_name(name: &[u8]) -> bool {
+    name.get(..5).is_some_and(|p| p.eq_ignore_ascii_case(b"cleat"))
+}
+
 /// One `proc_pid_rusage` reading. A pid reused by something not named Cleat is as good as gone.
 #[allow(deprecated)] // mach_timebase_info: libc points at the mach2 crate, not added for one call.
 pub fn read_process(pid: i32) -> Result<Reading, Failure> {
@@ -120,7 +125,7 @@ pub fn read_process(pid: i32) -> Result<Reading, Failure> {
     let mut name = [0u8; 256];
     // SAFETY: `name` is a 256-byte buffer.
     let n = unsafe { libc::proc_name(pid, name.as_mut_ptr().cast(), name.len() as u32) };
-    if n > 0 && !name[..n as usize].starts_with(b"Cleat") {
+    if n > 0 && !is_cleat_name(&name[..n as usize]) {
         return Err(Failure::NotRunning);
     }
     // SAFETY: all-zero is a valid rusage_info_v4.

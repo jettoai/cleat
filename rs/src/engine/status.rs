@@ -102,7 +102,12 @@ impl Engine {
             performance: Some(self.reactions.summary()),
             stuck: Some(stuck),
         };
-        status.write(&self.status_path);
+        // Observe mode must not pass itself off as the running daemon in the file the window reads.
+        if self.mode == super::Mode::Observe {
+            status.write(&self.status_path.with_file_name("status-observe.json"));
+        } else {
+            status.write(&self.status_path);
+        }
     }
 }
 

@@ -6,7 +6,7 @@ use objc2_core_audio::{
     kAudioDeviceTransportTypeBuiltIn, kAudioDeviceTransportTypeDisplayPort, kAudioDeviceTransportTypeHDMI,
 };
 
-use super::draft::Side;
+use super::draft::{DeviceRow, Side};
 use super::vitals::{DaemonVitals, VitalsState};
 use crate::state::reaction_clock::DaemonPerformance;
 
@@ -63,9 +63,27 @@ pub const OUTPUT_LEVELS_FOOTER: &str = "輸出音量：名單上的程式改了�
 pub const VOLUMES_FOOTER: &str = "單獨設定的麥克風優先於預設音量。";
 pub const OTHERS_NOTE: &str = "系統沒說是什麼的藍牙裝置。喇叭或耳機不在上面時，到這裡勾；手機、電腦不用勾。";
 pub const HEADSET_BLOCKED_NOTE: &str = "輸出設為不使用，不會拉回";
-/// A side left on a "not used" device because nothing else is usable (B-1287).
-pub fn stuck_note(name: &str) -> String {
-    format!("沒有其他可用的裝置，暫時還在用 {name}")
+/// The note under the row of the device a side is left on (B-1287); the page header says why.
+pub const STUCK_ROW_NOTE: &str = "暫時還在用這台";
+pub const ALL_HEADSETS_BLOCKED: &str = "勾選的耳機都設為不使用，不會有動作";
+
+/// The page header's orange lines for one side (B-1287): left on a "not used" device because
+/// nothing else is usable, and a "not used" device the eviction cooldown leaves in place. Each says
+/// what Albert can do. The resume conditions follow `engine::eviction`'s log line.
+pub fn stuck_header(side: Side, stuck: Option<&str>, paused: Option<&str>) -> Vec<String> {
+    let noun = noun(side);
+    let mut lines = vec![];
+    if let Some(n) = stuck {
+        lines.push(format!("沒有其他可用的{noun}裝置，暫時還在用 {n}。接上或連上清單裡的其他裝置，Cleat 就會切過去。"));
+    }
+    if let Some(n) = paused {
+        let until = match side {
+            Side::Input => "裝置增減、設定改變，或麥克風有聲無聲翻轉",
+            Side::Output => "裝置增減或設定改變",
+        };
+        lines.push(format!("{n} 一直被切回來，Cleat 先暫停把它換掉，直到{until}才再試。想馬上再試，拔插一個裝置即可。"));
+    }
+    lines
 }
 pub const BLOCK_HELP: &str = "勾了之後，Cleat 永遠不會切到這個裝置";
 pub const CPU_HELP: &str = "Cleat 常駐程式占一顆核心的百分比，跟活動監視器同一個算法；取最近 60 秒的平均，剛打開視窗時是打開以來的平均";
@@ -209,3 +227,16 @@ pub fn byline(version: &str) -> String {
 
 /// The attribution, also the About panel's credits.
 pub const BYLINE_CREDIT: &str = "by Jetto";
+
+/// A device row's badge and whether it is the accent one. The device in use reads "使用中" even
+/// when it is "not used" (B-1287: the side is left on it), so the row, the header and the level line
+/// name the same device; any other "not used" device reads "已排除".
+pub fn device_row_tag(r: &DeviceRow, current: Option<&str>) -> Option<(&'static str, bool)> {
+    if r.is_connected && current.is_some_and(|c| crate::model::device_name::matches(&r.display_name, c, "")) {
+        Some(("使用中", true))
+    } else if r.is_blocked() {
+        Some(("已排除", false))
+    } else {
+        None
+    }
+}

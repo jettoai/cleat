@@ -52,3 +52,50 @@ fn last_revert_is_optional() {
 fn byline_names_jetto() {
     assert_eq!(byline("0.1.0"), "Cleat 0.1.0 · by Jetto");
 }
+
+/// B-1287: the window reads all four `stuck` fields, shows them only while the daemon runs, and
+/// the header gives each side its own lines with something to do.
+#[test]
+fn stuck_and_paused_reach_the_page_header_only_while_running() {
+    use cleat_rs::settings::sources::stuck;
+    use cleat_rs::settings::text::{stuck_header, STUCK_ROW_NOTE};
+    use cleat_rs::settings::vitals::VitalsState;
+    let data = br#"{"stuck": {"input": "AirPods Max", "output": null, "inputPaused": null, "outputPaused": "MacBook Pro Speakers"}}"#;
+    let st = stuck(data);
+    assert_eq!(st.side(Side::Input), (Some("AirPods Max"), None));
+    assert_eq!(st.side(Side::Output), (None, Some("MacBook Pro Speakers")));
+    assert_eq!(stuck(br#"{"stuck": {"input": "A", "output": "B"}}"#).side(Side::Output), (Some("B"), None), "an older file without the paused fields");
+    assert_eq!(st.clone().shown_when(VitalsState::Running), st);
+    assert_eq!(st.clone().shown_when(VitalsState::NotRunning), Default::default());
+    assert_eq!(st.clone().shown_when(VitalsState::Unreadable), Default::default());
+
+    assert!(stuck_header(Side::Input, None, None).is_empty());
+    assert_eq!(
+        stuck_header(Side::Input, Some("AirPods Max"), None),
+        ["沒有其他可用的輸入裝置，暫時還在用 AirPods Max。接上或連上清單裡的其他裝置，Cleat 就會切過去。"]
+    );
+    assert_eq!(
+        stuck_header(Side::Output, None, Some("MacBook Pro Speakers")),
+        ["MacBook Pro Speakers 一直被切回來，Cleat 先暫停把它換掉，直到裝置增減或設定改變才再試。想馬上再試，拔插一個裝置即可。"]
+    );
+    let input_paused = stuck_header(Side::Input, None, Some("AirPods Max"));
+    assert!(input_paused[0].contains("麥克風有聲無聲翻轉"), "{input_paused:?}");
+    let both = stuck_header(Side::Input, Some("A"), Some("B"));
+    assert_eq!(both.len(), 2);
+    assert!(both.iter().all(|l| !l.contains(STUCK_ROW_NOTE)), "the header and the device row say different things");
+}
+
+/// B-1287: the device a side is left on reads "使用中" even when it is "not used", so the row
+/// agrees with the page header and the level line.
+#[test]
+fn the_device_in_use_reads_in_use_even_when_not_used() {
+    use cleat_rs::settings::draft::{DeviceRow, Stance};
+    use cleat_rs::settings::text::device_row_tag;
+    let row = |stance| DeviceRow { entry: "Wireless microphone".into(), display_name: "Wireless microphone".into(), is_connected: true, stance };
+    let now = Some("Wireless microphone");
+    assert_eq!(device_row_tag(&row(Stance::Blocked), now), Some(("使用中", true)));
+    assert_eq!(device_row_tag(&row(Stance::Blocked), Some("MacBook Pro Microphone")), Some(("已排除", false)));
+    assert_eq!(device_row_tag(&row(Stance::Blocked), None), Some(("已排除", false)));
+    assert_eq!(device_row_tag(&row(Stance::Listed), now), Some(("使用中", true)));
+    assert_eq!(device_row_tag(&row(Stance::Listed), Some("MacBook Pro Microphone")), None);
+}

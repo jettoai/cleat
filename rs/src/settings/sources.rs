@@ -8,7 +8,8 @@ use objc2_core_audio::{
 };
 use serde_json::Value;
 
-use super::draft::{LiveLevels, PairedDevice};
+use super::draft::{LiveLevels, PairedDevice, Side};
+use super::vitals::VitalsState;
 use crate::audio::property::{self, address, global};
 use crate::audio::{CoreAudioSystem, VIRTUAL_MAIN_BALANCE};
 use crate::model::AudioDevice;
@@ -76,12 +77,36 @@ pub fn performance(data: &[u8]) -> Option<DaemonPerformance> {
     serde_json::from_value(v.get("performance")?.clone()).ok()
 }
 
-/// status.json `stuck` (B-1287): the device each side is left on because it is "not used" and
-/// nothing else is usable, as (input, output).
-pub fn stuck(data: &[u8]) -> (Option<String>, Option<String>) {
-    let Ok(v) = serde_json::from_slice::<Value>(data) else { return (None, None) };
+/// status.json `stuck` (B-1287): per side, the "not used" device it is left on because nothing
+/// else is usable, and the one the eviction cooldown leaves in place ("keeps coming back").
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Stuck {
+    pub input: Option<String>,
+    pub output: Option<String>,
+    pub input_paused: Option<String>,
+    pub output_paused: Option<String>,
+}
+
+impl Stuck {
+    /// (stuck, paused) for one side.
+    pub fn side(&self, side: Side) -> (Option<&str>, Option<&str>) {
+        match side {
+            Side::Input => (self.input.as_deref(), self.input_paused.as_deref()),
+            Side::Output => (self.output.as_deref(), self.output_paused.as_deref()),
+        }
+    }
+
+    /// A file a running daemon did not just write says nothing about now: a stopped daemon never
+    /// clears its `stuck`.
+    pub fn shown_when(self, state: VitalsState) -> Stuck {
+        if state == VitalsState::Running { self } else { Stuck::default() }
+    }
+}
+
+pub fn stuck(data: &[u8]) -> Stuck {
+    let Ok(v) = serde_json::from_slice::<Value>(data) else { return Stuck::default() };
     let pick = |k: &str| v.get("stuck")?.get(k)?.as_str().map(String::from);
-    (pick("input"), pick("output"))
+    Stuck { input: pick("input"), output: pick("output"), input_paused: pick("inputPaused"), output_paused: pick("outputPaused") }
 }
 
 pub fn status_pid(data: &[u8]) -> Option<i32> {

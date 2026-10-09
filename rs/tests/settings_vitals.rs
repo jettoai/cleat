@@ -46,3 +46,12 @@ fn not_running_and_unreadable() {
     assert_eq!(s.sample(Some(1), |_| Err(Failure::NotRunning)).state, VitalsState::NotRunning);
     assert_eq!(s.sample(Some(1), |_| Err(Failure::Unreadable(1))).state, VitalsState::Unreadable);
 }
+
+/// B-1287: the development build is `cleat-rs`; a reused pid named otherwise is not Cleat.
+#[test]
+fn any_cleat_process_name_counts() {
+    use cleat_rs::settings::vitals::is_cleat_name;
+    let got: Vec<bool> = ["cleat-rs", "Cleat", "Cleat Dev", "Finder"].iter().map(|n| is_cleat_name(n.as_bytes())).collect();
+    assert_eq!(got, [true, true, true, false]);
+    assert!(!is_cleat_name(b"Clea"));
+}

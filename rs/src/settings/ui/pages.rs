@@ -4,9 +4,9 @@
 use objc2::rc::Retained;
 use objc2::sel;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSBox, NSBoxType, NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSFontDescriptor, NSView};
+use objc2_app_kit::{NSBox, NSBoxType, NSButton, NSColor, NSControlStateValueMixed, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSFontDescriptor, NSView};
 
-use super::super::draft::{HeadsetOption, Side};
+use super::super::draft::{HeadsetBox, HeadsetOption, Side};
 use super::super::store::Phase;
 use super::super::text::{self, Page};
 use super::super::vitals::{DaemonVitals, VitalsState};
@@ -41,10 +41,19 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         Page::Input => Some(Side::Input),
         Page::Headphones => None,
     };
-    if let Some(name) = side.and_then(|s| devices::stuck_on(a, s)) {
+    let notes = side.map(|s| {
+        let st = a.store.borrow().stuck.clone();
+        let (stuck, paused) = st.side(s);
+        text::stuck_header(s, stuck, paused)
+    });
+    if let Some(notes) = notes.filter(|n| !n.is_empty()) {
         let orange = NSColor::systemOrangeColor();
-        let line = stack(mtm, false, 6.0, &[&icon(mtm, "exclamationmark.circle", 14.0, &orange), &wrapping(mtm, &text::stuck_note(&name), 13.0, &orange)]);
-        put(card(mtm, &[to_view(&padded_column(mtm, 0.0, 10.0, &[&line]))]));
+        let lines: Vec<_> = notes
+            .iter()
+            .map(|n| to_view(&stack(mtm, false, 6.0, &[&icon(mtm, "exclamationmark.circle", 14.0, &orange), &wrapping(mtm, n, 13.0, &orange)])))
+            .collect();
+        let refs: Vec<&NSView> = lines.iter().map(|l| &**l).collect();
+        put(card(mtm, &[to_view(&padded_column(mtm, 0.0, 10.0, &refs))]));
     }
     match page {
         Page::Output => {
@@ -172,10 +181,12 @@ pub fn device_label(mtm: MainThreadMarker, name: &str, connected: bool) -> Retai
     to_view(&s)
 }
 
-fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim: bool, blocked: bool) -> Retained<NSView> {
+fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim: bool, shown: HeadsetBox) -> Retained<NSView> {
+    let blocked = shown != HeadsetBox::Plain(h.is_selected);
     let entry = h.entry.clone();
     let act = ctx.act(move |sender| {
-        let on = sender.downcast_ref::<NSButton>().is_some_and(|b| b.state() == NSControlStateValueOn);
+        // A blocked headset can only be unticked, whatever state AppKit cycles the box to.
+        let on = !blocked && sender.downcast_ref::<NSButton>().is_some_and(|b| b.state() == NSControlStateValueOn);
         let entry = entry.clone();
         app().edit(move |s| s.draft.set_headset(&entry, on));
     });
@@ -194,8 +205,16 @@ fn headset_row(mtm: MainThreadMarker, ctx: &mut Ctx, h: &HeadsetOption, reclaim:
     } else {
         b.setAttributedTitle(&title);
     }
-    b.setState(if h.is_selected { NSControlStateValueOn } else { NSControlStateValueOff });
-    if !reclaim || blocked {
+    // A two-state box treats Mixed as On and shows a tick, so only the blocked ticked row gets a third state.
+    if shown == HeadsetBox::BlockedTicked {
+        b.setAllowsMixedState(true);
+    }
+    b.setState(match shown {
+        HeadsetBox::Plain(true) => NSControlStateValueOn,
+        HeadsetBox::BlockedTicked => NSControlStateValueMixed,
+        HeadsetBox::Plain(false) | HeadsetBox::BlockedOff => NSControlStateValueOff,
+    });
+    if !reclaim || shown == HeadsetBox::BlockedOff {
         b.setEnabled(false);
     }
     let r = plain_row(mtm, &[&b, &spacer(mtm)]);
@@ -229,7 +248,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         rows.push(to_view(&r));
     }
     for h in audio {
-        rows.push(headset_row(mtm, ctx, h, reclaim, d.headset_blocked(h)));
+        rows.push(headset_row(mtm, ctx, h, reclaim, d.headset_box(h)));
     }
     if !others.is_empty() {
         let expanded = a.others_expanded.get();
@@ -269,12 +288,15 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
         rows.push(to_view(&r));
         if expanded {
             for h in others {
-                rows.push(headset_row(mtm, ctx, h, reclaim, d.headset_blocked(h)));
+                rows.push(headset_row(mtm, ctx, h, reclaim, d.headset_box(h)));
             }
         }
     }
     if reclaim && !d.headsets.is_empty() && !d.headsets.iter().any(|h| h.is_selected) {
         let r = plain_row(mtm, &[&secondary(mtm, "請至少勾選一副耳機，否則不會有動作", 13.0), &spacer(mtm)]);
+        rows.push(to_view(&r));
+    } else if d.all_ticked_blocked() {
+        let r = plain_row(mtm, &[&secondary(mtm, text::ALL_HEADSETS_BLOCKED, 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
     section(mtm, Some(("headphones", "耳機")), &rows, None)
