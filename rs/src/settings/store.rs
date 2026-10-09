@@ -158,8 +158,8 @@ impl Store {
     /// the file when the switch goes back on: the window registers the agent itself, only after the
     /// write (launchd starts the daemon at once, and it must read on, not the old off). B-1316.
     fn register_if_switched_on(&mut self) {
-        let Some(agent) = self.agent.as_ref().filter(|_| self.draft.launch_at_login) else { return };
-        if agent.status() == AgentStatus::Enabled {
+        let Some(agent) = &self.agent else { return };
+        if !self.draft.launch_at_login || agent.status() == AgentStatus::Enabled {
             return;
         }
         if let Err(e) = agent.register() {

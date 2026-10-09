@@ -7,7 +7,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSBox, NSBoxType, NSButton, NSColor, NSControlStateValueMixed, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSFontDescriptor, NSView};
 
 use super::super::draft::{HeadsetBox, HeadsetOption, Side};
-use super::super::lang::{self, Lang};
+use super::super::lang;
 use super::super::store::Phase;
 use super::super::text::{self, Page};
 use super::super::vitals::{DaemonVitals, VitalsState};
@@ -304,7 +304,7 @@ fn headphones(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
 /// Whether launchd starts Cleat at login and restarts it when it dies (`launchAtLogin`).
 fn general(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let mtm = ctx.mtm;
-    let l: Lang = lang::current();
+    let l = lang::current();
     let on = a.store.borrow().draft.launch_at_login;
     let rows = [switch_row(mtm, W::LaunchAtLogin.get(l), on, true, |on| app().edit(move |s| s.draft.launch_at_login = on))];
     section(mtm, Some(("power", W::StartupSection.get(l))), &rows, Some(W::LaunchAtLoginNote.get(l)))

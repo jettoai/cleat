@@ -67,7 +67,7 @@ pub fn fill(template: &str, args: &[&str]) -> String {
 }
 
 /// One of two words by side.
-fn by_side(side: Side, output: W, input: W) -> W {
+pub fn by_side(side: Side, output: W, input: W) -> W {
     match side {
         Side::Output => output,
         Side::Input => input,

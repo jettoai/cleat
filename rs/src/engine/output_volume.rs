@@ -239,21 +239,15 @@ impl Engine {
     }
 
     pub(crate) fn output_volume_status(&self) -> OutputVolumeStatus {
-        let last_revert = self.outvol.ledger.last_revert.as_ref().map(|last| {
-            format!(
-                "{} 拉回 {} 改的音量 {:.0}% → {:.0}%",
-                clock(last.at, false),
-                last.writer,
-                f64::from(last.from) * 100.0,
-                f64::from(last.to) * 100.0
-            )
-        });
         let last_revert_detail = self.outvol.ledger.last_revert.as_ref().map(|last| RevertDetail {
             at: clock(last.at, false),
             writer: last.writer.clone(),
             from: f64::from(last.from) * 100.0,
             to: f64::from(last.to) * 100.0,
         });
+        let last_revert = last_revert_detail
+            .as_ref()
+            .map(|d| format!("{} 拉回 {} 改的音量 {:.0}% → {:.0}%", d.at, d.writer, d.from, d.to));
         OutputVolumeStatus { state: self.output_volume_state(), last_revert, last_revert_detail }
     }
 }

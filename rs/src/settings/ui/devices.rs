@@ -6,7 +6,7 @@ use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{NSButton, NSColor, NSControlSize, NSControlStateValueOff, NSControlStateValueOn, NSMenu, NSMenuItem, NSView};
 
 use super::super::draft::{DeviceRow, Side};
-use super::super::lang::{self, Lang};
+use super::super::lang;
 use super::super::text::{self, device_list_footer};
 use super::super::words::W;
 use super::pages::device_label;
@@ -111,12 +111,11 @@ fn menu_item(ctx: &mut Ctx, title: &str, enabled: bool, f: impl Fn() + 'static) 
 
 pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
     let mtm = ctx.mtm;
-    let l: Lang = lang::current();
-    let by_side = |output: W, input: W| if side == Side::Output { output } else { input }.get(l);
+    let l = lang::current();
     let listed = list_of(a, side).listed();
     let mut rows = vec![];
     if listed.is_empty() {
-        let r = plain_row(mtm, &[&secondary(mtm, by_side(W::NotSetUpOutput, W::NotSetUpInput), 13.0), &spacer(mtm)]);
+        let r = plain_row(mtm, &[&secondary(mtm, text::by_side(side, W::NotSetUpOutput, W::NotSetUpInput).get(l), 13.0), &spacer(mtm)]);
         rows.push(to_view(&r));
     }
     let count = listed.len();
@@ -156,7 +155,7 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
         unsafe { line.setMenu(Some(&menu)) };
         rows.push(to_view(&line));
     }
-    let header = by_side(W::PriorityOutput, W::PriorityInput);
+    let header = text::by_side(side, W::PriorityOutput, W::PriorityInput).get(l);
     let symbol = match side {
         Side::Output => "speaker.wave.2",
         Side::Input => "mic",
@@ -189,7 +188,7 @@ pub fn others(a: &App, ctx: &mut Ctx, side: Side) -> Option<Retained<NSView>> {
         line.setCustomSpacing_afterView(18.0, &views[views.len() - 2]);
         rows.push(to_view(&line));
     }
-    let header = if side == Side::Output { W::OthersOutput } else { W::OthersInput }.get(l);
+    let header = text::by_side(side, W::OthersOutput, W::OthersInput).get(l);
     Some(section(mtm, Some(("ellipsis.circle", header)), &rows, None))
 }
 
