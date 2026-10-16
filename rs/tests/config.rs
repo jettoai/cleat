@@ -227,6 +227,13 @@ fn config_path_ignores_an_empty_override() {
 }
 
 #[test]
+fn remember_displays_is_off_unless_asked() {
+    assert!(!decode("{}").unwrap().remember_displays);
+    assert!(decode(r#"{"rememberDisplays": true}"#).unwrap().remember_displays);
+    assert!(decode(r#"{"rememberDisplays": "yes"}"#).is_err());
+}
+
+#[test]
 fn output_volume_hold_is_off_unless_asked() {
     assert!(decode("{}").unwrap().output_volume_hold_against.is_empty());
     assert_eq!(

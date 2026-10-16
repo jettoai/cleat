@@ -90,6 +90,7 @@ impl Engine {
             rules: {
                 let mut rules = rule_summaries(&self.config, snap, self.reclaim_summary(), &self.stuck);
                 rules.insert("outputVolume".into(), self.output_volume_summary());
+                rules.insert("rememberDisplays".into(), self.remember_displays_summary());
                 rules
             },
             liveness: liveness_summaries(&self.config, snap, &self.microphone, &self.liveness_state),

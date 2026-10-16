@@ -139,6 +139,7 @@ impl Engine {
             Event::OutputVolumeChanged { device } => self.output_volume_changed(device),
             Event::VolumeWriter(e) => self.volume_writer_event(e),
             Event::VolumeWriterExited(status) => self.volume_writer_exited(status),
+            Event::DisplaysChanged => self.displays_changed(),
         }
     }
 
@@ -182,6 +183,7 @@ impl Engine {
             Timer::ConfigReload => self.config_file_changed(origin),
             Timer::StreakJudge => self.reconcile(false, Some(origin)),
             Timer::SourceRestart => self.source_restart_due(),
+            Timer::Displays => self.reconcile_displays(true),
         }
     }
 }

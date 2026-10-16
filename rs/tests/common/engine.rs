@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use cleat_rs::audio::{AudioSystem, ListenTarget, ListenerKind, ListenerToken};
 use cleat_rs::config::Config;
+use cleat_rs::display::DisplaySnapshot;
 use cleat_rs::engine::{Engine, EngineDeps, Event, Mode, Status};
 use cleat_rs::identity::Identity;
 use cleat_rs::launch::{AgentService, AgentStatus, Launchd};
@@ -17,6 +18,8 @@ use cleat_rs::model::{BluetoothHeadset, DeviceSnapshot, MicrophonePermission};
 use cleat_rs::reclaim::{BluetoothInventory, RouteRequesting, RouteResponse};
 use cleat_rs::state::clock::Clock;
 use cleat_rs::state::EventLog;
+
+use super::displays::{FakeDisplays, FakeDisplayState};
 
 /// The audio system as a value. Writes land back in the snapshot, so a second pass converges.
 pub struct FakeAudioState {
@@ -255,6 +258,13 @@ pub struct Opts {
     pub agent_status: AgentStatus,
     pub microphone: MicrophonePermission,
     pub job_loaded: bool,
+    /// The displays online at start; empty is the system failing to answer.
+    pub displays: Vec<DisplaySnapshot>,
+    /// The text of `display-arrangements.json` before the engine starts.
+    pub arrangements_file: Option<String>,
+    /// False is macOS taking an origin and putting the display back.
+    pub display_honors_writes: bool,
+    pub display_write_succeeds: bool,
 }
 
 impl Default for Opts {
@@ -271,6 +281,10 @@ impl Default for Opts {
             agent_status: AgentStatus::NotRegistered,
             microphone: MicrophonePermission::Granted,
             job_loaded: false,
+            displays: vec![],
+            arrangements_file: None,
+            display_honors_writes: true,
+            display_write_succeeds: true,
         }
     }
 }
@@ -292,6 +306,7 @@ pub struct Harness {
     pub routing: Rc<FakeRoutingState>,
     pub pairings: Rc<FakePairingsState>,
     pub writer: Rc<FakeWriterState>,
+    pub displays: Rc<FakeDisplayState>,
     pub engine: Engine,
 }
 
@@ -339,6 +354,12 @@ impl Harness {
             delivered: RefCell::default(),
         });
         let pairings = Rc::new(FakePairingsState { headsets: RefCell::new(opts.headsets), reads: Cell::new(0) });
+        let displays = FakeDisplayState::new(opts.displays);
+        displays.honors_writes.set(opts.display_honors_writes);
+        displays.write_succeeds.set(opts.display_write_succeeds);
+        if let Some(text) = &opts.arrangements_file {
+            std::fs::write(dir.join("display-arrangements.json"), text).unwrap();
+        }
         let writer = Rc::new(FakeWriterState::default());
         writer.start_result.set(opts.writer_starts);
         let w = writer.clone();
@@ -347,6 +368,7 @@ impl Harness {
             log: EventLog::new(dir.join("cleat.log"), dir.join("cleat.log.1")),
             config_path: dir.join("config.json"),
             status_path: dir.join("status.json"),
+            arrangements_path: dir.join("display-arrangements.json"),
             clock: Box::new(clock.clone()),
             identity: opts.identity,
             agent: Box::new(FakeAgent(agent.clone())),
@@ -368,17 +390,27 @@ impl Harness {
                 w.made.set(w.made.get() + 1);
                 Box::new(FakeWriterSource(w.clone()))
             }),
+            displays: Box::new(FakeDisplays(displays.clone())),
             events: None,
         };
         let mut engine = Engine::new(deps, opts.mode, opts.trace);
         engine.start(opts.microphone);
-        let mut h = Self { dir, audio, clock, agent, login_item, reports, detectors, routing, pairings, writer, engine };
+        let mut h = Self { dir, audio, clock, agent, login_item, reports, detectors, routing, pairings, writer, displays, engine };
         h.deliver_answers();
         h
     }
 
+    /// Hands the reconfiguration events a display write caused to the engine, as the callback would.
+    pub fn deliver_display_events(&mut self) {
+        while self.displays.echoes.get() > 0 {
+            self.displays.echoes.set(self.displays.echoes.get() - 1);
+            self.engine.handle(Event::DisplaysChanged);
+        }
+    }
+
     /// Hands queued routing answers to the engine, as the GCD hop would.
     pub fn deliver_answers(&mut self) {
+        self.deliver_display_events();
         loop {
             let next = {
                 let mut q = self.routing.delivered.borrow_mut();

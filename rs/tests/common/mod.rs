@@ -1,6 +1,7 @@
 //! Fixtures, word for word from CleatTests/Fixtures.swift.
 #![allow(dead_code)]
 
+pub mod displays;
 pub mod engine;
 pub mod reclaim;
 

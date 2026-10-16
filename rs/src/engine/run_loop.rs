@@ -27,6 +27,8 @@ pub enum Event {
     VolumeWriter(VolumeWriterEvent),
     /// The writer log ended with this status.
     VolumeWriterExited(i32),
+    /// A display reconfiguration finished (possibly one of many for one plug-in).
+    DisplaysChanged,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -37,6 +39,8 @@ pub enum Timer {
     StreakJudge,
     /// The writer log's restart after it stopped.
     SourceRestart,
+    /// The display pass, after the reconfiguration events stop.
+    Displays,
 }
 
 /// Which event scheduled a pass, for the trace's latency columns.

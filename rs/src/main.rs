@@ -11,6 +11,7 @@ use cleat_rs::app::microphone;
 use cleat_rs::audio::CoreAudioSystem;
 use cleat_rs::cli;
 use cleat_rs::config::paths;
+use cleat_rs::display::CoreGraphicsDisplays;
 use cleat_rs::engine::{self, Engine, EngineDeps, Mode};
 use cleat_rs::identity::{self, Identity};
 use cleat_rs::launch::{LaunchctlJob, Launchd, SmApp};
@@ -74,6 +75,7 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
             log: EventLog::new(paths::log_path(), paths::rotated_log_path()),
             config_path: paths::config_path(),
             status_path: paths::status_path(),
+            arrangements_path: paths::display_arrangements_path(),
             clock: Box::<SystemClock>::default(),
             agent: Box::new(SmApp::agent(&format!("{label}.plist"))),
             login_item: Box::new(SmApp::main_app()),
@@ -90,6 +92,7 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
                 let tx = tx.clone();
                 Box::new(move || Box::new(LogStream::new(tx.clone())))
             },
+            displays: Box::new(CoreGraphicsDisplays::new(tx.clone())),
             events: Some(tx),
         };
         let mut eng = Engine::new(deps, mode, trace);

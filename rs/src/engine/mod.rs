@@ -1,6 +1,7 @@
 //! The one place decisions are made. Every listener and the config watcher deliver `Event`s to the
 //! engine thread, and nothing touches engine state from anywhere else (Swift `Engine.swift`).
 
+mod displays;
 mod eviction;
 mod launch;
 mod listeners;
@@ -10,6 +11,7 @@ mod reclaim;
 mod run_loop;
 mod status;
 
+pub use displays::{DISPLAY_DEBOUNCE_MS, DISPLAY_PLACEMENT_LIMIT};
 pub use eviction::{EVICTION_LIMIT, EVICTION_WINDOW};
 pub use listeners::{consumes_arrivals, BALANCE_SETTLE_MS, RETRY_MS, SETTLE_MS};
 pub use reclaim::{
@@ -28,6 +30,7 @@ use run_loop::Scheduler;
 
 use crate::audio::{AudioSystem, ListenerToken};
 use crate::config::{watcher, Config};
+use crate::display::DisplaySystem;
 use crate::identity::Identity;
 use crate::launch::{AgentService, Launchd};
 use crate::liveness::{DetectorFactory, LivenessDetecting};
@@ -55,6 +58,8 @@ pub struct EngineDeps {
     pub log: EventLog,
     pub config_path: PathBuf,
     pub status_path: PathBuf,
+    /// `display-arrangements.json`, what `rememberDisplays` has learned.
+    pub arrangements_path: PathBuf,
     pub clock: Box<dyn Clock>,
     pub identity: Identity,
     /// The bundle's launchd agent.
@@ -72,6 +77,8 @@ pub struct EngineDeps {
     pub inventory: Box<dyn BluetoothInventory>,
     /// Makes the output volume hold's writer source (`log stream`).
     pub writer_source: WriterSourceFactory,
+    /// The displays: their arrangement, and reconfiguration events (`Event::DisplaysChanged`).
+    pub displays: Box<dyn DisplaySystem>,
     /// Where the config watcher sends; None runs without a watcher (tests).
     pub events: Option<Sender<Event>>,
 }
@@ -84,6 +91,9 @@ pub struct Engine {
     log: EventLog,
     config_path: PathBuf,
     status_path: PathBuf,
+    arrangements_path: PathBuf,
+    displays: Box<dyn DisplaySystem>,
+    display_state: displays::DisplayState,
     clock: Box<dyn Clock>,
     identity: Identity,
     agent: Box<dyn AgentService>,
@@ -130,6 +140,9 @@ impl Engine {
             log: deps.log,
             config_path: deps.config_path,
             status_path: deps.status_path,
+            arrangements_path: deps.arrangements_path,
+            displays: deps.displays,
+            display_state: displays::DisplayState::default(),
             clock: deps.clock,
             identity: deps.identity,
             agent: deps.agent,
@@ -181,6 +194,7 @@ impl Engine {
         self.sync_side_effects();
         self.attach_system_listeners();
         self.rebind_devices();
+        self.start_displays();
         if let Some(tx) = self.events.clone() {
             if let Err(e) = watcher::spawn(self.config_path.clone(), tx) {
                 self.note(&format!("config: watcher not started ({e})"));
@@ -227,6 +241,9 @@ impl Engine {
         self.eviction.lift_all();
         self.sync_side_effects();
         self.rebind_devices();
+        if self.config.remember_displays != previous.remember_displays {
+            self.remember_displays_changed();
+        }
         self.reconcile(false, Some(origin));
     }
 
@@ -342,6 +359,11 @@ impl Engine {
             Action::SetBalance(id, v, _) => self.system.set_balance(*id, *v),
             Action::SetInputVolume(id, v, _) => self.system.set_input_volume(*id, *v),
             Action::SetOutputVolume(id, v, _) => self.system.set_output_volume(*id, *v),
+            // Not CoreAudio: its own line, and its own write time.
+            Action::SetDisplayOrigins(..) => {
+                self.apply_display_origins(action);
+                return;
+            }
             // A question for another daemon: its line is written when the answer arrives.
             Action::RequestRoute { name, address, reason } => {
                 self.request_route(name, address, reason);

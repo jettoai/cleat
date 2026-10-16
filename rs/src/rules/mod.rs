@@ -9,3 +9,4 @@ pub mod input_volume;
 pub mod output_pin;
 pub mod output_volume_hold;
 pub mod reclaim;
+pub mod remember_displays;

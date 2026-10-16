@@ -83,6 +83,9 @@ pub struct Config {
     pub output_volume_hold_against: Vec<String>,
     /// Rust only (§6.6): turns the hold off without emptying its list. Read through `hold_against_active`.
     pub output_volume_hold_enabled: bool,
+    /// Whether the last arrangement set for each combination of displays is remembered and put
+    /// back when macOS rearranges it. Off unless asked for (Swift 0.4.2).
+    pub remember_displays: bool,
 }
 
 impl Default for Config {
@@ -102,6 +105,7 @@ impl Default for Config {
             reclaim_enabled: None,
             output_volume_hold_against: vec![],
             output_volume_hold_enabled: true,
+            remember_displays: false,
         }
     }
 }

@@ -1,4 +1,5 @@
 use super::AudioDeviceId;
+use crate::display::DisplayOrigin;
 
 /// A single write back to CoreAudio, decided by a rule and carried out by the engine. `reason` is
 /// the whole log line, composed where the decision was made. `RequestRoute` is the one action that
@@ -11,6 +12,8 @@ pub enum Action {
     SetInputVolume(AudioDeviceId, f32, String),
     SetOutputVolume(AudioDeviceId, f32, String),
     RequestRoute { name: String, address: String, reason: String },
+    /// Moves a whole set of displays in one transaction (`rememberDisplays`).
+    SetDisplayOrigins(Vec<DisplayOrigin>, String),
 }
 
 impl Action {
@@ -21,7 +24,8 @@ impl Action {
             | Action::SetBalance(_, _, r)
             | Action::SetInputVolume(_, _, r)
             | Action::SetOutputVolume(_, _, r)
-            | Action::RequestRoute { reason: r, .. } => r,
+            | Action::RequestRoute { reason: r, .. }
+            | Action::SetDisplayOrigins(_, r) => r,
         }
     }
 
@@ -34,6 +38,7 @@ impl Action {
             Action::SetInputVolume(..) => "inputVolume",
             Action::SetOutputVolume(..) => "outputVolume",
             Action::RequestRoute { .. } => "reclaim",
+            Action::SetDisplayOrigins(..) => "restoreDisplays",
         }
     }
 }

@@ -43,6 +43,11 @@ pub fn status_path() -> PathBuf {
     support_dir().join("status.json")
 }
 
+/// What `rememberDisplays` has learned: where each combination of displays was last arranged.
+pub fn display_arrangements_path() -> PathBuf {
+    support_dir().join("display-arrangements.json")
+}
+
 pub fn log_dir() -> PathBuf {
     home().join("Library/Logs").join(LOG_DIR_NAME)
 }

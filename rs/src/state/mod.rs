@@ -1,3 +1,4 @@
+pub mod arrangements;
 pub mod clock;
 pub mod event_log;
 pub mod reaction_clock;
