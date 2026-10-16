@@ -192,7 +192,19 @@ the agent, and Cleat exits with it.
 | `outputVolumeHoldAgainst` | array of strings | `[]` | Programs whose changes to the output volume are undone |
 | `outputVolumeHoldEnabled` | boolean | `true` | Turns the volume hold off without emptying its list |
 | `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
+| `rememberDisplays` | boolean | `false` | Remember the arrangement you last set for each combination of displays and restore it when macOS rearranges it. Details below |
 | `errorReports` | boolean | `false` | Send crash and error reports to Sentry. See [Privacy](#privacy) |
+
+**Remember displays.** `"rememberDisplays": true` makes Cleat remember where every display sat the
+last time you arranged each combination of displays (kept by UUID in `~/Library/Application
+Support/Cleat/display-arrangements.json`), and put the whole set back in one step when macOS
+rearranges it after a reconnect. A combination Cleat has not seen is remembered as it is. A
+difference that shows up within ten seconds of Cleat's own write or of the set of displays changing
+is taken for macOS and undone (`restoreDisplays` in the log, three tries at most per combination);
+one that shows up later is you dragging a display in System Settings, and becomes the new memory
+(`rememberDisplays saved ... moved by hand`). So after Cleat restores a layout, wait ten seconds
+before rearranging. Only positions are remembered, not resolutions. Displays that report no usable
+UUID, or the same UUID, are skipped.
 
 **Input gain.** `"*"` sets the target for every input device present, and a named entry overrides
 it for that device: `{"*": 100, "Brio 100": 75}` holds everything at 100 percent except the Brio,
