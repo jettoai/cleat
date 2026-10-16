@@ -171,3 +171,15 @@ fn touching_a_parked_switch_writes_what_the_window_shows() {
     assert_eq!(off["outputVolumeHoldAgainst"], serde_json::json!(["Zoom"]), "{off}");
     assert_eq!(off["outputVolumeHoldEnabled"], serde_json::json!(false), "{off}");
 }
+
+#[test]
+fn usage_ping_survives_a_save_and_sits_after_error_reports() {
+    let raw = r#"{"usagePing":false,"errorReports":true,"reclaim":[]}"#;
+    let config: Config = serde_json::from_str(raw).unwrap();
+    let m = SettingsDraft::make(&config, &[], &[], &LiveLevels::default()).managed();
+    let origin = Origin::new(Some(raw.as_bytes()), m.clone());
+    let out = String::from_utf8(merged_from(Some(raw.as_bytes()), &m, Some(&origin)).unwrap()).unwrap();
+    let keys: Vec<&str> = out.lines().filter_map(|l| l.trim().split('"').nth(1)).collect();
+    assert_eq!(keys.iter().rev().take(2).copied().collect::<Vec<_>>(), ["usagePing", "errorReports"]);
+    assert!(out.contains("\"usagePing\": false"), "{out}");
+}

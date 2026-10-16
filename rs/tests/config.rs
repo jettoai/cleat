@@ -28,6 +28,14 @@ fn error_reports_are_off_unless_asked() {
 }
 
 #[test]
+fn usage_ping_is_on_unless_switched_off() {
+    assert!(decode("{}").unwrap().usage_ping);
+    assert!(decode(r#"{"usagePing": true}"#).unwrap().usage_ping);
+    assert!(!decode(r#"{"usagePing": false}"#).unwrap().usage_ping);
+    assert!(decode(r#"{"usagePing": "no"}"#).is_err());
+}
+
+#[test]
 fn full_config_decodes() {
     let config = decode(
         r#"{

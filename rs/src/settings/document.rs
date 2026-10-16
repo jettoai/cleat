@@ -58,7 +58,7 @@ pub const UNITS: [(Unit, &[&str]); 8] = [
 ];
 
 /// Canonical top-level order; keys outside it follow, sorted.
-pub const KEY_ORDER: [&str; 13] = [
+pub const KEY_ORDER: [&str; 14] = [
     "input",
     "blockedInput",
     "output",
@@ -72,6 +72,7 @@ pub const KEY_ORDER: [&str; 13] = [
     "reclaim",
     "launchAtLogin",
     "errorReports",
+    "usagePing",
 ];
 
 fn number(v: f64) -> Value {

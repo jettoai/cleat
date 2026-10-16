@@ -302,6 +302,7 @@ pub struct Harness {
     pub agent: Rc<FakeAgentState>,
     pub login_item: Rc<FakeAgentState>,
     pub reports: Rc<RefCell<Vec<bool>>>,
+    pub pings: Rc<RefCell<Vec<bool>>>,
     pub detectors: Rc<DetectorLog>,
     pub routing: Rc<FakeRoutingState>,
     pub pairings: Rc<FakePairingsState>,
@@ -343,6 +344,8 @@ impl Harness {
         let login_item = FakeAgentState::new(AgentStatus::NotRegistered);
         let reports = Rc::new(RefCell::new(vec![]));
         let sink = reports.clone();
+        let pings = Rc::new(RefCell::new(vec![]));
+        let pings_sink = pings.clone();
         let detectors = Rc::new(DetectorLog { start_results: opts.start_results, ..Default::default() });
         let log = detectors.clone();
         let routing = Rc::new(FakeRoutingState {
@@ -375,6 +378,7 @@ impl Harness {
             login_item: Box::new(FakeAgent(login_item.clone())),
             launchd: Box::new(FakeLaunchd { loaded: opts.job_loaded }),
             error_reports_changed: Box::new(move |v| sink.borrow_mut().push(v)),
+            usage_ping_changed: Box::new(move |v| pings_sink.borrow_mut().push(v)),
             detectors: Box::new(move |device, _rate, zero_seconds| {
                 log.made.set(log.made.get() + 1);
                 Box::new(FakeDetector {
@@ -395,7 +399,7 @@ impl Harness {
         };
         let mut engine = Engine::new(deps, opts.mode, opts.trace);
         engine.start(opts.microphone);
-        let mut h = Self { dir, audio, clock, agent, login_item, reports, detectors, routing, pairings, writer, displays, engine };
+        let mut h = Self { dir, audio, clock, agent, login_item, reports, pings, detectors, routing, pairings, writer, displays, engine };
         h.deliver_answers();
         h
     }

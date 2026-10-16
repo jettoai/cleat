@@ -22,6 +22,7 @@ use cleat_rs::reclaim::{SmartRoutingClient, SystemProfilerPairings};
 use cleat_rs::report::{self, Curl, Meta, Reporter, ReporterConfig};
 use cleat_rs::state::clock::SystemClock;
 use cleat_rs::state::EventLog;
+use cleat_rs::usage_ping::{self, CurlPost, Pinger};
 use objc2_core_foundation::CFRunLoop;
 
 const CLI_FLAGS: [&str; 3] = ["--help", "-h", "--version"];
@@ -80,6 +81,7 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
             agent: Box::new(SmApp::agent(&format!("{label}.plist"))),
             login_item: Box::new(SmApp::main_app()),
             launchd: Box::new(LaunchctlJob { label }),
+            usage_ping_changed: make_pinger(&identity),
             identity,
             error_reports_changed: match reporter {
                 Some(r) => Box::new(move |on| r.set_enabled(on)),
@@ -125,6 +127,20 @@ fn routing_client(tx: mpsc::Sender<engine::Event>) -> SmartRoutingClient {
             let _ = tx.send(engine::Event::RouteAnswered { name, address, response });
         }),
     )
+}
+
+/// The daily ping. A development build sends only to the stand-in `CLEAT_PING_URL` names; a
+/// release build never reads that variable.
+fn make_pinger(identity: &Identity) -> Box<dyn FnMut(bool)> {
+    let development = identity.is_development_build();
+    let over = if development { std::env::var(usage_ping::URL_OVERRIDE_VARIABLE).ok() } else { None };
+    let mut pinger = Pinger::new(
+        usage_ping::resolved_url(development, over.as_deref()),
+        paths::config_path().with_file_name(usage_ping::DEVICE_FILE_NAME),
+        identity.version.clone().unwrap_or_else(|| "0".into()),
+        std::sync::Arc::new(CurlPost),
+    );
+    Box::new(move |on| pinger.apply(on))
 }
 
 fn make_reporter() -> Reporter {

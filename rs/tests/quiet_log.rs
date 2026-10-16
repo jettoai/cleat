@@ -22,7 +22,8 @@ const CONFIG: &str = r#"{
   "input": ["Wireless microphone", "Brio 100"],
   "output": ["Studio Display Speakers"],
   "balance": 0.5,
-  "inputVolume": {"*": 100}
+  "inputVolume": {"*": 100},
+  "usagePing": false
 }"#;
 
 #[test]

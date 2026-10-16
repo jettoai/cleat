@@ -194,6 +194,7 @@ the agent, and Cleat exits with it.
 | `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
 | `rememberDisplays` | boolean | `false` | Remember the arrangement you last set for each combination of displays and restore it when macOS rearranges it. Details below |
 | `errorReports` | boolean | `false` | Send crash and error reports to Sentry. See [Privacy](#privacy) |
+| `usagePing` | boolean | `true` | Send the anonymous daily usage ping. See [Privacy](#privacy) |
 
 **Remember displays.** `"rememberDisplays": true` makes Cleat remember where every display sat the
 last time you arranged each combination of displays (kept by UUID in `~/Library/Application
@@ -329,13 +330,19 @@ brings back is the same app the microphone was granted to, not a loose executabl
 
 ## Privacy
 
-Cleat sends nothing off your Mac unless you ask it to. The one exception is opt-in: set
+Cleat sends two things off your Mac. The first is an anonymous usage ping, on by default: when the
+daemon starts and about once a day while it runs, it sends a random device ID, the Cleat version
+and the product name to jetto.ai so we can count installs and active users. It never sends your
+config, device names or file contents. Like any web request it reaches the server with your IP
+address, which is not stored with the ping. Set `"usagePing": false` in the config and nothing
+more is sent. The second is opt-in: set
 `"errorReports": true` in the config and the daemon sends crash and error reports to Sentry, so
 crashes reach the author without anyone filing an issue. A report carries the stack trace or the
 error message, the Cleat and macOS versions, and the time. It carries no IP address, no user, not
 your config and not the contents of any file, and your home folder in file paths is replaced with
-`~`. Sentry, like any server, sees the connection the report arrives on. There is no usage
-tracking, no session tracking and no screen recording.
+`~`. Sentry, like any server, sees the connection the report arrives on. Apart from that daily
+ping there is no usage tracking: no events, no
+session tracking and no screen recording.
 
 Set it back to `false`, or delete the line, and reporting stops as soon as the config is re-read;
 no restart needed. Reports still waiting to go are deleted, and one already on its way is cut off. `cleat status` shows which way it is set. The `cleat` commands and the settings

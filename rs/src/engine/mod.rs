@@ -69,6 +69,8 @@ pub struct EngineDeps {
     pub launchd: Box<dyn Launchd>,
     /// Told when `errorReports` changes.
     pub error_reports_changed: Box<dyn FnMut(bool)>,
+    /// Told when `usagePing` changes; on at start unless the config turns it off.
+    pub usage_ping_changed: Box<dyn FnMut(bool)>,
     /// Makes a silence detector for a device; flips come back as `Event::LivenessFlip`.
     pub detectors: DetectorFactory,
     /// The routing SPI; answers come back as `Event::RouteAnswered`.
@@ -100,6 +102,7 @@ pub struct Engine {
     login_item: Box<dyn AgentService>,
     launchd: Box<dyn Launchd>,
     error_reports_changed: Box<dyn FnMut(bool)>,
+    usage_ping_changed: Box<dyn FnMut(bool)>,
     detectors: DetectorFactory,
     routing: Box<dyn RouteRequesting>,
     inventory: Box<dyn BluetoothInventory>,
@@ -119,6 +122,7 @@ pub struct Engine {
     /// UIDs whose detector could not be started; membership keeps the retry quiet.
     liveness_unavailable: HashSet<String>,
     error_reports_applied: bool,
+    usage_ping_applied: bool,
     previous_device_uids: Option<HashSet<String>>,
     pub(crate) system_tokens: Vec<ListenerToken>,
     pub(crate) device_tokens: Vec<ListenerToken>,
@@ -149,6 +153,7 @@ impl Engine {
             login_item: deps.login_item,
             launchd: deps.launchd,
             error_reports_changed: deps.error_reports_changed,
+            usage_ping_changed: deps.usage_ping_changed,
             detectors: deps.detectors,
             routing: deps.routing,
             inventory: deps.inventory,
@@ -165,6 +170,7 @@ impl Engine {
             liveness_detectors: HashMap::new(),
             liveness_unavailable: HashSet::new(),
             error_reports_applied: false,
+            usage_ping_applied: false,
             previous_device_uids: None,
             system_tokens: vec![],
             device_tokens: vec![],
@@ -203,7 +209,7 @@ impl Engine {
         self.reconcile(true, None);
     }
 
-    /// Launch agent and error reports. Observe mode touches neither (D6).
+    /// Launch agent, error reports and usage ping. Observe mode touches neither (D6).
     fn sync_side_effects(&mut self) {
         if self.mode == Mode::Observe {
             return;
@@ -211,6 +217,7 @@ impl Engine {
         self.sync_launch_at_login();
         self.hand_over_to_launch_agent_if_needed();
         self.sync_error_reports();
+        self.sync_usage_ping();
     }
 
     /// A malformed or out-of-range file never replaces a good one; a missing file turns every rule
@@ -256,6 +263,17 @@ impl Engine {
         self.error_reports_applied = wanted;
         (self.error_reports_changed)(wanted);
         self.note(&format!("errorReports: {}", if wanted { "on" } else { "off" }));
+    }
+
+    /// Passes `usagePing` on when it changes, the same way as `sync_error_reports`.
+    fn sync_usage_ping(&mut self) {
+        let wanted = self.config.usage_ping;
+        if wanted == self.usage_ping_applied {
+            return;
+        }
+        self.usage_ping_applied = wanted;
+        (self.usage_ping_changed)(wanted);
+        self.note(&format!("usagePing: {}", if wanted { "on" } else { "off" }));
     }
 
     /// One pass: snapshot, rules, apply, status. The `pass:` line is written in trace mode only.

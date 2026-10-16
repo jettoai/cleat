@@ -76,6 +76,8 @@ pub struct Config {
     pub reclaim: Vec<String>,
     pub launch_at_login: bool,
     pub error_reports: bool,
+    /// The anonymous daily usage ping (`usage_ping`). On unless switched off.
+    pub usage_ping: bool,
     /// Rust only (§6.6): `false` turns reclaim off without emptying `reclaim`; `true` keeps the
     /// settings window's switch on with an empty list (B-1287). Read through `reclaim_active`.
     pub reclaim_enabled: Option<bool>,
@@ -102,6 +104,7 @@ impl Default for Config {
             reclaim: vec![],
             launch_at_login: true,
             error_reports: false,
+            usage_ping: true,
             reclaim_enabled: None,
             output_volume_hold_against: vec![],
             output_volume_hold_enabled: true,
