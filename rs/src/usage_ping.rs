@@ -67,23 +67,26 @@ pub struct CurlPost;
 
 impl CurlPost {
     pub fn args(url: &str) -> Vec<String> {
-        ["-sS", "--max-time", "20", "-o", "/dev/null", "-X", "POST", url, "-H", "Content-Type: application/json", "--data-binary", "@-"]
+        // `-q` has to come first: it keeps a ~/.curlrc (a `header = "Authorization: ..."` line)
+        // from adding what this request promises not to carry.
+        ["-q", "-sS", "--max-time", "20", "-o", "/dev/null", "-X", "POST", url, "-H", "Content-Type: application/json", "--data-binary", "@-"]
             .map(String::from)
             .to_vec()
     }
 }
 
+impl CurlPost {
+    /// The curl process `post` runs, so a test can run the same one with its own environment.
+    pub fn command(url: &str) -> Command {
+        let mut c = Command::new("/usr/bin/curl");
+        c.args(Self::args(url)).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+        c
+    }
+}
+
 impl PingTransport for CurlPost {
     fn post(&self, url: &str, body: &str) {
-        let Ok(mut child) = Command::new("/usr/bin/curl")
-            .args(Self::args(url))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        else {
-            return;
-        };
+        let Ok(mut child) = Self::command(url).spawn() else { return };
         if let Some(mut stdin) = child.stdin.take() {
             let _ = stdin.write_all(body.as_bytes());
         }

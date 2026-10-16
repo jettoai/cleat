@@ -132,3 +132,44 @@ fn the_pinger_sends_once_on_apply_and_off_or_no_url_sends_nothing() {
     assert!(quiet.0.lock().unwrap().is_empty());
     assert!(!d2.exists());
 }
+
+/// A `header = "Authorization: ..."` line in the user's ~/.curlrc must not reach the server. Runs
+/// the very command `CurlPost::post` runs (`CurlPost::command`), with HOME and CURL_HOME on a
+/// temp dir that holds such a .curlrc, against a stand-in server on a random local port.
+#[test]
+fn curl_ignores_the_users_curlrc() {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+
+    let home = dir("curlrc");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join(".curlrc"), "header = \"Authorization: Bearer leaked\"\n").unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}/api/v1/ping", listener.local_addr().unwrap().port());
+    let server = std::thread::spawn(move || {
+        let (mut conn, _) = listener.accept().unwrap();
+        conn.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut seen = Vec::new();
+        let mut buf = [0u8; 1024];
+        while !String::from_utf8_lossy(&seen).contains("\"version\":\"1.2.3\"}") {
+            match conn.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => seen.extend_from_slice(&buf[..n]),
+            }
+        }
+        let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        String::from_utf8_lossy(&seen).into_owned()
+    });
+
+    let mut command = CurlPost::command(&url);
+    command.env("HOME", &home).env("CURL_HOME", &home).stdin(Stdio::piped());
+    let mut child = command.spawn().unwrap();
+    let text = body("abcdef01-2345-4678-9abc-def012345678", "1.2.3");
+    child.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+    child.wait().unwrap();
+
+    let request = server.join().unwrap();
+    assert!(request.contains("Content-Type: application/json"), "{request}");
+    assert!(request.contains(&text), "{request}");
+    assert!(!request.to_lowercase().contains("authorization"), "{request}");
+}
