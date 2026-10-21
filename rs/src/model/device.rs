@@ -104,6 +104,9 @@ pub enum Liveness {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeviceSnapshot {
     pub devices: Vec<AudioDevice>,
+    /// The HAL would not give the device list this time (`devices` is then empty). Not the same as
+    /// an empty list: the engine skips the whole pass instead of reading every device as gone.
+    pub devices_unreadable: bool,
     pub default_input: Option<AudioDeviceId>,
     pub default_output: Option<AudioDeviceId>,
     /// Virtual main balance of the default output, 0.0 (left) - 1.0 (right).

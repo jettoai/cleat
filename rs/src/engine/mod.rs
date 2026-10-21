@@ -124,6 +124,8 @@ pub struct Engine {
     error_reports_applied: bool,
     usage_ping_applied: bool,
     previous_device_uids: Option<HashSet<String>>,
+    /// The last pass found the device list unreadable and said so; keeps a long outage to one line.
+    device_list_unreadable_noted: bool,
     pub(crate) system_tokens: Vec<ListenerToken>,
     pub(crate) device_tokens: Vec<ListenerToken>,
     pub(crate) scheduler: Scheduler,
@@ -172,6 +174,7 @@ impl Engine {
             error_reports_applied: false,
             usage_ping_applied: false,
             previous_device_uids: None,
+            device_list_unreadable_noted: false,
             system_tokens: vec![],
             device_tokens: vec![],
             scheduler: Scheduler::default(),
@@ -280,6 +283,15 @@ impl Engine {
     pub fn reconcile(&mut self, consuming_arrivals: bool, origin: Option<Origin>) {
         let t0 = SystemTime::now();
         let mut snap = self.system.snapshot(&self.config);
+        // An unreadable list is not an empty one: nothing below may see it (B-2481).
+        if snap.devices_unreadable {
+            if !self.device_list_unreadable_noted {
+                self.device_list_unreadable_noted = true;
+                self.note("devices: list unreadable, pass skipped");
+            }
+            return;
+        }
+        self.device_list_unreadable_noted = false;
         snap.arrived = self.arrivals(&snap, consuming_arrivals);
         // Also the retry for a detector whose start failed on a device not yet ready.
         self.sync_liveness_detectors(&snap);

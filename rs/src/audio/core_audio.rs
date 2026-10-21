@@ -133,7 +133,9 @@ const BT_OWNS_AUDIO_CONNECTION: u32 = u32::from_be_bytes(*b"boac");
 
 impl AudioSystem for CoreAudioSystem {
     fn snapshot(&self, config: &Config) -> DeviceSnapshot {
-        let devices: Vec<AudioDevice> = property::device_ids().into_iter().filter_map(Self::describe).collect();
+        let ids = property::device_ids();
+        let devices_unreadable = ids.is_none();
+        let devices: Vec<AudioDevice> = ids.unwrap_or_default().into_iter().filter_map(Self::describe).collect();
         let default_input = Self::default_device(kAudioHardwarePropertyDefaultInputDevice);
         let default_output = Self::default_device(kAudioHardwarePropertyDefaultOutputDevice);
         let input_volumes = config
@@ -151,6 +153,7 @@ impl AudioSystem for CoreAudioSystem {
         let output_balance = default_output.and_then(|id| property::get::<f32>(id, balance_address()));
         DeviceSnapshot {
             devices,
+            devices_unreadable,
             default_input,
             default_output,
             output_balance,

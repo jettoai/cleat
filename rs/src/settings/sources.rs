@@ -22,7 +22,7 @@ use crate::reclaim::pairings;
 const VIRTUAL_MAIN_VOLUME: u32 = u32::from_be_bytes(*b"vmvc");
 
 pub fn present_devices() -> Vec<AudioDevice> {
-    property::device_ids().into_iter().filter_map(CoreAudioSystem::describe).collect()
+    property::device_ids().unwrap_or_default().into_iter().filter_map(CoreAudioSystem::describe).collect()
 }
 
 /// Virtual main volume first, then the main element, then the mean of channels 1 and 2.

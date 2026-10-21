@@ -81,10 +81,21 @@ fn data_size(object: AudioObjectID, addr: AudioObjectPropertyAddress) -> Option<
     (status == 0 && size > 0).then_some(size)
 }
 
-/// Every device id the HAL knows about.
-pub fn device_ids() -> Vec<u32> {
+/// Every device id the HAL knows about. `None` is the HAL failing to answer; `Some(vec![])` is it
+/// answering that there are none. Callers must not treat the two alike (B-2481).
+pub fn device_ids() -> Option<Vec<u32>> {
     let mut addr = global(kAudioHardwarePropertyDevices);
-    let Some(mut size) = data_size(SYSTEM_OBJECT, addr) else { return vec![] };
+    let mut size = 0u32;
+    // SAFETY: valid locals.
+    let status = unsafe {
+        AudioObjectGetPropertyDataSize(SYSTEM_OBJECT, NonNull::from(&mut addr), 0, null(), NonNull::from(&mut size))
+    };
+    if status != 0 {
+        return None;
+    }
+    if size == 0 {
+        return Some(vec![]);
+    }
     let mut ids = vec![0u32; size as usize / size_of::<u32>()];
     // SAFETY: `ids` holds `size` bytes.
     let status = unsafe {
@@ -98,10 +109,10 @@ pub fn device_ids() -> Vec<u32> {
         )
     };
     if status != 0 {
-        return vec![];
+        return None;
     }
     ids.truncate(size as usize / size_of::<u32>());
-    ids
+    Some(ids)
 }
 
 /// Channels on one side of a device: what makes a device an input or an output.
