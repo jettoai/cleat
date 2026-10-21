@@ -219,10 +219,58 @@ fn nine_seconds_after_a_restore_is_still_macos() {
 #[test]
 fn eleven_seconds_after_a_restore_is_the_user() {
     let mut h = seeded(scrambled());
-    secs(&h, 11);
+    h.drive(11_000); // the restore's own echo is handled on the way, as it would be
     set_and_pass(&mut h, scrambled());
     assert_eq!(batches(&h).len(), 1);
     assert_eq!(lines(&h, "moved by hand").len(), 1);
+    let expected: Arrangements = [(key(&placed()), origins(&scrambled()))].into_iter().collect();
+    assert_eq!(remembered(&h), Some(expected));
+}
+
+// MARK: The window is judged when the event happened, not when the debounce lets the pass run
+
+/// Restored at t=0, the echo settled; the clock is at t=9 with the echo's pass done.
+fn restored_and_settled_at_nine() -> Harness {
+    let mut h = seeded(scrambled());
+    h.drive(2000);
+    h.drive(7000);
+    h
+}
+
+#[test]
+fn an_event_at_nine_seconds_is_macos_even_when_the_debounce_runs_it_at_eleven() {
+    let mut h = restored_and_settled_at_nine();
+    *h.displays.displays.borrow_mut() = scrambled();
+    h.engine.handle(Event::DisplaysChanged);
+    h.drive(3000);
+    assert!(lines(&h, "moved by hand").is_empty());
+    assert_eq!(remembered(&h), only(&placed()));
+    assert_eq!(batches(&h).len(), 2);
+}
+
+#[test]
+fn a_burst_of_events_is_judged_by_the_earliest() {
+    let mut h = restored_and_settled_at_nine();
+    *h.displays.displays.borrow_mut() = scrambled();
+    for _ in 0..3 {
+        h.engine.handle(Event::DisplaysChanged); // t=9, 10, 11: the debounce runs at t=13
+        h.drive(1000);
+    }
+    h.drive(2000);
+    assert!(lines(&h, "moved by hand").is_empty());
+    assert_eq!(remembered(&h), only(&placed()));
+    assert_eq!(batches(&h).len(), 2);
+}
+
+#[test]
+fn an_event_at_ten_seconds_is_the_user_however_soon_the_pass_runs() {
+    let mut h = restored_and_settled_at_nine();
+    h.drive(1000);
+    *h.displays.displays.borrow_mut() = scrambled();
+    h.engine.handle(Event::DisplaysChanged);
+    h.drive(2000);
+    assert_eq!(lines(&h, "moved by hand").len(), 1);
+    assert_eq!(batches(&h).len(), 1);
     let expected: Arrangements = [(key(&placed()), origins(&scrambled()))].into_iter().collect();
     assert_eq!(remembered(&h), Some(expected));
 }

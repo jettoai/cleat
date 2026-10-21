@@ -39,6 +39,10 @@ pub(crate) struct DisplayState {
     /// merge a short unplug and replug into one pass that sees the same set again; this still
     /// counts that as the set having changed.
     combination_event_pending: bool,
+    /// When the earliest event of the wave the debounce is merging arrived, on the engine's clock.
+    /// The 10 second window is judged at that moment, not when the debounce lets the pass run, and
+    /// the earliest one so a stream of events cannot drift the moment past the window.
+    pending_event_at: Option<Duration>,
     /// The last restore failed or was given up on. Until the arrangement matches again, the set
     /// changes or the setting is edited, a difference is not the user's hand.
     restore_unresolved: bool,
@@ -66,6 +70,7 @@ impl Engine {
         if !uuids.is_empty() && uuids != self.display_state.combination {
             self.display_state.combination_event_pending = true;
         }
+        self.display_state.pending_event_at.get_or_insert(self.clock.mono());
         let received = self.clock.wall();
         let origin = Origin { label: "displays", received, delay_ms: DISPLAY_DEBOUNCE_MS };
         let deadline = self.clock.mono() + Duration::from_millis(DISPLAY_DEBOUNCE_MS);
@@ -87,6 +92,8 @@ impl Engine {
             return;
         }
         let combination: BTreeSet<String> = displays.iter().map(|d| d.uuid.clone()).collect();
+        // Taken here, after the early return, so a failed read does not eat the event's time.
+        let observed_at = std::mem::take(&mut self.display_state.pending_event_at).unwrap_or_else(|| self.clock.mono());
         // Also a set that came and went between two passes: the debounce merged the two events.
         let event_pending = std::mem::take(&mut self.display_state.combination_event_pending);
         let combination_changed = event_pending || combination != self.display_state.combination;
@@ -97,7 +104,7 @@ impl Engine {
         }
 
         let mut skips = HashSet::new();
-        self.remember_displays_pass(&displays, combination_changed, &mut skips);
+        self.remember_displays_pass(&displays, combination_changed, observed_at, &mut skips);
         self.display_state.skips_logged = skips;
         if write_status {
             let origin = Origin { label: "displays", received: self.clock.wall(), delay_ms: DISPLAY_DEBOUNCE_MS };
@@ -105,7 +112,13 @@ impl Engine {
         }
     }
 
-    fn remember_displays_pass(&mut self, displays: &[DisplaySnapshot], combination_changed: bool, skips: &mut HashSet<String>) {
+    fn remember_displays_pass(
+        &mut self,
+        displays: &[DisplaySnapshot],
+        combination_changed: bool,
+        observed_at: Duration,
+        skips: &mut HashSet<String>,
+    ) {
         // Off means the memory file is never read or written, so a build with the feature unused
         // cannot touch a file it did not ask for.
         if !self.config.remember_displays {
@@ -116,13 +129,12 @@ impl Engine {
         let key = rule::key(displays);
         let st = &self.display_state;
         let anchor = [st.last_write_at, st.combination_changed_at].into_iter().flatten().max();
-        let now = self.clock.mono();
         let remembered = st.arrangements.as_ref().and_then(|a| a.get(&key));
         let decision = rule::decide(
             displays,
             remembered,
             combination_changed,
-            anchor.map(|a| now.saturating_sub(a)),
+            anchor.map(|a| observed_at.saturating_sub(a)),
             st.restore_unresolved,
         );
 
