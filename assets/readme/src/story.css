@@ -1,0 +1,23 @@
+/* Shared layout of the three story images (280x300 CSS px, rendered at 2x = 560x600).
+   No UI text and no numbers in these images: the only words are device and program names and the
+   two labels, so the same files serve all five READMEs. */
+body { width: 280px; height: 300px; position: relative; background: transparent; padding: 8px 10px; display: flex; flex-direction: column; }
+.tag { align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: .2px; padding: 2px 9px; border-radius: 9px; color: #fff; margin-bottom: 5px; }
+.tag.mac { background: var(--orange); } .tag.cleat { background: var(--green); color: #06280f; }
+.panel { position: relative; height: 112px; border-radius: 14px; background: var(--panel); border: 1.5px solid var(--panel-line); }
+.panel.mac { border-color: color-mix(in srgb, var(--orange) 55%, transparent); }
+.panel.cleat { border-color: color-mix(in srgb, var(--green) 60%, transparent); }
+.down { height: 28px; display: grid; place-items: center; color: var(--text3); font-size: 18px; }
+.node { position: absolute; display: flex; flex-direction: column; align-items: center; width: 84px; font-size: 10px; line-height: 12px; color: var(--text2); text-align: center; }
+.circ { position: relative; width: 46px; height: 46px; border-radius: 50%; background: var(--win); border: 1.5px solid var(--panel-line); display: grid; place-items: center; font-size: 22px; color: var(--ink); margin-bottom: 5px; }
+.circ.hot { color: var(--orange); border-color: var(--orange); } .circ.ok { color: var(--green); border-color: var(--green); }
+.circ.off { color: var(--faint); border-color: var(--panel-line); }
+.badge { position: absolute; right: -6px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; background: var(--panel); border: 1.5px solid currentColor; display: grid; place-items: center; font-size: 10px; }
+.line { position: absolute; height: 0; border-top: 2.5px solid; }
+.line.hot { border-color: var(--orange); } .line.ok { border-color: var(--green); } .line.dash { border-top-style: dashed; border-color: var(--faint); border-top-width: 2px; }
+.track { position: absolute; left: 16px; right: 16px; top: 78px; height: 9px; border-radius: 5px; background: var(--track); }
+.fill { position: absolute; inset: 0 auto 0 0; border-radius: 5px; }
+.fill.hot { background: var(--orange); } .fill.ok { background: var(--green); }
+.ghost { position: absolute; top: -4px; width: 0; height: 17px; border-left: 2px dashed var(--faint); }
+.knob { position: absolute; top: -4px; width: 17px; height: 17px; margin-left: -8.5px; border-radius: 50%; background: #fff; border: 2px solid var(--green); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.arr { position: absolute; color: var(--orange); font-size: 20px; }

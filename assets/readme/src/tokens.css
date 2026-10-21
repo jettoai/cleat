@@ -1,0 +1,32 @@
+/* Shared by hero.html and story-*.html. Colours sampled from assets/screenshot-output*.png
+   (dark and light) and rs/src/settings/ui/window.rs (sidebar #28282A / #EBEBED). */
+:root {
+  color-scheme: light;
+  --desk-a: #cdd9ee; --desk-b: #e6dff0; --desk-c: #f5dcd4;
+  --bar: rgba(255,255,255,.62); --bar-text: #1d1d1f; --bar-on: rgba(0,0,0,.12);
+  --menu: rgba(246,246,248,.86); --menu-line: rgba(0,0,0,.12); --menu-text: #1d1d1f; --menu-dim: #8a8a8e;
+  --win: #f3f3f5; --side: #ebebed; --card: #ffffff; --sep: #e6e6e6; --navsel: #d8d8da;
+  --text: #1d1d1f; --text2: #7c7c80; --text3: #a4a4a8;
+  --blue: #007aff; --chip-bg: #e2ecff; --chip-fg: #2f7cf6; --chip2-bg: #e6e6e6; --chip2-fg: #5c5c60;
+  --box: #e6e6e6; --green: #32c858; --orange: #f0891a; --shadow: 0 18px 50px rgba(30,30,60,.28);
+  --panel: #ffffff; --panel-line: rgba(0,0,0,.08); --ink: #3c3c43; --faint: #c9c9ce;
+  --track: #dedee2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --desk-a: #1a2236; --desk-b: #2b2544; --desk-c: #3d2c3c;
+    --bar: rgba(28,28,30,.6); --bar-text: #f2f2f7; --bar-on: rgba(255,255,255,.18);
+    --menu: rgba(44,44,46,.86); --menu-line: rgba(255,255,255,.14); --menu-text: #f2f2f7; --menu-dim: #8e8e93;
+    --win: #1c1c1e; --side: #28282a; --card: #2a2a2c; --sep: #3f3f41; --navsel: #39393b;
+    --text: #f5f5f7; --text2: #8e8e93; --text3: #636366;
+    --blue: #0a7aff; --chip-bg: #2a354a; --chip-fg: #4a8cf5; --chip2-bg: #3f3f41; --chip2-fg: #b0b0b5;
+    --box: #3f3f41; --green: #31d258; --orange: #ff9f2e; --shadow: 0 18px 50px rgba(0,0,0,.55);
+    --panel: #2a2a2c; --panel-line: rgba(255,255,255,.08); --ink: #d8d8de; --faint: #4a4a4e;
+    --track: #3f3f43;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { overflow: hidden; }
+body { font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: var(--text); }
+svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<!-- Illustrative composite, not a screenshot: no hook in the app renames devices, and a real capture
+     would show the author's own hardware. Strings are the app's own (rs/src/settings/words.rs,
+     rs/src/app/menubar.rs:171-193). Window layout and colours follow assets/screenshot-output*.png.
+     Numbers: CPU 0.01 % and 17.9 MB are the daemon's figures in that screenshot (`cleat status` does
+     not print them); "36 ms, median of the last 20" is `cleat status` reaction line, 2026-10-22 01:33.
+     Rendered by render.mjs at 840x480, deviceScaleFactor 2. -->
+<link rel="stylesheet" href="tokens.css">
+<style>
+body { width: 840px; height: 480px; position: relative; background: linear-gradient(180deg, var(--desk-a), var(--desk-c)); }
+.bar { position: absolute; inset: 0 0 auto 0; height: 24px; background: var(--bar); backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 12px; font-size: 12.5px; color: var(--bar-text); }
+.bar .i { font-size: 15px; }
+.bar .cleat { width: 26px; height: 20px; border-radius: 5px; background: var(--bar-on); display: grid; place-items: center; }
+.bar .cleat img { width: 15px; height: 15px; }
+.dark-inv { filter: none; } @media (prefers-color-scheme: dark) { .dark-inv { filter: invert(1); } }
+.menu { position: absolute; top: 27px; right: 10px; width: 190px; padding: 5px; border-radius: 10px; background: var(--menu); backdrop-filter: blur(30px); border: 1px solid var(--menu-line); box-shadow: 0 10px 30px rgba(0,0,0,.28); font-size: 13px; color: var(--menu-text); }
+.menu div { padding: 3px 10px; display: flex; justify-content: space-between; border-radius: 5px; line-height: 19px; }
+.menu .dim { color: var(--menu-dim); }
+.menu .k { color: var(--menu-dim); }
+.menu hr { border: 0; border-top: 1px solid var(--menu-line); margin: 5px 4px; }
+
+.wrap { position: absolute; left: 16px; top: 50px; width: 620px; height: 440px; -webkit-mask-image: linear-gradient(#000 78%, transparent 99%); mask-image: linear-gradient(#000 78%, transparent 99%); }
+.win { zoom: .86; position: relative; width: 720px; height: 760px; background: var(--win); border-radius: 18px; box-shadow: var(--shadow); border: 1px solid var(--menu-line); overflow: hidden; }
+.side { position: absolute; inset: 0 auto 0 0; width: 181px; background: var(--side); }
+.dots { position: absolute; left: 11px; top: 9px; display: flex; gap: 9px; }
+.dots b { width: 13px; height: 13px; border-radius: 50%; }
+.brand { position: absolute; left: 21px; top: 50px; display: flex; align-items: center; gap: 7px; }
+.brand img { width: 16px; height: 16px; }
+.brand span { font-size: 15.5px; font-weight: 700; }
+.brand small { font-size: 9.5px; color: var(--text2); margin-top: 3px; }
+.nav { position: absolute; left: 16px; top: 89px; width: 149px; }
+.nav div { height: 40px; margin-bottom: 0; border-radius: 10px; display: flex; align-items: center; gap: 11px; padding-left: 12px; font-size: 14.5px; color: var(--text2); }
+.nav div.on { background: var(--navsel); color: var(--text); font-weight: 500; }
+.nav .i { font-size: 16px; }
+.main { position: absolute; left: 181px; right: 0; top: 0; padding: 0 25px 0 28px; }
+h1 { position: absolute; top: 31px; font-size: 25px; font-weight: 700; letter-spacing: -.3px; }
+.sub { position: absolute; top: 63px; font-size: 12.8px; color: var(--text2); }
+.vit { position: absolute; top: 108px; left: 28px; right: 25px; height: 116px; background: var(--card); border-radius: 15px; padding: 14px 0 0 23px; }
+.vit .run { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--text2); }
+.vit .run i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.cols { display: flex; margin-top: 7px; padding-left: 11px; }
+.cols > div { padding-left: 14px; border-left: 1px solid var(--sep); width: 150px; height: 66px; }
+.cols > div:first-child { border: 0; padding: 0; width: 135px; }
+.cols > div:last-child { width: 130px; }
+.cols b { display: block; font-size: 28.5px; font-weight: 500; letter-spacing: -.4px; line-height: 38px; margin-top: 2px; }
+.cols .l { font-size: 13px; font-weight: 600; margin-top: -1px; }
+.cols .n { font-size: 10.8px; color: var(--text2); margin-top: 1px; white-space: nowrap; }
+.sec { position: absolute; left: 28px; right: 25px; display: flex; align-items: center; gap: 9px; font-size: 14.5px; font-weight: 600; color: var(--text2); }
+.sec::after { content: ""; flex: 1; border-top: 1px solid var(--sep); margin-left: 4px; }
+.sec .i { font-size: 16px; }
+.list { position: absolute; left: 28px; right: 25px; background: var(--card); border-radius: 15px; padding: 0 12px; }
+.row { height: 51px; display: flex; white-space: nowrap; align-items: center; font-size: 14.5px; font-weight: 600; border-top: 1px solid var(--sep); margin: 0 12px; padding: 0; }
+.row:first-child { border-top: 0; }
+.row .g { color: var(--text3); font-size: 16px; margin-right: 11px; margin-left: 8px; }
+.row .no { color: var(--text2); font-weight: 400; width: 22px; }
+.row .dev { font-size: 16px; margin-right: 9px; color: var(--text2); }
+.chip { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 8px; margin-left: 10px; background: var(--chip-bg); color: var(--chip-fg); }
+.row .sp { flex: 1; }
+.row .rm { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 11.2px; font-weight: 400; margin-right: 26px; }
+.row .ex { display: flex; align-items: center; gap: 8px; font-size: 11.8px; font-weight: 400; }
+.row .ex i { width: 14px; height: 14px; border-radius: 4px; background: var(--box); }
+.note { position: absolute; left: 28px; right: 25px; padding: 0 12px; font-size: 12px; line-height: 16px; color: var(--text2); }
+.tag { position: absolute; right: 12px; bottom: 12px; font-size: 11px; letter-spacing: .2px; padding: 3px 9px; border-radius: 10px; background: var(--bar); color: var(--bar-text); backdrop-filter: blur(12px); }
+</style></head>
+<body>
+<div class="bar">
+  <span class="cleat"><img class="dark-inv" src="../../../rs/bundle/MenuBarIcon@2x.png" alt=""></span>
+  <svg class="i"><use href="#wifi"/></svg>
+  <svg class="i"><use href="#battery"/></svg>
+  <span>Thu 9:41 AM</span>
+</div>
+<div class="menu">
+  <div class="dim">Output: AirPods Pro</div>
+  <div class="dim">Input: USB Microphone</div>
+  <hr>
+  <div>Settings…<span class="k">⌘,</span></div>
+  <div>About Cleat</div>
+  <hr>
+  <div>Quit Cleat<span class="k">⌘Q</span></div>
+</div>
+
+<div class="wrap"><div class="win">
+  <div class="side">
+    <div class="dots"><b style="background:#f3564a"></b><b style="background:#fbba00"></b><b style="background:#2ec840"></b></div>
+    <div class="brand"><img class="dark-inv" src="../../../rs/bundle/MenuBarIcon@2x.png" alt=""><span>Cleat</span><small>0.4.3</small></div>
+    <div class="nav">
+      <div class="on"><svg class="i"><use href="#volume"/></svg>Output</div>
+      <div><svg class="i"><use href="#mic"/></svg>Input</div>
+      <div><svg class="i"><use href="#headphones"/></svg>Headphones</div>
+      <div><svg class="i"><use href="#gear"/></svg>General</div>
+    </div>
+  </div>
+  <div class="main">
+    <h1>Output</h1>
+    <div class="sub">Cleat keeps the sound on the first device in your list</div>
+    <div class="vit">
+      <div class="run"><i></i>Cleat is running</div>
+      <div class="cols">
+        <div><b>0.01%</b><div class="l">CPU</div><div class="n">61-second average</div></div>
+        <div><b>17.9 MB</b><div class="l">Memory</div><div class="n">Physical memory</div></div>
+        <div><b>36 ms</b><div class="l">Reclaim speed</div><div class="n">Median of the last 20</div></div>
+      </div>
+    </div>
+    <div class="sec" style="top:248px"><svg class="i"><use href="#volume"/></svg>Output priority</div>
+    <div class="list" style="top:283px">
+      <div class="row"><svg class="i g"><use href="#grip"/></svg><span class="no">1</span><svg class="i dev"><use href="#headphones"/></svg>AirPods Pro<span class="chip">In use</span><span class="sp"></span><span class="rm"><svg class="i" style="font-size:14px"><use href="#minus-circle"/></svg>Remove</span><span class="ex"><i></i>Exclude</span></div>
+      <div class="row"><svg class="i g"><use href="#grip"/></svg><span class="no">2</span><svg class="i dev"><use href="#monitor"/></svg>Studio Display Speakers<span class="sp"></span><span class="rm"><svg class="i" style="font-size:14px"><use href="#minus-circle"/></svg>Remove</span><span class="ex"><i></i>Exclude</span></div>
+      <div class="row"><svg class="i g"><use href="#grip"/></svg><span class="no">3</span><svg class="i dev"><use href="#laptop"/></svg>MacBook Pro Speakers<span class="sp"></span><span class="rm"><svg class="i" style="font-size:14px"><use href="#minus-circle"/></svg>Remove</span><span class="ex"><i></i>Exclude</span></div>
+    </div>
+    <div class="note" style="top:450px">When there is sound to play, Cleat switches to the first connected device on the list. Cleat never switches to an excluded device.</div>
+    <div class="sec" style="top:508px"><svg class="i"><use href="#ellipsis-circle"/></svg>Other output devices</div>
+  </div>
+</div></div>
+<div class="tag">Illustrative</div>
+</body></html>
