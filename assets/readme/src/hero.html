@@ -3,8 +3,9 @@
 <!-- Illustrative composite, not a screenshot: no hook in the app renames devices, and a real capture
      would show the author's own hardware. Strings are the app's own (rs/src/settings/words.rs,
      rs/src/app/menubar.rs:171-193). Window layout and colours follow assets/screenshot-output*.png.
-     Numbers: CPU 0.01 % and 17.9 MB are the daemon's figures in that screenshot (`cleat status` does
-     not print them); "36 ms, median of the last 20" is `cleat status` reaction line, 2026-10-22 01:33.
+     Numbers: CPU 0.01 % is the daemon's figure in that screenshot (`cleat status` does not print it);
+     29 MB is the physical footprint measured with `footprint` on the installed 0.4.3, 2026-10-22;
+     "36 ms, median of the last 20" is `cleat status` reaction line, 2026-10-22 01:33.
      Rendered by render.mjs at 840x480, deviceScaleFactor 2. -->
 <link rel="stylesheet" href="tokens.css">
 <style>
@@ -98,7 +99,7 @@ h1 { position: absolute; top: 31px; font-size: 25px; font-weight: 700; letter-sp
       <div class="run"><i></i>Cleat is running</div>
       <div class="cols">
         <div><b>0.01%</b><div class="l">CPU</div><div class="n">61-second average</div></div>
-        <div><b>17.9 MB</b><div class="l">Memory</div><div class="n">Physical memory</div></div>
+        <div><b>29 MB</b><div class="l">Memory</div><div class="n">Physical memory</div></div>
         <div><b>36 ms</b><div class="l">Reclaim speed</div><div class="n">Median of the last 20</div></div>
       </div>
     </div>

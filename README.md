@@ -7,7 +7,7 @@
 
 <p align="center"><b>macOS keeps moving your audio devices. Cleat moves them back.</b><br>
 AirPods back from the phone, your microphone at your level, your volume where you left it.<br>
-<b>Written in Rust, built to cost almost nothing:</b> it reacts to CoreAudio events instead of polling, and on the author's Mac it holds about 29 MB of memory and a 3.9 MB binary.</p>
+<b>Written in Rust, built to cost almost nothing:</b> it reacts to Core Audio events instead of polling, and on the author's Mac it holds about 29 MB of memory and a 3.9 MB binary.</p>
 
 <p align="center">
   <a href="https://github.com/jettoai/cleat/releases/latest"><img src="https://img.shields.io/github/v/release/jettoai/cleat?style=flat-square&label=release" alt="Latest release"></a>
@@ -72,7 +72,7 @@ A microphone you picked yourself, on neither list, is left alone. All eight rule
 
 ## Built in Rust
 
-Cleat runs all day in the background, so it is built to use as little of your Mac as it can. The daemon, the menu bar item and the settings window are one Rust program that talks to CoreAudio and AppKit directly through the `objc2` bindings: no Electron and no web view. It waits for CoreAudio events instead of polling for changes.
+Cleat runs all day in the background, so it is built to use as little of your Mac as it can. The daemon, the menu bar item and the settings window are one Rust program that talks to Core Audio and AppKit directly through the `objc2` bindings: no Electron and no web view. It waits for Core Audio events instead of polling for changes.
 
 | Measured on the author's Mac | |
 |---|---|
@@ -176,10 +176,10 @@ These are real captures, so the device names are the ones on the author's Mac.
 
 ## What it holds
 
-Six rules are the same shape: subscribe to a CoreAudio property, compare against the config, write
+Six rules are the same shape: subscribe to a Core Audio property, compare against the config, write
 back if they differ. The output volume rule also has to know which program made a change, which
-CoreAudio does not say, so it reads that from the system log. The reclaim rule asks another daemon
-for a headset back, because a headset a phone has taken is not a CoreAudio property to write.
+Core Audio does not say, so it reads that from the system log. The reclaim rule asks another daemon
+for a headset back, because a headset a phone has taken is not a Core Audio property to write.
 
 | | What | Config |
 |---|---|---|
@@ -315,13 +315,13 @@ arbitration is saying. This rule uses a private system interface: on a macOS tha
 it, the rule turns itself off, says so once in the log, and `cleat status` reports it as
 unavailable rather than on.
 
-**Output volume.** CoreAudio says that the volume changed, not who changed it, so Cleat reads the
+**Output volume.** Core Audio says that the volume changed, not who changed it, so Cleat reads the
 writer from the system's audio log. A change by a program on `outputVolumeHoldAgainst` is put back
 to the value before it; a change by you or by any program not on the list becomes the new value to
 hold. An entry is an executable's name or an app's name: `Parallels Desktop` matches anything
 inside `Parallels Desktop.app`.
 
-**Naming a device.** Use the name shown in System Settings, or its CoreAudio UID if two devices
+**Naming a device.** Use the name shown in System Settings, or its Core Audio UID if two devices
 share a name. Names are compared after Unicode normalisation, because some devices carry a
 no-break space in their name that you cannot type (Maono's, for one). Case is not normalised.
 
