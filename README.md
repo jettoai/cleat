@@ -7,7 +7,7 @@
 
 <p align="center"><b>macOS keeps moving your audio devices. Cleat moves them back.</b><br>
 AirPods back from the phone, your microphone at your level, your volume where you left it.<br>
-It sits in the menu bar and reacts to CoreAudio events instead of polling, so it costs next to no CPU.</p>
+<b>Written in Rust, built to cost almost nothing:</b> it reacts to CoreAudio events instead of polling, and on the author's Mac it holds about 29 MB of memory and a 3.9 MB binary.</p>
 
 <p align="center">
   <a href="https://github.com/jettoai/cleat/releases/latest"><img src="https://img.shields.io/github/v/release/jettoai/cleat?style=flat-square&label=release" alt="Latest release"></a>
@@ -69,6 +69,19 @@ macOS and the apps on it change your audio setup without asking. These are the t
 - **Display arrangement remembered** and put back after a reconnect (`rememberDisplays`, off by default).
 
 A microphone you picked yourself, on neither list, is left alone. All eight rules and their config keys are in [What it holds](#what-it-holds).
+
+## Built in Rust
+
+Cleat runs all day in the background, so it is built to use as little of your Mac as it can. The daemon, the menu bar item and the settings window are one Rust program that talks to CoreAudio and AppKit directly through the `objc2` bindings: no Electron and no web view. It waits for CoreAudio events instead of polling for changes.
+
+| Measured on the author's Mac | |
+|---|---|
+| Memory | 29 MB (the figure Activity Monitor shows as Memory) |
+| CPU | 0.0% when idle; about 0.06% of one core averaged over two days of uptime |
+| Binary | 3.9 MB (`Cleat.app/Contents/MacOS/Cleat`) |
+| Reaction | median 36 ms from a change to the put-back (`cleat status`, last 20) |
+
+<sub>Cleat 0.4.3 on an Apple M4 Max, macOS 27.0.1, 2026-10-22, with the author's own config. Your numbers move with your config and whether the settings window is open.</sub>
 
 <sub>A cleat is the fitting a rope gets tied to so the boat stops drifting.</sub>
 
