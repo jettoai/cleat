@@ -31,21 +31,32 @@ brew tap jettoai/tap && brew trust jettoai/tap && brew install --cask cleat
 
 ## What it fixes
 
+macOS and the apps on it change your audio setup without asking. These are the three that happen most, with what Cleat does about each.
+
 <table><tr>
 <td width="33%" valign="top">
+
+**The phone keeps your AirPods.** An iPhone borrows them and does not give them back, so the Mac plays through its speakers.
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/story-airpods-dark.png"><img src="assets/readme/story-airpods-light.png" alt="Illustrative: AirPods linked to an iPhone, then back to the Mac" width="260"></picture>
 
-**AirPods back from the phone.** The phone borrowed them and kept them, so the Mac plays through its speakers. Cleat asks for them back while the Mac is playing; a phone that is playing or on a call keeps them.
+**Solved:** the AirPods are back on the Mac. Cleat asks for them while the Mac is playing; a phone that is playing or on a call keeps them.
 </td>
 <td width="33%" valign="top">
+
+**A call app turns your microphone down.** Apps that "automatically adjust" the input gain leave it at a level you never chose.
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/story-mic-dark.png"><img src="assets/readme/story-mic-light.png" alt="Illustrative: a microphone level pulled down by a call app, then held back at its set level" width="260"></picture>
 
-**Your microphone stays at your level.** Call apps that "automatically adjust" the input gain get undone. One level for every microphone, with per-device overrides.
+**Solved:** the level goes back to yours. One level for every microphone, with per-device overrides.
 </td>
 <td width="33%" valign="top">
+
+**A VM changes your volume.** Parallels Desktop, or any app you name, moves the output volume while you work.
+
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/story-volume-dark.png"><img src="assets/readme/story-volume-light.png" alt="Illustrative: Parallels Desktop drops the output volume, then the volume is back" width="260"></picture>
 
-**Your volume survives the VM.** When Parallels Desktop (or any app you name) changes the output volume, Cleat puts it back. Your own changes stay.
+**Solved:** the volume is back where you left it. Your own changes stay.
 </td>
 </tr></table>
 
