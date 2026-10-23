@@ -7,8 +7,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::ptr::{self, NonNull};
 
-use super::plan;
 use objc2_core_foundation::{CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType, CFURL};
+
+use super::plan;
 
 /// Longer side that stands for "no scaling": the thumbnail call does not enlarge, and with the
 /// transform flag it is the only call that also applies the picture's orientation.

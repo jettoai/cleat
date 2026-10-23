@@ -95,8 +95,13 @@ impl HeicConfig {
     }
 
     pub fn originals_dir(&self, home: &Path) -> PathBuf {
-        let dir = paths::expand_tilde(home, &self.originals);
-        if dir.is_absolute() { dir } else { self.watch_dir(home).join(dir) }
+        Self::originals_in(&self.watch_dir(home), &self.originals, home)
+    }
+
+    /// `originals` as the config spells it, for the watch folder `watch`: a relative one sits inside it.
+    pub fn originals_in(watch: &Path, originals: &str, home: &Path) -> PathBuf {
+        let dir = paths::expand_tilde(home, originals);
+        if dir.is_absolute() { dir } else { watch.join(dir) }
     }
 }
 

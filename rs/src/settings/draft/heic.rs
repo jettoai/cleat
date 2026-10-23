@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use super::SettingsDraft;
+use crate::config::HeicConfig;
 use crate::photos::same_folder;
 
 /// The long edges the page offers, in the order it shows them; 0 keeps the original size.
@@ -21,8 +22,7 @@ impl SettingsDraft {
     /// Kept as it was when the folder chosen is where the originals go now: one folder cannot be
     /// both.
     pub fn set_heic_watch(&mut self, chosen: &Path, home: &Path) {
-        let originals = crate::config::paths::expand_tilde(home, &self.heic_originals);
-        let originals = if originals.is_absolute() { originals } else { chosen.join(originals) };
+        let originals = HeicConfig::originals_in(chosen, &self.heic_originals, home);
         if !same_folder(chosen, &originals) {
             self.heic_watch = tilde_in(home, chosen);
         }
