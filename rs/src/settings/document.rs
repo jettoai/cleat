@@ -35,6 +35,7 @@ pub struct Managed {
     pub heic_watch: String,
     pub heic_originals: String,
     pub heic_long_edge: u32,
+    pub heic_quality: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,20 +97,21 @@ fn strings(list: &[String]) -> Value {
     Value::Array(list.iter().map(|s| Value::String(s.clone())).collect())
 }
 
-/// The `heic` cells the window owns; `quality` and anything else in the object are the file's.
-const HEIC_CELLS: [&str; 3] = ["watch", "originals", "longEdge"];
+/// The `heic` cells the window owns; anything else in the object is the file's.
+const HEIC_CELLS: [&str; 4] = ["watch", "originals", "longEdge", "quality"];
 
-fn heic_cell(key: &str, watch: &str, originals: &str, long_edge: u32) -> Value {
+fn heic_cell(key: &str, watch: &str, originals: &str, long_edge: u32, quality: u32) -> Value {
     match key {
         "watch" => Value::from(watch),
         "originals" => Value::from(originals),
-        _ => Value::from(long_edge),
+        "longEdge" => Value::from(long_edge),
+        _ => Value::from(quality),
     }
 }
 
 impl Managed {
     fn heic_cell(&self, key: &str) -> Value {
-        heic_cell(key, &self.heic_watch, &self.heic_originals, self.heic_long_edge)
+        heic_cell(key, &self.heic_watch, &self.heic_originals, self.heic_long_edge, self.heic_quality)
     }
 
     /// One unit's keys as the window writes them. A key of the unit missing here is removed.
@@ -263,8 +265,8 @@ pub fn merged_from(raw: Option<&[u8]>, managed: &Managed, origin: Option<&Origin
 
 /// Writes the `heic` cells that changed into the file's `heic` object. A cell back at what it was
 /// at load returns to the file's own form of it; without an origin a cell is written only when the
-/// file does not already say that (a missing cell reads as the default). `quality` and any other
-/// key of the object stay as they are.
+/// file does not already say that (a missing cell reads as the default). Any other key of the
+/// object stays as it is.
 fn merge_heic(object: &mut Map<String, Value>, managed: &Managed, origin: Option<&Origin>) {
     let prior = object.get("heic").and_then(Value::as_object).cloned();
     let mut sub = prior.clone().unwrap_or_default();
@@ -277,7 +279,7 @@ fn merge_heic(object: &mut Map<String, Value>, managed: &Managed, origin: Option
                 Some(v) => sub.insert(key.into(), v.clone()),
                 None => sub.remove(key),
             };
-        } else if origin.is_some() || sub.get(key).cloned().unwrap_or_else(|| heic_cell(key, &defaults.watch, &defaults.originals, defaults.long_edge)) != now {
+        } else if origin.is_some() || sub.get(key).cloned().unwrap_or_else(|| heic_cell(key, &defaults.watch, &defaults.originals, defaults.long_edge, defaults.quality)) != now {
             sub.insert(key.into(), now);
         }
     }

@@ -1,4 +1,4 @@
-//! The photos page: the HEIC to JPEG switch, the two folders and the long edge (`heic` in the config).
+//! The photos page: the HEIC to JPEG switch, the two folders, the long edge and the quality (`heic` in the config).
 
 use std::path::PathBuf;
 
@@ -8,7 +8,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{NSButton, NSColor, NSLineBreakMode, NSModalResponseOK, NSOpenPanel, NSControlStateValueOn, NSView};
 use objc2_foundation::NSURL;
 
-use super::super::draft::{SettingsDraft, LONG_EDGES};
+use super::super::draft::{SettingsDraft, LONG_EDGES, QUALITIES};
 use super::super::lang;
 use super::super::text::{self, Page};
 use super::super::words::W;
@@ -56,23 +56,28 @@ fn folder_row(
     to_view(&row(mtm, &[&row_title(mtm, title.get(l)), &spacer(mtm), &path, &button]))
 }
 
-fn long_edge_row(ctx: &mut Ctx, chosen: u32) -> Retained<NSView> {
+/// A title and one radio button per `(value, label)`; `set` stores the picked value in the draft.
+fn choice_row(ctx: &mut Ctx, title: W, chosen: u32, options: &[(u32, String)], set: fn(&mut SettingsDraft, u32)) -> Retained<NSView> {
     let mtm = ctx.mtm;
     let l = lang::current();
-    let title = row_title(mtm, W::LongEdge.get(l));
+    let title = row_title(mtm, title.get(l));
     let mut views: Vec<Retained<NSView>> = vec![to_view(&title), spacer(mtm)];
-    for edge in LONG_EDGES {
-        let act = ctx.act(move |_| app().edit(move |s| s.draft.heic_long_edge = edge));
-        let name = if edge == 0 { W::OriginalSize.get(l).to_string() } else { edge.to_string() };
+    for (value, name) in options.iter().cloned() {
+        let act = ctx.act(move |_| app().edit(move |s| set(&mut s.draft, value)));
         // SAFETY: target and selector match `Action::fire:`.
         let radio = unsafe { NSButton::radioButtonWithTitle_target_action(&ns(&name), Some(&act), Some(sel!(fire:)), mtm) };
-        radio.setState(if edge == chosen { NSControlStateValueOn } else { objc2_app_kit::NSControlStateValueOff });
+        radio.setState(if value == chosen { NSControlStateValueOn } else { objc2_app_kit::NSControlStateValueOff });
         views.push(to_view(&radio));
     }
     let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
     let r = row(mtm, &refs);
     r.setSpacing(14.0);
     to_view(&r)
+}
+
+fn long_edge_options() -> Vec<(u32, String)> {
+    let l = lang::current();
+    LONG_EDGES.iter().map(|&e| (e, if e == 0 { W::OriginalSize.get(l).to_string() } else { e.to_string() })).collect()
 }
 
 /// The page's views, top to bottom: the orange line when the folder cannot be read, then the section.
@@ -95,7 +100,8 @@ pub fn views(a: &App, ctx: &mut Ctx) -> Vec<Retained<NSView>> {
     let rest = [
         folder_row(ctx, W::WatchFolder, &d.heic_watch, SettingsDraft::set_heic_watch),
         folder_row(ctx, W::OriginalsFolder, &d.heic_originals, SettingsDraft::set_heic_originals),
-        long_edge_row(ctx, d.heic_long_edge),
+        choice_row(ctx, W::LongEdge, d.heic_long_edge, &long_edge_options(), |s, v| s.heic_long_edge = v),
+        choice_row(ctx, W::Quality, d.heic_quality, &QUALITIES.map(|q| (q, q.to_string())), |s, v| s.heic_quality = v),
     ];
     if !on {
         for r in &rest {

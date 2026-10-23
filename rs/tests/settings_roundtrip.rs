@@ -216,6 +216,7 @@ fn edits() -> Vec<(&'static str, Unit, Edit)> {
         ("launch", Unit::LaunchAtLogin, |d| d.launch_at_login = !d.launch_at_login),
         ("heic.on", Unit::ConvertHeic, |d| d.convert_heic = !d.convert_heic),
         ("heic.edge", Unit::Heic, |d| d.heic_long_edge = 3200),
+        ("heic.quality", Unit::Heic, |d| d.heic_quality = 80),
         ("heic.watch", Unit::Heic, |d| d.heic_watch = "~/Desktop".into()),
         ("takeover", Unit::Takeover, |d| d.headphones_take_over = !d.headphones_take_over),
     ]

@@ -12,7 +12,7 @@ use super::document::Managed;
 mod headsets;
 mod heic;
 pub use headsets::ReclaimHint;
-pub use heic::LONG_EDGES;
+pub use heic::{LONG_EDGES, QUALITIES};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
@@ -241,6 +241,7 @@ pub struct SettingsDraft {
     pub heic_watch: String,
     pub heic_originals: String,
     pub heic_long_edge: u32,
+    pub heic_quality: u32,
 }
 
 pub const DEFAULT_HOLD_AGAINST: &str = "Parallels Desktop";
@@ -288,6 +289,7 @@ impl SettingsDraft {
             heic_watch: config.heic.watch.clone(),
             heic_originals: config.heic.originals.clone(),
             heic_long_edge: config.heic.long_edge,
+            heic_quality: config.heic.quality,
         }
     }
 
@@ -318,6 +320,7 @@ impl SettingsDraft {
             heic_watch: self.heic_watch.clone(),
             heic_originals: self.heic_originals.clone(),
             heic_long_edge: self.heic_long_edge,
+            heic_quality: self.heic_quality,
         }
     }
 

@@ -237,7 +237,7 @@ fn the_photos_page_edits_reach_the_file_and_leave_quality_and_unknown_keys() {
 
 #[test]
 fn a_save_with_no_photos_edit_keeps_the_bytes() {
-    for raw in [HAND_EDITED_HEIC, r#"{"reclaim":[]}"#, r#"{"heic":{},"reclaim":[]}"#, r#"{"convertHeic":false,"heic":{"quality":60},"reclaim":[]}"#] {
+    for raw in [HAND_EDITED_HEIC, r#"{"reclaim":[]}"#, r#"{"heic":{},"reclaim":[]}"#, r#"{"convertHeic":false,"heic":{"quality":60},"reclaim":[]}"#, r#"{"heic":{"quality":65},"reclaim":[]}"#] {
         let canonical = saved_bytes(raw, |_| {});
         assert_eq!(saved_bytes(&canonical, |_| {}), canonical, "{raw}");
         let unchanged: serde_json::Value = serde_json::from_str(raw).unwrap();
@@ -263,17 +263,37 @@ fn only_the_edited_cell_is_written_and_editing_back_restores_the_file() {
     assert_eq!(none["heic"], serde_json::json!({"watch": "~/x"}), "{none}");
 }
 
+#[test]
+fn the_quality_edit_is_written_and_choosing_the_loaded_value_restores_the_file() {
+    let raw = r#"{"heic":{"longEdge":2400},"reclaim":[]}"#;
+    let out: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| d.heic_quality = 80)).unwrap();
+    assert_eq!(out["heic"], serde_json::json!({"longEdge": 2400, "quality": 80}), "{out}");
+    let back: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| {
+        d.heic_quality = 80;
+        d.heic_quality = 60;
+    }))
+    .unwrap();
+    assert_eq!(back["heic"], serde_json::json!({"longEdge": 2400}), "{back}");
+    // A value outside the page's six choices is kept until a button is clicked.
+    let kept = saved_bytes(r#"{"heic":{"quality":65},"reclaim":[]}"#, |d| d.heic_long_edge = 1600);
+    let kept: serde_json::Value = serde_json::from_str(&kept).unwrap();
+    assert_eq!(kept["heic"], serde_json::json!({"quality": 65, "longEdge": 1600}), "{kept}");
+}
+
 /// Without an origin (the pure `merged`), a cell is written only when the file does not say it.
 #[test]
 fn without_an_origin_a_cell_is_written_when_the_file_differs() {
     let mut m = default_managed();
     m.heic_long_edge = 1200;
+    m.heic_quality = 70;
     let same = text(Some(r#"{"heic":{"longEdge":1200,"quality":70}}"#), &m);
     assert!(same.contains("\"longEdge\":1200") && same.contains("\"quality\":70"), "{same}");
     let differs = text(Some(r#"{"heic":{"longEdge":2400,"quality":70}}"#), &m);
     assert!(differs.contains("\"longEdge\":1200") && differs.contains("\"quality\":70"), "{differs}");
     let default_in_file = text(Some(r#"{"heic":{"quality":70}}"#), &m);
     assert!(!default_in_file.contains("longEdge"), "{default_in_file}");
+    let quality_differs = text(Some(r#"{"heic":{"quality":90}}"#), &m);
+    assert!(quality_differs.contains("\"quality\":70"), "{quality_differs}");
 }
 
 #[test]

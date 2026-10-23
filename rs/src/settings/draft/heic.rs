@@ -1,4 +1,4 @@
-//! The photos page's part of the draft: the folders and the long edge `heic` is converted to.
+//! The photos page's part of the draft: the folders, the long edge and the quality `heic` is converted to.
 
 use std::path::Path;
 
@@ -8,6 +8,10 @@ use crate::photos::same_folder;
 
 /// The long edges the page offers, in the order it shows them; 0 keeps the original size.
 pub const LONG_EDGES: [u32; 5] = [1200, 1600, 2400, 3200, 0];
+
+/// The JPEG qualities the page offers; the config accepts any 50 to 100, and one outside this list
+/// shows no button chosen.
+pub const QUALITIES: [u32; 6] = [50, 60, 70, 80, 90, 100];
 
 /// `~` for the home folder in a path as the config file would carry it.
 fn tilde_in(home: &Path, path: &Path) -> String {

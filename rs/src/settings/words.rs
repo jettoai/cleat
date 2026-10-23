@@ -148,6 +148,7 @@ words! {
     PanelChoose: "選擇", "Choose";
     LongEdge: "長邊（像素）", "Long edge (px)";
     OriginalSize: "原尺寸", "Original";
+    Quality: "品質", "Quality";
     PhotosNote: "轉出的 JPEG 不含拍攝地點，原檔放進原檔資料夾。", "The JPEG carries no location. The HEIC original is moved into the originals folder.";
     PhotosNoAccess: "Cleat 沒有權限讀取 {}。請到「系統設定 > 隱私權與安全性」允許 Cleat 存取這個資料夾。", "Cleat is not allowed to read {}. Allow it in System Settings > Privacy & Security.";
 
