@@ -267,3 +267,79 @@ fn switches_are_kept_apart_from_their_lists() {
     assert!(c.hold_against_active().is_empty());
     assert!(decode(r#"{"reclaimEnabled": "no"}"#).is_err());
 }
+
+#[test]
+fn convert_heic_is_off_and_the_heic_block_has_its_defaults_when_the_keys_are_absent() {
+    let config = decode("{}").unwrap();
+    assert!(!config.convert_heic);
+    assert_eq!(config.heic.watch, "~/Downloads");
+    assert_eq!(config.heic.originals, "HEIC原檔");
+    assert_eq!((config.heic.long_edge, config.heic.quality), (2400, 85));
+    assert_eq!(config.validate(), Ok(()));
+}
+
+#[test]
+fn a_heic_block_may_leave_out_any_field() {
+    let config = decode(r#"{"convertHeic": true, "heic": {"longEdge": 1600}}"#).unwrap();
+    assert!(config.convert_heic);
+    assert_eq!(config.heic.long_edge, 1600);
+    assert_eq!((config.heic.watch.as_str(), config.heic.originals.as_str(), config.heic.quality), ("~/Downloads", "HEIC原檔", 85));
+}
+
+#[test]
+fn a_config_from_before_heic_reads_as_it_did() {
+    let config = decode(r#"{"output": ["AirPods Max"], "balance": 0.5, "launchAtLogin": false}"#).unwrap();
+    assert_eq!(config.output, ["AirPods Max"]);
+    assert!(!config.convert_heic);
+    assert_eq!(config.heic, Default::default());
+    assert_eq!(config.validate(), Ok(()));
+}
+
+#[test]
+fn heic_long_edge_is_zero_or_800_to_8000() {
+    let check = |v: u32| decode(&format!(r#"{{"heic": {{"longEdge": {v}}}}}"#)).unwrap().validate();
+    for ok in [0, 800, 2400, 8000] {
+        assert_eq!(check(ok), Ok(()), "{ok}");
+    }
+    for bad in [1, 799, 8001] {
+        assert_eq!(check(bad), Err(ConfigError::HeicLongEdgeOutOfRange(bad)), "{bad}");
+    }
+    assert_eq!(
+        check(799).unwrap_err().to_string(),
+        "heic.longEdge must be 0 or between 800 and 8000, got 799"
+    );
+}
+
+#[test]
+fn heic_quality_is_50_to_100() {
+    let check = |v: u32| decode(&format!(r#"{{"heic": {{"quality": {v}}}}}"#)).unwrap().validate();
+    for ok in [50, 85, 100] {
+        assert_eq!(check(ok), Ok(()), "{ok}");
+    }
+    for bad in [0, 49, 101] {
+        assert_eq!(check(bad), Err(ConfigError::HeicQualityOutOfRange(bad)), "{bad}");
+    }
+    assert_eq!(check(101).unwrap_err().to_string(), "heic.quality must be between 50 and 100, got 101");
+    assert!(decode(r#"{"heic": {"quality": -1}}"#).is_err());
+}
+
+#[test]
+fn a_file_with_an_out_of_range_heic_value_is_refused_whole() {
+    let path = temp_path("heic-range");
+    std::fs::write(&path, r#"{"output": ["A"], "heic": {"quality": 49}}"#).unwrap();
+    let loaded = Config::load(&path);
+    let _ = std::fs::remove_file(&path);
+    assert!(matches!(loaded, Err(cleat_rs::config::LoadError::Invalid(ConfigError::HeicQualityOutOfRange(49)))));
+}
+
+#[test]
+fn heic_paths_expand_the_tilde_and_a_bare_originals_name_lives_in_the_watched_folder() {
+    let home = Path::new("/Users/someone");
+    let heic = decode(r#"{"heic": {"watch": "~/Pictures/in", "originals": "Originals"}}"#).unwrap().heic;
+    assert_eq!(heic.watch_dir(home), Path::new("/Users/someone/Pictures/in"));
+    assert_eq!(heic.originals_dir(home), Path::new("/Users/someone/Pictures/in/Originals"));
+    let elsewhere = decode(r#"{"heic": {"originals": "~/Archive"}}"#).unwrap().heic;
+    assert_eq!(elsewhere.originals_dir(home), Path::new("/Users/someone/Archive"));
+    let absolute = decode(r#"{"heic": {"watch": "/Volumes/in", "originals": "/Volumes/out"}}"#).unwrap().heic;
+    assert_eq!((absolute.watch_dir(home).as_path(), absolute.originals_dir(home).as_path()), (Path::new("/Volumes/in"), Path::new("/Volumes/out")));
+}

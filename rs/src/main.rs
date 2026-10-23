@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use cleat_rs::app::microphone;
 use cleat_rs::audio::CoreAudioSystem;
 use cleat_rs::cli;
-use cleat_rs::config::paths;
+use cleat_rs::config::{paths, HeicConfig};
 use cleat_rs::display::CoreGraphicsDisplays;
 use cleat_rs::engine::{self, Engine, EngineDeps, Mode};
 use cleat_rs::identity::{self, Identity};
@@ -18,6 +18,7 @@ use cleat_rs::launch::{LaunchctlJob, Launchd, SmApp};
 use cleat_rs::liveness::live_detectors;
 use cleat_rs::model::MicrophonePermission;
 use cleat_rs::outvol::writer_log::LogStream;
+use cleat_rs::photos;
 use cleat_rs::reclaim::{SmartRoutingClient, SystemProfilerPairings};
 use cleat_rs::report::{self, Curl, Meta, Reporter, ReporterConfig};
 use cleat_rs::state::clock::SystemClock;
@@ -82,6 +83,7 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
             login_item: Box::new(SmApp::main_app()),
             launchd: Box::new(LaunchctlJob { label }),
             usage_ping_changed: make_pinger(&identity),
+            photos_changed: make_photos(tx.clone()),
             identity,
             error_reports_changed: match reporter {
                 Some(r) => Box::new(move |on| r.set_enabled(on)),
@@ -141,6 +143,15 @@ fn make_pinger(identity: &Identity) -> Box<dyn FnMut(bool)> {
         std::sync::Arc::new(CurlPost),
     );
     Box::new(move |on| pinger.apply(on))
+}
+
+/// The HEIC watch: each call replaces the one running, or ends it on `None`.
+fn make_photos(tx: mpsc::Sender<engine::Event>) -> Box<dyn FnMut(Option<HeicConfig>)> {
+    let mut running = Vec::new(); // zero or one; dropping a handle stops its watch
+    Box::new(move |wanted| {
+        running.clear(); // the old one stops before the new one looks at the folder
+        running.extend(wanted.and_then(|c| photos::start(&c, &paths::home(), tx.clone(), photos::Timing::default())));
+    })
 }
 
 fn make_reporter() -> Reporter {

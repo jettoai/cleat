@@ -29,7 +29,7 @@ use std::time::{Duration, SystemTime};
 use run_loop::Scheduler;
 
 use crate::audio::{AudioSystem, ListenerToken};
-use crate::config::{watcher, Config};
+use crate::config::{watcher, Config, HeicConfig};
 use crate::display::DisplaySystem;
 use crate::identity::Identity;
 use crate::launch::{AgentService, Launchd};
@@ -71,6 +71,9 @@ pub struct EngineDeps {
     pub error_reports_changed: Box<dyn FnMut(bool)>,
     /// Told when `usagePing` changes; on at start unless the config turns it off.
     pub usage_ping_changed: Box<dyn FnMut(bool)>,
+    /// Told the HEIC watch to run (`Some`, with its settings; replaces a running one) or stop
+    /// (`None`). Never called while `convertHeic` is off; its reports come back as `Event::Photos`.
+    pub photos_changed: Box<dyn FnMut(Option<HeicConfig>)>,
     /// Makes a silence detector for a device; flips come back as `Event::LivenessFlip`.
     pub detectors: DetectorFactory,
     /// The routing SPI; answers come back as `Event::RouteAnswered`.
@@ -103,6 +106,7 @@ pub struct Engine {
     launchd: Box<dyn Launchd>,
     error_reports_changed: Box<dyn FnMut(bool)>,
     usage_ping_changed: Box<dyn FnMut(bool)>,
+    photos_changed: Box<dyn FnMut(Option<HeicConfig>)>,
     detectors: DetectorFactory,
     routing: Box<dyn RouteRequesting>,
     inventory: Box<dyn BluetoothInventory>,
@@ -123,6 +127,7 @@ pub struct Engine {
     liveness_unavailable: HashSet<String>,
     error_reports_applied: bool,
     usage_ping_applied: bool,
+    photos_applied: Option<HeicConfig>,
     previous_device_uids: Option<HashSet<String>>,
     /// The last pass found the device list unreadable and said so; keeps a long outage to one line.
     device_list_unreadable_noted: bool,
@@ -156,6 +161,7 @@ impl Engine {
             launchd: deps.launchd,
             error_reports_changed: deps.error_reports_changed,
             usage_ping_changed: deps.usage_ping_changed,
+            photos_changed: deps.photos_changed,
             detectors: deps.detectors,
             routing: deps.routing,
             inventory: deps.inventory,
@@ -173,6 +179,7 @@ impl Engine {
             liveness_unavailable: HashSet::new(),
             error_reports_applied: false,
             usage_ping_applied: false,
+            photos_applied: None,
             previous_device_uids: None,
             device_list_unreadable_noted: false,
             system_tokens: vec![],
@@ -212,7 +219,7 @@ impl Engine {
         self.reconcile(true, None);
     }
 
-    /// Launch agent, error reports and usage ping. Observe mode touches neither (D6).
+    /// Launch agent, error reports, usage ping and the HEIC watch. Observe mode touches none (D6).
     fn sync_side_effects(&mut self) {
         if self.mode == Mode::Observe {
             return;
@@ -221,6 +228,7 @@ impl Engine {
         self.hand_over_to_launch_agent_if_needed();
         self.sync_error_reports();
         self.sync_usage_ping();
+        self.sync_photos();
     }
 
     /// A malformed or out-of-range file never replaces a good one; a missing file turns every rule
@@ -277,6 +285,22 @@ impl Engine {
         self.usage_ping_applied = wanted;
         (self.usage_ping_changed)(wanted);
         self.note(&format!("usagePing: {}", if wanted { "on" } else { "off" }));
+    }
+
+    /// Starts, restarts or stops the HEIC watch when `convertHeic` or `heic` changes. Off at start
+    /// asks for nothing.
+    fn sync_photos(&mut self) {
+        let wanted = self.config.convert_heic.then(|| self.config.heic.clone());
+        if wanted == self.photos_applied {
+            return;
+        }
+        self.photos_applied = wanted.clone();
+        let line = match &wanted {
+            Some(h) => format!("heic: watching {}", h.watch),
+            None => "heic: off".into(),
+        };
+        (self.photos_changed)(wanted);
+        self.note(&line);
     }
 
     /// One pass: snapshot, rules, apply, status. The `pass:` line is written in trace mode only.

@@ -140,6 +140,7 @@ impl Engine {
             Event::VolumeWriter(e) => self.volume_writer_event(e),
             Event::VolumeWriterExited(status) => self.volume_writer_exited(status),
             Event::DisplaysChanged => self.displays_changed(),
+            Event::Photos(report) => self.note(&report.line()),
         }
     }
 

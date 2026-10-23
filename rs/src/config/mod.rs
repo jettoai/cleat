@@ -6,7 +6,7 @@ pub mod watcher;
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,8 @@ pub enum ConfigError {
     BalanceOutOfRange(f64),
     VolumeOutOfRange { device: String, value: f64 },
     ZeroSecondsTooSmall { device: String, value: f64 },
+    HeicLongEdgeOutOfRange(u32),
+    HeicQualityOutOfRange(u32),
 }
 
 impl fmt::Display for ConfigError {
@@ -37,6 +39,10 @@ impl fmt::Display for ConfigError {
             ConfigError::ZeroSecondsTooSmall { device, value } => {
                 write!(f, "liveness[\"{device}\"].zeroSeconds must be at least 1, got {value:?}")
             }
+            ConfigError::HeicLongEdgeOutOfRange(v) => {
+                write!(f, "heic.longEdge must be 0 or between 800 and 8000, got {v:?}")
+            }
+            ConfigError::HeicQualityOutOfRange(v) => write!(f, "heic.quality must be between 50 and 100, got {v:?}"),
         }
     }
 }
@@ -61,6 +67,38 @@ impl fmt::Display for LoadError {
 }
 
 impl std::error::Error for LoadError {}
+
+/// Where HEIC photos are picked up and how they come out (`photos`). Paths are kept as written;
+/// `~` is expanded where they are used.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct HeicConfig {
+    /// The folder watched, first level only.
+    pub watch: String,
+    /// A name (kept inside `watch`) or an absolute path the converted originals move to.
+    pub originals: String,
+    /// Pixels on the longer side; 0 keeps the original size.
+    pub long_edge: u32,
+    /// JPEG quality, 50 to 100.
+    pub quality: u32,
+}
+
+impl Default for HeicConfig {
+    fn default() -> Self {
+        Self { watch: "~/Downloads".into(), originals: "HEIC原檔".into(), long_edge: 2400, quality: 85 }
+    }
+}
+
+impl HeicConfig {
+    pub fn watch_dir(&self, home: &Path) -> PathBuf {
+        paths::expand_tilde(home, &self.watch)
+    }
+
+    pub fn originals_dir(&self, home: &Path) -> PathBuf {
+        let dir = paths::expand_tilde(home, &self.originals);
+        if dir.is_absolute() { dir } else { self.watch_dir(home).join(dir) }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -88,6 +126,9 @@ pub struct Config {
     /// Whether the last arrangement set for each combination of displays is remembered and put
     /// back when macOS rearranges it. Off unless asked for (Swift 0.4.2).
     pub remember_displays: bool,
+    /// Converts HEIC files that arrive in `heic.watch` to JPEG. Off unless asked for.
+    pub convert_heic: bool,
+    pub heic: HeicConfig,
 }
 
 impl Default for Config {
@@ -109,6 +150,8 @@ impl Default for Config {
             output_volume_hold_against: vec![],
             output_volume_hold_enabled: true,
             remember_displays: false,
+            convert_heic: false,
+            heic: HeicConfig::default(),
         }
     }
 }
@@ -148,6 +191,13 @@ impl Config {
             if entry.zero_seconds < 1.0 {
                 return Err(ConfigError::ZeroSecondsTooSmall { device: device.clone(), value: entry.zero_seconds });
             }
+        }
+        let heic = &self.heic;
+        if heic.long_edge != 0 && !(800..=8000).contains(&heic.long_edge) {
+            return Err(ConfigError::HeicLongEdgeOutOfRange(heic.long_edge));
+        }
+        if !(50..=100).contains(&heic.quality) {
+            return Err(ConfigError::HeicQualityOutOfRange(heic.quality));
         }
         Ok(())
     }

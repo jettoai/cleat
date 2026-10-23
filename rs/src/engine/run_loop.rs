@@ -29,6 +29,8 @@ pub enum Event {
     VolumeWriterExited(i32),
     /// A display reconfiguration finished (possibly one of many for one plug-in).
     DisplaysChanged,
+    /// What the HEIC converter's thread did (`photos`).
+    Photos(crate::photos::Report),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

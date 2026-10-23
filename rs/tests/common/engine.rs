@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use cleat_rs::audio::{AudioSystem, ListenTarget, ListenerKind, ListenerToken};
-use cleat_rs::config::Config;
+use cleat_rs::config::{Config, HeicConfig};
 use cleat_rs::display::DisplaySnapshot;
 use cleat_rs::engine::{Engine, EngineDeps, Event, Mode, Status};
 use cleat_rs::identity::Identity;
@@ -303,6 +303,8 @@ pub struct Harness {
     pub login_item: Rc<FakeAgentState>,
     pub reports: Rc<RefCell<Vec<bool>>>,
     pub pings: Rc<RefCell<Vec<bool>>>,
+    /// Every call of the HEIC watch's start/stop callback.
+    pub photos: Rc<RefCell<Vec<Option<HeicConfig>>>>,
     pub detectors: Rc<DetectorLog>,
     pub routing: Rc<FakeRoutingState>,
     pub pairings: Rc<FakePairingsState>,
@@ -346,6 +348,8 @@ impl Harness {
         let sink = reports.clone();
         let pings = Rc::new(RefCell::new(vec![]));
         let pings_sink = pings.clone();
+        let photos = Rc::new(RefCell::new(vec![]));
+        let photos_sink = photos.clone();
         let detectors = Rc::new(DetectorLog { start_results: opts.start_results, ..Default::default() });
         let log = detectors.clone();
         let routing = Rc::new(FakeRoutingState {
@@ -379,6 +383,7 @@ impl Harness {
             launchd: Box::new(FakeLaunchd { loaded: opts.job_loaded }),
             error_reports_changed: Box::new(move |v| sink.borrow_mut().push(v)),
             usage_ping_changed: Box::new(move |v| pings_sink.borrow_mut().push(v)),
+            photos_changed: Box::new(move |v| photos_sink.borrow_mut().push(v)),
             detectors: Box::new(move |device, _rate, zero_seconds| {
                 log.made.set(log.made.get() + 1);
                 Box::new(FakeDetector {
@@ -399,7 +404,7 @@ impl Harness {
         };
         let mut engine = Engine::new(deps, opts.mode, opts.trace);
         engine.start(opts.microphone);
-        let mut h = Self { dir, audio, clock, agent, login_item, reports, pings, detectors, routing, pairings, writer, displays, engine };
+        let mut h = Self { dir, audio, clock, agent, login_item, reports, pings, photos, detectors, routing, pairings, writer, displays, engine };
         h.deliver_answers();
         h
     }

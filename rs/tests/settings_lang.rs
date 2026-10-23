@@ -145,7 +145,7 @@ fn zh_hant_unchanged() {
 
 #[test]
 fn no_cjk_outside_words() {
-    let allowed = [("src/settings/text.rs", "耳機"), ("src/settings/text.rs", "顯示器"), ("src/engine/output_volume.rs", "{} 拉回 {} 改的音量 {:.0}% → {:.0}%")];
+    let allowed = [("src/settings/text.rs", "耳機"), ("src/settings/text.rs", "顯示器"), ("src/engine/output_volume.rs", "{} 拉回 {} 改的音量 {:.0}% → {:.0}%"), ("src/config/mod.rs", "HEIC原檔")];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut found = vec![];
     let mut dirs = vec![root.join("src")];

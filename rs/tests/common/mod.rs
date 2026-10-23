@@ -3,6 +3,7 @@
 
 pub mod displays;
 pub mod engine;
+pub mod photos;
 pub mod reclaim;
 
 use std::collections::BTreeMap;

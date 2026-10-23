@@ -17,16 +17,19 @@ pub fn home() -> PathBuf {
 /// `{home}/.config/cleat/config.json`, unless the override names another file. Pure, for tests.
 pub fn config_path_from(home: &Path, override_: Option<&str>) -> PathBuf {
     match override_ {
-        Some(o) if !o.is_empty() => {
-            if o == "~" {
-                home.to_path_buf()
-            } else if let Some(rest) = o.strip_prefix("~/") {
-                home.join(rest)
-            } else {
-                PathBuf::from(o)
-            }
-        }
+        Some(o) if !o.is_empty() => expand_tilde(home, o),
         _ => home.join(".config/cleat/config.json"),
+    }
+}
+
+/// `~` and `~/x` to the home directory; anything else as written.
+pub fn expand_tilde(home: &Path, text: &str) -> PathBuf {
+    if text == "~" {
+        home.to_path_buf()
+    } else if let Some(rest) = text.strip_prefix("~/") {
+        home.join(rest)
+    } else {
+        PathBuf::from(text)
     }
 }
 

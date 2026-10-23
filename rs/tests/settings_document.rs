@@ -183,3 +183,21 @@ fn usage_ping_survives_a_save_and_sits_after_error_reports() {
     assert_eq!(keys.iter().rev().take(2).copied().collect::<Vec<_>>(), ["usagePing", "errorReports"]);
     assert!(out.contains("\"usagePing\": false"), "{out}");
 }
+
+#[test]
+fn heic_keys_survive_a_save_even_when_hand_edited() {
+    let raw = r#"{"convertHeic":true,"heic":{"watch":"~/Pictures/in","originals":"/Volumes/x/orig","longEdge":3200,"quality":70,"extra":[1]},"reclaim":[]}"#;
+    let original: serde_json::Value = serde_json::from_str(raw).unwrap();
+    let out = save_untouched(raw, |d| d.headphones_take_over = !d.headphones_take_over);
+    assert_eq!(out["convertHeic"], original["convertHeic"], "{out}");
+    assert_eq!(out["heic"], original["heic"], "{out}");
+    let config: Config = serde_json::from_value(out).unwrap();
+    assert!(config.convert_heic);
+    assert_eq!((config.heic.long_edge, config.heic.quality), (3200, 70));
+}
+
+#[test]
+fn heic_keys_are_not_added_to_a_file_that_has_none() {
+    let out = text(Some(r#"{"reclaim":[]}"#), &default_managed());
+    assert!(!out.contains("heic") && !out.contains("Heic"), "{out}");
+}
