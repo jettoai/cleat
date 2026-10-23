@@ -78,7 +78,7 @@ pub struct Handle {
 pub fn start(config: &HeicConfig, home: &Path, events: Sender<Event>, timing: Timing) -> Option<Handle> {
     let watch = config.watch_dir(home);
     // Read before anything runs: what is here now is not new, whatever is added after.
-    let baseline = heic_names(&watch);
+    let baseline = names(&watch).into_iter().filter(|n| plan::is_heic_name(n)).collect();
     let (wake, rx) = mpsc::channel();
     let watcher = match Watcher::spawn(watch.clone(), wake.clone()) {
         Ok(w) => w,
@@ -108,10 +108,10 @@ pub fn start(config: &HeicConfig, home: &Path, events: Sender<Event>, timing: Ti
     Some(Handle { _watcher: watcher, _wake: wake })
 }
 
-/// The HEIC names in a folder's first level; none when it cannot be read.
-fn heic_names(dir: &Path) -> HashSet<String> {
+/// The names in a folder's first level; none when it cannot be read.
+fn names(dir: &Path) -> HashSet<String> {
     let Ok(listing) = std::fs::read_dir(dir) else { return HashSet::new() };
-    listing.flatten().filter_map(|i| i.file_name().into_string().ok()).filter(|n| plan::is_heic_name(n)).collect()
+    listing.flatten().filter_map(|i| i.file_name().into_string().ok()).collect()
 }
 
 /// Longest a file is waited on for its size to settle.
@@ -214,10 +214,7 @@ impl Worker {
             }
             existing.insert(name);
         }
-        let in_originals = std::fs::read_dir(&self.originals)
-            .map(|d| d.flatten().filter_map(|i| i.file_name().into_string().ok()).collect())
-            .unwrap_or_default();
-        let plan = plan::plan(&entries, self.started, &existing, &in_originals);
+        let plan = plan::plan(&entries, self.started, &existing, &names(&self.originals));
         for (name, skip) in plan.skipped {
             if skip != Skip::Older && self.noted.insert(name.clone()) {
                 self.report(Report::Skipped { name, reason: skip.reason() });
@@ -256,24 +253,22 @@ impl Worker {
                 Ok((width, height)) => {
                     let ms = began.elapsed().as_millis();
                     let jpeg = self.watch.join(&job.output);
-                    let moved = convert::finish(&temp, &jpeg, &source, &self.originals.join(&job.original));
-                    let moved_ok = moved.is_ok();
-                    self.report(match moved {
-                        Ok(()) => Report::Converted {
-                            from: job.source.clone(),
-                            to: job.output.clone(),
-                            width,
-                            height,
-                            ms,
-                            originals: self.originals_label.clone(),
-                        },
-                        Err(e) => Report::Failed {
+                    match convert::finish(&temp, &jpeg, &source, &self.originals.join(&job.original)) {
+                        Ok(()) => {
+                            self.handled.remove(&job.source);
+                            self.report(Report::Converted {
+                                from: job.source.clone(),
+                                to: job.output.clone(),
+                                width,
+                                height,
+                                ms,
+                                originals: self.originals_label.clone(),
+                            });
+                        }
+                        Err(e) => self.report(Report::Failed {
                             name: job.source.clone(),
                             reason: format!("converted to {} but could not file the original: {e}", job.output),
-                        },
-                    });
-                    if moved_ok {
-                        self.handled.remove(&job.source);
+                        }),
                     }
                     return true;
                 }
