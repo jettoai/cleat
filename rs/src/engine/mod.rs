@@ -7,6 +7,7 @@ mod launch;
 mod listeners;
 mod liveness;
 mod output_volume;
+mod photos;
 mod reclaim;
 mod run_loop;
 mod status;
@@ -19,6 +20,7 @@ pub use reclaim::{
 };
 pub use output_volume::{OutputVolumeStatus, RevertDetail, WriterSourceFactory, OUTPUT_VOLUME_SETTLE_MS};
 pub use run_loop::{run, Event, Origin, Timer};
+pub use photos::{PhotosLast, PhotosState, PhotosStatus};
 pub use status::{Status, StuckStatus};
 
 use std::collections::{HashMap, HashSet};
@@ -128,6 +130,7 @@ pub struct Engine {
     error_reports_applied: bool,
     usage_ping_applied: bool,
     photos_applied: Option<HeicConfig>,
+    photos: photos::PhotosBook,
     previous_device_uids: Option<HashSet<String>>,
     /// The last pass found the device list unreadable and said so; keeps a long outage to one line.
     device_list_unreadable_noted: bool,
@@ -180,6 +183,7 @@ impl Engine {
             error_reports_applied: false,
             usage_ping_applied: false,
             photos_applied: None,
+            photos: photos::PhotosBook::default(),
             previous_device_uids: None,
             device_list_unreadable_noted: false,
             system_tokens: vec![],
@@ -295,6 +299,7 @@ impl Engine {
             return;
         }
         self.photos_applied = wanted.clone();
+        self.photos.no_access = false;
         let line = match &wanted {
             Some(h) => format!("heic: watching {}", h.watch),
             None => "heic: off".into(),

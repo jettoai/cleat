@@ -237,6 +237,7 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
     let start = match debug_env("CLEAT_SETTINGS_PAGE").as_deref() {
         Some("input") => Page::Input,
         Some("headphones") => Page::Headphones,
+        Some("photos") => Page::Photos,
         Some("general") => Page::General,
         _ => Page::Output,
     };

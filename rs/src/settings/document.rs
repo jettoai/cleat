@@ -1,5 +1,5 @@
 //! Writes the settings window's keys back into the config file, leaving every other key exactly as
-//! it was (Swift `ConfigDocument.swift`). The window owns eight units, each a group of keys that
+//! it was (Swift `ConfigDocument.swift`). The window owns ten units, each a group of keys that
 //! state one feature together (`UNITS`). A unit that still encodes as it did when the window
 //! loaded is written back as the file had it then; a changed unit is written whole from the draft.
 
@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 
-use crate::config::Config;
+use crate::config::{Config, HeicConfig};
 
 use super::lang::Lang;
 use super::text::fill;
@@ -31,6 +31,10 @@ pub struct Managed {
     pub hold_against: Vec<String>,
     pub hold_on: bool,
     pub launch_at_login: bool,
+    pub convert_heic: bool,
+    pub heic_watch: String,
+    pub heic_originals: String,
+    pub heic_long_edge: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,10 +47,13 @@ pub enum Unit {
     InputVolume,
     Balance,
     LaunchAtLogin,
+    ConvertHeic,
+    /// Merged cell by cell into the file's own `heic` object (`merge_heic`), never written whole.
+    Heic,
 }
 
 /// Every key the window owns, by the unit it belongs to. A unit is written whole or not at all.
-pub const UNITS: [(Unit, &[&str]); 8] = [
+pub const UNITS: [(Unit, &[&str]); 10] = [
     (Unit::InputStance, &["input", "blockedInput"]),
     (Unit::OutputStance, &["output", "blockedOutput"]),
     (Unit::Takeover, &["headphonesTakeOver"]),
@@ -55,6 +62,8 @@ pub const UNITS: [(Unit, &[&str]); 8] = [
     (Unit::InputVolume, &["inputVolume"]),
     (Unit::Balance, &["balance"]),
     (Unit::LaunchAtLogin, &["launchAtLogin"]),
+    (Unit::ConvertHeic, &["convertHeic"]),
+    (Unit::Heic, &["heic"]),
 ];
 
 /// Canonical top-level order; keys outside it follow, sorted.
@@ -87,7 +96,22 @@ fn strings(list: &[String]) -> Value {
     Value::Array(list.iter().map(|s| Value::String(s.clone())).collect())
 }
 
+/// The `heic` cells the window owns; `quality` and anything else in the object are the file's.
+const HEIC_CELLS: [&str; 3] = ["watch", "originals", "longEdge"];
+
+fn heic_cell(key: &str, watch: &str, originals: &str, long_edge: u32) -> Value {
+    match key {
+        "watch" => Value::from(watch),
+        "originals" => Value::from(originals),
+        _ => Value::from(long_edge),
+    }
+}
+
 impl Managed {
+    fn heic_cell(&self, key: &str) -> Value {
+        heic_cell(key, &self.heic_watch, &self.heic_originals, self.heic_long_edge)
+    }
+
     /// One unit's keys as the window writes them. A key of the unit missing here is removed.
     pub fn unit(&self, unit: Unit) -> Map<String, Value> {
         let mut m = Map::new();
@@ -137,6 +161,16 @@ impl Managed {
                 if !self.launch_at_login {
                     m.insert("launchAtLogin".into(), Value::Bool(false));
                 }
+            }
+            // Off is the default and writes no key.
+            Unit::ConvertHeic => {
+                if self.convert_heic {
+                    m.insert("convertHeic".into(), Value::Bool(true));
+                }
+            }
+            Unit::Heic => {
+                let cells = HEIC_CELLS.iter().map(|&key| (key.to_string(), self.heic_cell(key)));
+                m.insert("heic".into(), Value::Object(cells.collect()));
             }
         }
         m
@@ -198,6 +232,9 @@ pub fn merged_from(raw: Option<&[u8]>, managed: &Managed, origin: Option<&Origin
         },
     };
     for (unit, keys) in UNITS {
+        if unit == Unit::Heic {
+            continue;
+        }
         let now = managed.unit(unit);
         let from = match origin {
             Some(o) if o.managed.unit(unit) == now => &o.object,
@@ -210,6 +247,7 @@ pub fn merged_from(raw: Option<&[u8]>, managed: &Managed, origin: Option<&Origin
             };
         }
     }
+    merge_heic(&mut object, managed, origin);
     let known = KEY_ORDER.iter().filter(|k| object.contains_key(**k)).map(|k| k.to_string());
     let mut unknown: Vec<String> = object.keys().filter(|k| !KEY_ORDER.contains(&k.as_str())).cloned().collect();
     unknown.sort();
@@ -221,6 +259,31 @@ pub fn merged_from(raw: Option<&[u8]>, managed: &Managed, origin: Option<&Origin
     let config: Config = serde_json::from_slice(&out).map_err(|e| WriteError::Invalid(e.to_string()))?;
     config.validate().map_err(|e| WriteError::Invalid(e.to_string()))?;
     Ok(out)
+}
+
+/// Writes the `heic` cells that changed into the file's `heic` object. A cell back at what it was
+/// at load returns to the file's own form of it; without an origin a cell is written only when the
+/// file does not already say that (a missing cell reads as the default). `quality` and any other
+/// key of the object stay as they are.
+fn merge_heic(object: &mut Map<String, Value>, managed: &Managed, origin: Option<&Origin>) {
+    let prior = object.get("heic").and_then(Value::as_object).cloned();
+    let mut sub = prior.clone().unwrap_or_default();
+    let loaded = origin.and_then(|o| o.object.get("heic")).and_then(Value::as_object);
+    let defaults = HeicConfig::default();
+    for key in HEIC_CELLS {
+        let now = managed.heic_cell(key);
+        if origin.is_some_and(|o| o.managed.heic_cell(key) == now) {
+            match loaded.and_then(|h| h.get(key)) {
+                Some(v) => sub.insert(key.into(), v.clone()),
+                None => sub.remove(key),
+            };
+        } else if origin.is_some() || sub.get(key).cloned().unwrap_or_else(|| heic_cell(key, &defaults.watch, &defaults.originals, defaults.long_edge)) != now {
+            sub.insert(key.into(), now);
+        }
+    }
+    if prior.is_some() || !sub.is_empty() {
+        object.insert("heic".into(), Value::Object(sub));
+    }
 }
 
 /// Refuses when the file no longer holds `baseline` (None = no file), then writes atomically.

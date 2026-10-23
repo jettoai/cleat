@@ -19,17 +19,19 @@ pub enum Page {
     Output,
     Input,
     Headphones,
+    Photos,
     General,
 }
 
 impl Page {
-    pub const ALL: [Page; 4] = [Page::Output, Page::Input, Page::Headphones, Page::General];
+    pub const ALL: [Page; 5] = [Page::Output, Page::Input, Page::Headphones, Page::Photos, Page::General];
 
     pub fn title(self, l: Lang) -> &'static str {
         match self {
             Page::Output => W::PageOutput,
             Page::Input => W::PageInput,
             Page::Headphones => W::PageHeadphones,
+            Page::Photos => W::PagePhotos,
             Page::General => W::PageGeneral,
         }
         .get(l)
@@ -40,6 +42,7 @@ impl Page {
             Page::Output => "speaker.wave.2",
             Page::Input => "mic",
             Page::Headphones => "beats.headphones",
+            Page::Photos => "photo",
             Page::General => "gearshape",
         }
     }
@@ -49,6 +52,7 @@ impl Page {
             Page::Output => W::SubOutput,
             Page::Input => W::SubInput,
             Page::Headphones => W::SubHeadphones,
+            Page::Photos => W::SubPhotos,
             Page::General => W::SubGeneral,
         }
         .get(l)

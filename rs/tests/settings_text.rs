@@ -143,3 +143,12 @@ fn headset_notes_and_reclaim_hints() {
     assert_eq!(reclaim_hint_text(ReclaimHint::AllTickedBlocked, ZhHant), W::AllHeadsetsBlocked.zh());
     assert_eq!(reclaim_hint_text(ReclaimHint::NoHeadsets, ZhHant), "還沒有配對過的耳機，不會有動作");
 }
+
+#[test]
+fn photos_sits_between_headphones_and_general() {
+    use cleat_rs::settings::lang::Lang::En;
+    use cleat_rs::settings::text::Page;
+    assert_eq!(Page::ALL, [Page::Output, Page::Input, Page::Headphones, Page::Photos, Page::General]);
+    assert_eq!((Page::Photos.title(ZhHant), Page::Photos.title(En)), ("圖片", "Photos"));
+    assert_eq!(Page::Photos.symbol(), "photo");
+}

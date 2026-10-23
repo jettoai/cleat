@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use crate::config::paths;
-use crate::engine::Status;
+use crate::engine::{PhotosState, PhotosStatus, Status};
 use crate::identity::Identity;
 use crate::launch::{AgentService, AgentStatus, LaunchctlJob, Launchd, SmApp};
 use crate::state::clock::{local_seconds, parse_iso8601_utc};
@@ -81,6 +81,9 @@ pub fn render_status(
     line(format!("reports:     {reports}"));
     line(format!("input:       {}", s.default_input.as_deref().unwrap_or("-")));
     line(format!("output:      {}", s.default_output.as_deref().unwrap_or("-")));
+    if let Some(p) = &s.photos {
+        line(photos_line(p));
+    }
     if alive {
         line(reaction_line(s.performance.as_ref()));
     }
@@ -99,6 +102,18 @@ pub fn render_status(
         }
     }
     (out, if alive { 0 } else { 1 })
+}
+
+/// `photos:      watching, 3 converted, last IMG_5708.HEIC 187 ms`, or just `off`.
+fn photos_line(p: &PhotosStatus) -> String {
+    if p.state == PhotosState::Off {
+        return "photos:      off".into();
+    }
+    let mut out = format!("photos:      {}, {} converted", p.state.label(), p.converted);
+    if let Some(last) = &p.last {
+        out += &format!(", last {} {} ms", last.name, last.ms);
+    }
+    out
 }
 
 /// Swift `CLI.printVitals`'s reaction line; the `vitals:` line before it is not ported.

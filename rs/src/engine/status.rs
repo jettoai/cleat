@@ -38,6 +38,9 @@ pub struct Status {
     /// (B-1287); None in a file written by a daemon older than the rule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stuck: Option<StuckStatus>,
+    /// The HEIC watch (`photos`); None in a file written by a daemon older than the feature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub photos: Option<super::PhotosStatus>,
 }
 
 /// The device each side is left on because it is "not used" and nothing else is usable, and the
@@ -98,6 +101,7 @@ impl Engine {
             output_volume: Some(self.output_volume_status()),
             performance: Some(self.reactions.summary()),
             stuck: Some(self.stuck.clone()),
+            photos: Some(self.photos_status()),
         };
         // Observe mode must not pass itself off as the running daemon in the file the window reads.
         if self.mode == super::Mode::Observe {

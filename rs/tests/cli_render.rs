@@ -63,3 +63,32 @@ extern "C" {
     #[link_name = "tzset"]
     fn libc_tzset();
 }
+
+fn render_with_photos(block: &str) -> String {
+    let mut status: serde_json::Value = serde_json::from_str(&fixture("swift-status.json")).unwrap();
+    status["photos"] = serde_json::from_str(block).unwrap();
+    let status: Status = serde_json::from_value(status).unwrap();
+    render_status(Some(&status), true, "x", "s", "c").0
+}
+
+fn photos_line(text: &str) -> &str {
+    text.lines().find(|l| l.starts_with("photos:")).unwrap_or("none")
+}
+
+#[test]
+fn status_has_a_photos_line_for_each_state() {
+    let off = render_with_photos(r#"{"state":"off","converted":0}"#);
+    assert_eq!(photos_line(&off), "photos:      off");
+    let none_yet = render_with_photos(r#"{"state":"watching","converted":0}"#);
+    assert_eq!(photos_line(&none_yet), "photos:      watching, 0 converted");
+    let watching = render_with_photos(r#"{"state":"watching","converted":3,"last":{"name":"IMG_5708.HEIC","ms":187}}"#);
+    assert_eq!(photos_line(&watching), "photos:      watching, 3 converted, last IMG_5708.HEIC 187 ms");
+    let denied = render_with_photos(r#"{"state":"no-access","converted":1}"#);
+    assert_eq!(photos_line(&denied), "photos:      no-access, 1 converted");
+}
+
+#[test]
+fn a_status_file_without_photos_prints_no_photos_line() {
+    let status: Status = serde_json::from_str(&fixture("swift-status.json")).unwrap();
+    assert!(!render_status(Some(&status), true, "x", "s", "c").0.contains("photos:"));
+}

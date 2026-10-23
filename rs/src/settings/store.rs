@@ -34,6 +34,8 @@ pub struct Store {
     pub last_revert: Option<LastRevert>,
     /// status.json `stuck`, empty unless the daemon that wrote it is running.
     pub stuck: sources::Stuck,
+    /// status.json `photos.state` is `no-access`, while the daemon that wrote it is running.
+    pub photos_no_access: bool,
     pub vitals: DaemonVitals,
     config_path: PathBuf,
     status_path: PathBuf,
@@ -69,6 +71,7 @@ impl Store {
             live: LiveLevels::default(),
             last_revert: None,
             stuck: sources::Stuck::default(),
+            photos_no_access: false,
             vitals: DaemonVitals::with_state(VitalsState::NotRunning),
             config_path,
             status_path,
@@ -122,6 +125,7 @@ impl Store {
         let pid = data.as_deref().and_then(sources::status_pid);
         self.vitals = self.sampler.sample(pid, read_process);
         self.stuck = data.as_deref().map(sources::stuck).unwrap_or_default().shown_when(self.vitals.state);
+        self.photos_no_access = self.vitals.state == VitalsState::Running && data.as_deref().is_some_and(sources::photos_no_access);
         if self.vitals.state != VitalsState::NotRunning {
             self.vitals.performance = data.as_deref().and_then(sources::performance);
         }

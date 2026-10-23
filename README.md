@@ -67,6 +67,7 @@ macOS and the apps on it change your audio setup without asking. These are the t
 - **Balance held at centre**, or wherever you set it.
 - **Silent receivers count as gone**: a wireless mic whose transmitter is off hands over to the next one on your list.
 - **Display arrangement remembered** and put back after a reconnect (`rememberDisplays`, off by default).
+- **HEIC photos turned into JPEG** as they arrive in a folder, such as AirDrop into Downloads (`convertHeic`, off by default).
 
 A microphone you picked yourself, on neither list, is left alone. All eight rules and their config keys are in [What it holds](#what-it-holds).
 
@@ -134,7 +135,7 @@ The settings window and the menu follow the system language: Traditional Chinese
 The daemon puts an item in the menu bar. Its menu shows the output and input in use right now,
 opens the settings window, shows About, and quits Cleat.
 
-The settings window has four pages: Output, Input, Headphones and General. Across the top of each
+The settings window has five pages: Output, Input, Headphones, Photos and General. Across the top of each
 page is a status card: whether Cleat is running, its CPU (one core is 100 percent, averaged over the last
 minute, the same figure Activity Monitor shows), its memory (the same as Activity Monitor's Memory
 column), and its reclaim speed (how long Cleat takes to put a setting back after something changed
@@ -148,6 +149,8 @@ it, the median of the recent ones).
 - **Headphones**: the takeover switch, the reclaim switch, and a box for each paired Bluetooth
   headset. Bluetooth devices the system does not identify as audio sit in a collapsed group,
   for speakers or headphones that do not announce themselves.
+- **Photos**: the HEIC to JPEG switch (`convertHeic`), the folder watched, the folder the originals move to,
+  and the long edge of the JPEG (1600, 2400, 3200 or the original size). Described under [Config](#config).
 - **General**: whether Cleat starts at login and restarts when it dies (`launchAtLogin`).
 
 Right-click a device in a priority list to move it up or down. Every change is written to the
@@ -233,6 +236,8 @@ virtual device), Cleat leaves it alone.
 | `outputVolumeHoldEnabled` | boolean | `true` | Turns the volume hold off without emptying its list |
 | `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
 | `rememberDisplays` | boolean | `false` | Remember the arrangement you last set for each combination of displays and restore it when macOS rearranges it. Details below |
+| `convertHeic` | boolean | `false` | Convert HEIC pictures that arrive in `heic.watch` to JPEG. Details below |
+| `heic` | object | see below | `watch` (default `"~/Downloads"`), `originals` (default `"HEIC原檔"`), `longEdge` (default `2400`, or `0` for the original size, else 800 to 8000) and `quality` (default `85`, 50 to 100). Every key is optional |
 | `errorReports` | boolean | `false` | Send crash and error reports to Sentry. See [Privacy](#privacy) |
 | `usagePing` | boolean | `true` | Send the anonymous daily usage ping. See [Privacy](#privacy) |
 
@@ -246,6 +251,27 @@ one that shows up later is you dragging a display in System Settings, and become
 (`rememberDisplays saved ... moved by hand`). So after Cleat restores a layout, wait ten seconds
 before rearranging. Only positions are remembered, not resolutions. Displays that report no usable
 UUID, or the same UUID, are skipped.
+
+**Photos.** `"convertHeic": true`, or the switch on the Photos page of the settings window, makes
+Cleat turn every HEIC picture that arrives in `heic.watch` (the first level only, `~/Downloads` unless
+you choose another folder) into a JPEG next to it. It is off by default, because it moves your files.
+
+- **Event driven.** Cleat watches the folder with kqueue and never polls. While the folder is quiet nothing
+  runs, and with the switch off there is no watch and no thread.
+- **Only new pictures.** A `.heic` or `.heif` file (any case) that was already in the folder when the
+  watch started is left alone. A new one is converted once its size has held still for a second.
+- **The JPEG** is `<name>.jpg` in the same folder (`<name> 2.jpg` if that name is taken, never an
+  overwrite), `heic.longEdge` pixels on the long side (2400 unless you choose 1600, 3200 or the original
+  size), at `heic.quality` (85, set in the config file only). It is turned upright, keeps the Display P3
+  colour profile and carries no location.
+- **The original** moves to `heic.originals`: a name is a folder inside the watched one (`HEIC原檔`),
+  a path is used as it is. Nothing is deleted. A Live Photo's movie is not touched.
+- **Permission.** The first time, macOS asks whether Cleat may use the Downloads folder; allow it. If
+  you refuse, the Photos page shows an orange line and `cleat status` says `no-access`.
+
+`cleat status` shows a `photos:` line, for example `photos: watching, 3 converted, last IMG_5708.HEIC
+187 ms`, or `photos: off`. Each conversion is one line in the log (`heic: IMG_5708.HEIC -> IMG_5708.jpg
+1800x2400 187 ms, original -> HEIC原檔/`).
 
 **Input gain.** `"*"` sets the target for every input device present, and a named entry overrides
 it for that device: `{"*": 100, "Brio 100": 75}` holds everything at 100 percent except the Brio,

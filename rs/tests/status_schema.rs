@@ -61,5 +61,7 @@ fn rust_writes_the_swift_key_set() {
     expected.insert("performance".into());
     // The "not used" rule (B-1287) adds `stuck`: the device a side is left on, or null.
     expected.insert("stuck".into());
+    // The HEIC watch (B-2714) adds `photos`.
+    expected.insert("photos".into());
     assert_eq!(keys(&written), expected);
 }

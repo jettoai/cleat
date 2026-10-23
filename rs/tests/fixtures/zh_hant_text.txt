@@ -156,3 +156,13 @@ lit	開著時，開機登入後就會啟動 Cleat，當掉也會自動重開。�
 lit	關於 Cleat
 lit	關閉視窗
 lit	顯示器
+lit	圖片
+lit	AirDrop 收到的 HEIC 照片，自動轉成能直接上傳的 JPEG
+lit	自動把 HEIC 轉成 JPEG
+lit	監看資料夾
+lit	原檔資料夾
+lit	選擇…
+lit	選擇
+lit	長邊（像素）
+lit	原尺寸
+lit	轉出的 JPEG 不含拍攝地點，原檔放進原檔資料夾。

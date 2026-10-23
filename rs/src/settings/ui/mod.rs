@@ -4,6 +4,7 @@
 mod devices;
 mod levels;
 mod pages;
+mod photos;
 pub mod widgets;
 pub mod window;
 
@@ -148,7 +149,7 @@ impl App {
     /// The readings on screen that the tick watches.
     fn live_reading(&self) -> String {
         let s = self.store.borrow();
-        format!("{:?}{:?}{:?}{:?}", s.live, s.last_revert, s.stuck, s.vitals)
+        format!("{:?}{:?}{:?}{:?}{:?}", s.live, s.last_revert, s.stuck, s.vitals, s.photos_no_access)
     }
 
     /// Rebuilds the detail pane, keeping the scroll position.

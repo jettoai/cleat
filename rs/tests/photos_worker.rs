@@ -182,6 +182,9 @@ fn an_unreadable_folder_is_reported_once_and_the_watch_recovers() {
 
     std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o755)).unwrap();
     std::thread::sleep(Duration::from_millis(2600)); // the next retry opens it
+    let back = expect(&rx);
+    assert!(matches!(&back, Report::Readable { .. }), "{back:?}");
+    assert!(back.line().ends_with(" can be read again"), "{}", back.line());
     place("wide.heic", &dir.path("IMG_3.HEIC"));
     assert!(matches!(expect(&rx), Report::Converted { .. }));
 }

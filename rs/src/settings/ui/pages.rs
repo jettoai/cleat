@@ -16,7 +16,7 @@ use super::widgets::{to_view,
     attributed, card, fill, icon, label, lowered, ns, padded_column, plain_row, row, row_note, row_title, secondary, section, semibold, spacer, stack,
     wrapping, AccentSwitch, Ctx,
 };
-use super::{app, devices, disable_tree, levels, App};
+use super::{app, devices, disable_tree, levels, photos, App};
 
 pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let mtm = ctx.mtm;
@@ -41,7 +41,7 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let side = match page {
         Page::Output => Some(Side::Output),
         Page::Input => Some(Side::Input),
-        Page::Headphones | Page::General => None,
+        Page::Headphones | Page::Photos | Page::General => None,
     };
     let notes = side.map(|s| {
         let st = a.store.borrow().stuck.clone();
@@ -73,6 +73,7 @@ pub fn page(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
             put(levels::volumes(a, ctx));
         }
         Page::Headphones => put(headphones(a, ctx)),
+        Page::Photos => photos::views(a, ctx).into_iter().for_each(put),
         Page::General => put(general(a, ctx)),
     }
     if a.store.borrow().phase != Phase::Ready {

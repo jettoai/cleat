@@ -10,7 +10,9 @@ use crate::model::{device_name, AudioDevice, BluetoothHeadset};
 use super::document::Managed;
 
 mod headsets;
+mod heic;
 pub use headsets::ReclaimHint;
+pub use heic::LONG_EDGES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
@@ -235,6 +237,10 @@ pub struct SettingsDraft {
     pub hold_enabled: bool,
     pub hold_against: Vec<String>,
     pub launch_at_login: bool,
+    pub convert_heic: bool,
+    pub heic_watch: String,
+    pub heic_originals: String,
+    pub heic_long_edge: u32,
 }
 
 pub const DEFAULT_HOLD_AGAINST: &str = "Parallels Desktop";
@@ -278,6 +284,10 @@ impl SettingsDraft {
             hold_enabled: config.output_volume_hold_enabled && !hold.is_empty(),
             hold_against: if hold.is_empty() { vec![DEFAULT_HOLD_AGAINST.into()] } else { hold.clone() },
             launch_at_login: config.launch_at_login,
+            convert_heic: config.convert_heic,
+            heic_watch: config.heic.watch.clone(),
+            heic_originals: config.heic.originals.clone(),
+            heic_long_edge: config.heic.long_edge,
         }
     }
 
@@ -304,6 +314,10 @@ impl SettingsDraft {
             hold_against: if placeholder { vec![] } else { self.hold_against.clone() },
             hold_on: self.hold_enabled,
             launch_at_login: self.launch_at_login,
+            convert_heic: self.convert_heic,
+            heic_watch: self.heic_watch.clone(),
+            heic_originals: self.heic_originals.clone(),
+            heic_long_edge: self.heic_long_edge,
         }
     }
 

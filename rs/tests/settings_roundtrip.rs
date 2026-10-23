@@ -119,7 +119,17 @@ fn single_unit_variants() -> Vec<(Unit, Vec<Variant>)> {
     let volume = std::iter::once(vec![]).chain(volume.into_iter().map(|v| vec![("inputVolume", v)])).collect();
     let balance = vec![vec![], vec![("balance", json!(0.45))], vec![("balance", json!(0.455))]];
     let launch = vec![vec![], vec![("launchAtLogin", json!(true))], vec![("launchAtLogin", json!(false))]];
+    let convert = vec![vec![], vec![("convertHeic", json!(true))], vec![("convertHeic", json!(false))]];
+    let heic_cells = [
+        json!({}),
+        json!({"longEdge": 1600}),
+        json!({"watch": "~/Pictures/in", "originals": "/Volumes/x/orig", "longEdge": 0, "quality": 70, "extra": [1]}),
+        json!({"quality": 60}),
+    ];
+    let heic = std::iter::once(vec![]).chain(heic_cells.into_iter().map(|v| vec![("heic", v)])).collect();
     vec![
+        (Unit::ConvertHeic, convert),
+        (Unit::Heic, heic),
         (Unit::Reclaim, reclaim_variants()),
         (Unit::Hold, hold_variants()),
         (Unit::InputStance, input),
@@ -171,7 +181,7 @@ fn first_volume(d: &mut SettingsDraft) {
     }
 }
 
-/// The 27 edits the window can make (plan §2.2), each with the unit it belongs to.
+/// The 30 edits the window can make (plan §2.2), each with the unit it belongs to.
 fn edits() -> Vec<(&'static str, Unit, Edit)> {
     vec![
         ("in.move", Unit::InputStance, |d| d.input.move_listed(1, 0)),
@@ -204,6 +214,9 @@ fn edits() -> Vec<(&'static str, Unit, Edit)> {
         }),
         ("balance", Unit::Balance, |d| d.balance_enabled = !d.balance_enabled),
         ("launch", Unit::LaunchAtLogin, |d| d.launch_at_login = !d.launch_at_login),
+        ("heic.on", Unit::ConvertHeic, |d| d.convert_heic = !d.convert_heic),
+        ("heic.edge", Unit::Heic, |d| d.heic_long_edge = 3200),
+        ("heic.watch", Unit::Heic, |d| d.heic_watch = "~/Desktop".into()),
         ("takeover", Unit::Takeover, |d| d.headphones_take_over = !d.headphones_take_over),
     ]
 }

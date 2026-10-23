@@ -39,3 +39,14 @@ for that.
 copy and restarts the daemon. The bundle is ad-hoc signed, so a rebuilt one may ask for the
 microphone again. Builds and moved-aside copies stay under `target/bundle.noindex/`, which
 Spotlight skips, so Raycast lists only the installed one.
+
+## Photos (HEIC to JPEG)
+
+`convertHeic` (off by default) and `heic` in the config start `src/photos/`: a kqueue watch on
+`heic.watch`, and a worker thread that converts each new `.heic` or `.heif` with ImageIO (no
+subprocess, no new crate) and moves the original to `heic.originals`. Nothing runs while the folder is
+quiet, and nothing exists while the switch is off. The settings window's Photos page edits
+`convertHeic`, `heic.watch`, `heic.originals` and `heic.longEdge`; `heic.quality` and any other key in
+the `heic` object stay as the file has them. The engine only starts and stops the watch and keeps the
+count for `status.json` `photos` (`state` is `off`, `watching` or `no-access`) and `cleat status`.
+The first time, macOS asks whether Cleat may use the Downloads folder.

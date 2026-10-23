@@ -83,3 +83,41 @@ fn the_workers_reports_become_log_lines() {
     assert_eq!(tail(2).split_once(' ').unwrap().1, "heic: no access to ~/Downloads");
     assert_eq!(tail(1).split_once(' ').unwrap().1, "heic: failed BAD.HEIC: cannot decode the picture");
 }
+
+fn photos_block(h: &Harness) -> serde_json::Value {
+    let status: serde_json::Value = serde_json::from_slice(&std::fs::read(h.dir.join("status.json")).unwrap()).unwrap();
+    status["photos"].clone()
+}
+
+fn converted(name: &str, ms: u128) -> Report {
+    Report::Converted { from: name.into(), to: "x.jpg".into(), width: 1, height: 1, ms, originals: "HEIC原檔".into() }
+}
+
+/// status.json `photos`: off, then watching with the count and the last picture, then no-access
+/// until the folder can be read again, then off again keeping nothing but the state.
+#[test]
+fn status_json_carries_the_photos_block() {
+    let mut h = run(r#"{"launchAtLogin": false}"#, Opts::default());
+    assert_eq!(photos_block(&h), serde_json::json!({"state": "off", "converted": 0}));
+
+    touch(&mut h, &config(true, 2400));
+    assert_eq!(photos_block(&h), serde_json::json!({"state": "watching", "converted": 0}));
+
+    h.engine.handle(Event::Photos(converted("IMG_5708.HEIC", 187)));
+    h.engine.handle(Event::Photos(converted("IMG_5709.HEIC", 201)));
+    assert_eq!(
+        photos_block(&h),
+        serde_json::json!({"state": "watching", "converted": 2, "last": {"name": "IMG_5709.HEIC", "ms": 201}})
+    );
+
+    h.engine.handle(Event::Photos(Report::NoAccess { path: "~/Downloads".into() }));
+    assert_eq!(photos_block(&h)["state"], "no-access");
+    h.engine.handle(Event::Photos(Report::Readable { path: "~/Downloads".into() }));
+    assert_eq!(photos_block(&h)["state"], "watching");
+
+    h.engine.handle(Event::Photos(Report::NoAccess { path: "~/Downloads".into() }));
+    touch(&mut h, &config(false, 2400));
+    assert_eq!(photos_block(&h)["state"], "off");
+    touch(&mut h, &config(true, 2400));
+    assert_eq!(photos_block(&h)["state"], "watching", "a new watch starts clear of the old one's trouble");
+}

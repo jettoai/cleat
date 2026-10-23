@@ -123,6 +123,12 @@ pub fn stuck(data: &[u8]) -> Stuck {
     Stuck { input: pick("input"), output: pick("output"), input_paused: pick("inputPaused"), output_paused: pick("outputPaused") }
 }
 
+/// Whether status.json says the photos watch cannot read its folder.
+pub fn photos_no_access(data: &[u8]) -> bool {
+    let Ok(v) = serde_json::from_slice::<Value>(data) else { return false };
+    v.get("photos").and_then(|p| p.get("state")).and_then(Value::as_str) == Some("no-access")
+}
+
 pub fn status_pid(data: &[u8]) -> Option<i32> {
     let v: Value = serde_json::from_slice(data).ok()?;
     v.get("pid")?.as_i64().map(|p| p as i32)

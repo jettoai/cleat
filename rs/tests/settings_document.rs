@@ -201,3 +201,91 @@ fn heic_keys_are_not_added_to_a_file_that_has_none() {
     let out = text(Some(r#"{"reclaim":[]}"#), &default_managed());
     assert!(!out.contains("heic") && !out.contains("Heic"), "{out}");
 }
+
+/// The bytes a save of `raw` writes after `touch`, with the window's origin as at load.
+fn saved_bytes(raw: &str, touch: impl FnOnce(&mut SettingsDraft)) -> String {
+    let config: Config = serde_json::from_str(raw).unwrap();
+    let mut draft = SettingsDraft::make(&config, &[], &[], &LiveLevels::default());
+    let origin = Origin::new(Some(raw.as_bytes()), draft.managed());
+    touch(&mut draft);
+    String::from_utf8(merged_from(Some(raw.as_bytes()), &draft.managed(), Some(&origin)).unwrap()).unwrap()
+}
+
+const HAND_EDITED_HEIC: &str =
+    r#"{"convertHeic":true,"heic":{"watch":"~/Pictures/in","originals":"/Volumes/x/orig","longEdge":3200,"quality":70,"extra":[1]},"reclaim":[]}"#;
+
+#[test]
+fn the_photos_page_edits_reach_the_file_and_leave_quality_and_unknown_keys() {
+    let home = std::path::Path::new("/Users/me");
+    let out: serde_json::Value = serde_json::from_str(&saved_bytes(HAND_EDITED_HEIC, |d| {
+        d.convert_heic = false;
+        d.heic_long_edge = 1600;
+        d.set_heic_watch(std::path::Path::new("/Users/me/Downloads/in"), home);
+        d.set_heic_originals(std::path::Path::new("/Users/me/Downloads/in/Raw"), home);
+    }))
+    .unwrap();
+    assert!(out.get("convertHeic").is_none(), "{out}");
+    assert_eq!(
+        out["heic"],
+        serde_json::json!({"watch": "~/Downloads/in", "originals": "Raw", "longEdge": 1600, "quality": 70, "extra": [1]}),
+        "{out}"
+    );
+    let on: serde_json::Value = serde_json::from_str(&saved_bytes(r#"{"reclaim":[]}"#, |d| d.convert_heic = true)).unwrap();
+    assert_eq!(on["convertHeic"], serde_json::json!(true), "{on}");
+    assert!(on.get("heic").is_none(), "switching on alone writes no heic cells: {on}");
+}
+
+#[test]
+fn a_save_with_no_photos_edit_keeps_the_bytes() {
+    for raw in [HAND_EDITED_HEIC, r#"{"reclaim":[]}"#, r#"{"heic":{},"reclaim":[]}"#, r#"{"convertHeic":false,"heic":{"quality":60},"reclaim":[]}"#] {
+        let canonical = saved_bytes(raw, |_| {});
+        assert_eq!(saved_bytes(&canonical, |_| {}), canonical, "{raw}");
+        let unchanged: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let written: serde_json::Value = serde_json::from_str(&canonical).unwrap();
+        assert_eq!(written, unchanged, "{raw}");
+    }
+}
+
+#[test]
+fn only_the_edited_cell_is_written_and_editing_back_restores_the_file() {
+    let raw = r#"{"heic":{"quality":70},"reclaim":[]}"#;
+    let out: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| d.heic_long_edge = 1600)).unwrap();
+    assert_eq!(out["heic"], serde_json::json!({"quality": 70, "longEdge": 1600}), "{out}");
+
+    // Away and back, saved once: the file as it was, not a cell spelling out the default.
+    let back: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| {
+        d.heic_long_edge = 1600;
+        d.heic_long_edge = 2400;
+    }))
+    .unwrap();
+    assert_eq!(back["heic"], serde_json::json!({"quality": 70}), "{back}");
+    let none: serde_json::Value = serde_json::from_str(&saved_bytes(r#"{"reclaim":[]}"#, |d| d.heic_watch = "~/x".into())).unwrap();
+    assert_eq!(none["heic"], serde_json::json!({"watch": "~/x"}), "{none}");
+}
+
+/// Without an origin (the pure `merged`), a cell is written only when the file does not say it.
+#[test]
+fn without_an_origin_a_cell_is_written_when_the_file_differs() {
+    let mut m = default_managed();
+    m.heic_long_edge = 2400;
+    let same = text(Some(r#"{"heic":{"longEdge":2400,"quality":70}}"#), &m);
+    assert!(same.contains("\"longEdge\":2400") && same.contains("\"quality\":70"), "{same}");
+    let differs = text(Some(r#"{"heic":{"longEdge":1600,"quality":70}}"#), &m);
+    assert!(differs.contains("\"longEdge\":2400") && differs.contains("\"quality\":70"), "{differs}");
+    let default_in_file = text(Some(r#"{"heic":{"quality":70}}"#), &m);
+    assert!(!default_in_file.contains("longEdge"), "{default_in_file}");
+}
+
+#[test]
+fn an_originals_folder_inside_the_watch_folder_is_kept_as_its_name() {
+    let home = std::path::Path::new("/Users/me");
+    let mut d = SettingsDraft::make(&Config::disabled(), &[], &[], &LiveLevels::default());
+    d.set_heic_originals(std::path::Path::new("/Users/me/Downloads/HEIC原檔"), home);
+    assert_eq!(d.heic_originals, "HEIC原檔");
+    d.set_heic_originals(std::path::Path::new("/Users/me/Pictures/Raw"), home);
+    assert_eq!(d.heic_originals, "~/Pictures/Raw");
+    d.set_heic_originals(std::path::Path::new("/Volumes/x/orig"), home);
+    assert_eq!(d.heic_originals, "/Volumes/x/orig");
+    d.set_heic_watch(std::path::Path::new("/Users/me"), home);
+    assert_eq!(d.heic_watch, "~");
+}

@@ -47,10 +47,12 @@ words! {
     PageOutput: "輸出", "Output";
     PageInput: "輸入", "Input";
     PageHeadphones: "耳機", "Headphones";
+    PagePhotos: "圖片", "Photos";
     PageGeneral: "一般", "General";
     SubOutput: "Cleat 讓聲音一直從你排第一的裝置出來", "Cleat keeps the sound on the first device in your list";
     SubInput: "Cleat 讓你排第一的麥克風一直是預設輸入，音量停在你設定的值", "Cleat keeps your first microphone the default input, at the level you set";
     SubHeadphones: "藍牙耳機被手機或 iPad 拿走時，Cleat 把它要回來", "Cleat gets your Bluetooth headphones back from a phone or iPad";
+    SubPhotos: "AirDrop 收到的 HEIC 照片，自動轉成能直接上傳的 JPEG", "Turns HEIC photos from AirDrop into JPEG files you can upload";
     SubGeneral: "Cleat 什麼時候執行", "When Cleat runs";
 
     // Device lists
@@ -137,6 +139,17 @@ words! {
     NoHeadsets: "還沒有配對過的耳機，不會有動作", "No headphones paired yet, so nothing happens";
     AllHeadsetsBlockedHint: "所有耳機都設為不使用，不會有動作。到「輸出」頁取消「不使用」即可。", "Every headset is excluded on the Output page. Untick Exclude there.";
     NoneTicked: "請至少勾選一副耳機，否則不會有動作", "Tick at least one headset, or nothing happens";
+
+    // Photos
+    ConvertHeic: "自動把 HEIC 轉成 JPEG", "Convert HEIC to JPEG automatically";
+    WatchFolder: "監看資料夾", "Watch folder";
+    OriginalsFolder: "原檔資料夾", "Originals folder";
+    ChooseFolder: "選擇…", "Choose…";
+    PanelChoose: "選擇", "Choose";
+    LongEdge: "長邊（像素）", "Long edge (px)";
+    OriginalSize: "原尺寸", "Original";
+    PhotosNote: "轉出的 JPEG 不含拍攝地點，原檔放進原檔資料夾。", "The JPEG carries no location. The HEIC original is moved into the originals folder.";
+    PhotosNoAccess: "Cleat 沒有權限讀取 {}。請到「系統設定 > 隱私權與安全性」允許 Cleat 存取這個資料夾。", "Cleat is not allowed to read {}. Allow it in System Settings > Privacy & Security.";
 
     // General
     LaunchAtLogin: "開機自動啟動", "Start at login";

@@ -48,6 +48,8 @@ pub enum Report {
     Skipped { name: String, reason: &'static str },
     Failed { name: String, reason: String },
     NoAccess { path: String },
+    /// The folder can be read again after `NoAccess`.
+    Readable { path: String },
 }
 
 impl Report {
@@ -59,6 +61,7 @@ impl Report {
             Report::Skipped { name, reason } => format!("heic: skipped {name} ({reason})"),
             Report::Failed { name, reason } => format!("heic: failed {name}: {reason}"),
             Report::NoAccess { path } => format!("heic: no access to {path}"),
+            Report::Readable { path } => format!("heic: {path} can be read again"),
         }
     }
 }
@@ -193,7 +196,9 @@ impl Worker {
                 return true;
             }
         };
-        self.folder_error = None;
+        if self.folder_error.take() == Some(ErrorKind::PermissionDenied) {
+            self.report(Report::Readable { path: paths::tilde(&self.watch) });
+        }
         let mut existing = HashSet::new();
         let mut entries = vec![];
         for item in listing.flatten() {
