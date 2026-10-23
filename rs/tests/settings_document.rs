@@ -289,3 +289,17 @@ fn an_originals_folder_inside_the_watch_folder_is_kept_as_its_name() {
     d.set_heic_watch(std::path::Path::new("/Users/me"), home);
     assert_eq!(d.heic_watch, "~");
 }
+
+#[test]
+fn the_photos_page_never_makes_the_originals_folder_the_watched_one() {
+    let home = std::path::Path::new("/Users/me");
+    let mut d = SettingsDraft::make(&Config::disabled(), &[], &[], &LiveLevels::default());
+    d.set_heic_watch(std::path::Path::new("/Users/me/Pictures/in"), home);
+    d.set_heic_originals(std::path::Path::new("/Users/me/Pictures/in"), home);
+    assert_eq!(d.heic_originals, "HEIC原檔", "the watched folder is refused as originals");
+    d.set_heic_originals(std::path::Path::new("/Volumes/x/orig"), home);
+    d.set_heic_watch(std::path::Path::new("/Volumes/x/orig/"), home);
+    assert_eq!(d.heic_watch, "~/Pictures/in", "the folder the originals go to is refused as watch");
+    d.set_heic_originals(std::path::Path::new("/Users/me/Pictures/in/Raw"), home);
+    assert_eq!(d.heic_originals, "Raw", "a folder inside the watched one is still kept as its name");
+}

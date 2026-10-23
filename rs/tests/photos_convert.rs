@@ -80,3 +80,53 @@ fn finish_names_the_jpeg_and_files_the_original() {
     assert_eq!(dir.names(), ["HEIC原檔", "IMG_1.jpg"]);
     assert_eq!(std::fs::read(dir.path("HEIC原檔/IMG_1.HEIC")).unwrap(), std::fs::read(fixture("wide.heic")).unwrap());
 }
+
+/// A temporary JPEG and an original in `dir`, ready for `finish`.
+fn staged(dir: &Scratch) {
+    std::fs::write(dir.path(".IMG.jpg.cleat-tmp"), b"NEW JPEG").unwrap();
+    std::fs::write(dir.path("IMG.HEIC"), b"NEW HEIC").unwrap();
+}
+
+fn finish_in(dir: &Scratch) -> std::io::Result<(String, String)> {
+    finish(&dir.path(".IMG.jpg.cleat-tmp"), &dir.path("IMG.jpg"), &dir.path("IMG.HEIC"), &dir.path("orig/IMG.HEIC"))
+}
+
+#[test]
+fn finish_never_replaces_a_jpeg_that_arrived_after_the_plan() {
+    let dir = Scratch::new();
+    staged(&dir);
+    std::fs::write(dir.path("IMG.jpg"), b"USER JPEG").unwrap();
+    assert_eq!(finish_in(&dir).unwrap(), ("IMG 2.jpg".to_string(), "IMG.HEIC".to_string()));
+    assert_eq!(std::fs::read(dir.path("IMG.jpg")).unwrap(), b"USER JPEG");
+    assert_eq!(std::fs::read(dir.path("IMG 2.jpg")).unwrap(), b"NEW JPEG");
+    assert_eq!(dir.names(), ["IMG 2.jpg", "IMG.jpg", "orig"], "no temporary file, no source left");
+}
+
+#[test]
+fn finish_never_replaces_an_original_that_arrived_after_the_plan() {
+    let dir = Scratch::new();
+    staged(&dir);
+    std::fs::create_dir(dir.path("orig")).unwrap();
+    std::fs::write(dir.path("orig/IMG.HEIC"), b"EARLIER ORIGINAL").unwrap();
+    assert_eq!(finish_in(&dir).unwrap(), ("IMG.jpg".to_string(), "IMG 2.HEIC".to_string()));
+    assert_eq!(std::fs::read(dir.path("orig/IMG.HEIC")).unwrap(), b"EARLIER ORIGINAL");
+    assert_eq!(std::fs::read(dir.path("orig/IMG 2.HEIC")).unwrap(), b"NEW HEIC");
+    assert_eq!(dir.names(), ["IMG.jpg", "orig"]);
+}
+
+#[test]
+fn finish_treats_a_name_differing_only_in_case_as_taken() {
+    let dir = Scratch::new();
+    staged(&dir);
+    std::fs::write(dir.path("img.jpg"), b"USER JPEG").unwrap();
+    assert_eq!(finish_in(&dir).unwrap().0, "IMG 2.jpg");
+    assert_eq!(std::fs::read(dir.path("img.jpg")).unwrap(), b"USER JPEG");
+}
+
+#[test]
+fn finish_leaves_a_clean_folder() {
+    let dir = Scratch::new();
+    staged(&dir);
+    assert_eq!(finish_in(&dir).unwrap(), ("IMG.jpg".to_string(), "IMG.HEIC".to_string()));
+    assert_eq!(dir.names(), ["IMG.jpg", "orig"]);
+}

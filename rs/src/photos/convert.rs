@@ -3,9 +3,11 @@
 //! it; a thumbnail carries no EXIF, so the location goes with the rest of the metadata, while the
 //! colour profile stays with the pixels.
 
+use std::io::ErrorKind;
 use std::path::Path;
 use std::ptr::{self, NonNull};
 
+use super::plan;
 use objc2_core_foundation::{CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType, CFURL};
 
 /// Longer side that stands for "no scaling": the thumbnail call does not enlarge, and with the
@@ -91,14 +93,38 @@ fn write_jpeg(src: &Path, dst: &Path, long_edge: u32, quality: u32) -> Result<(u
     if written { Ok(size) } else { Err("cannot write the JPEG".into()) }
 }
 
-/// Renames the finished temporary file to its final name, then moves the original into
-/// `originals_dir` (made if need be).
-/// ponytail: `rename` stays on one volume; an originals folder on another disk fails and is
+/// Most names tried for one destination before giving up.
+const MAX_NAME_TRIES: u32 = 1000;
+
+/// Moves `src` to `dst` without ever replacing a file: a hard link fails when the name is taken
+/// (without case, on the volume), and the next numbered spelling is tried. Returns the name used.
+fn place(src: &Path, dst: &Path) -> std::io::Result<String> {
+    let dir = dst.parent().unwrap_or(Path::new("."));
+    let stem = dst.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = dst.extension().unwrap_or_default().to_string_lossy();
+    for n in 1..=MAX_NAME_TRIES {
+        let name = plan::numbered(&stem, &ext, n);
+        match std::fs::hard_link(src, dir.join(&name)) {
+            Ok(()) => {
+                std::fs::remove_file(src)?;
+                return Ok(name);
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Err(ErrorKind::AlreadyExists.into())
+}
+
+/// Gives the finished temporary file its final name, then moves the original into the folder of
+/// `original_dst` (made if need be). A name taken since the plan was made is numbered on, so a file
+/// that arrived meanwhile is never replaced. Returns the names used: the JPEG's, then the original's.
+/// ponytail: a hard link stays on one volume; an originals folder on another disk fails and is
 /// reported, add a copy-and-delete fallback if that is ever asked for.
-pub fn finish(temp: &Path, jpeg: &Path, original: &Path, original_dst: &Path) -> std::io::Result<()> {
-    std::fs::rename(temp, jpeg)?;
+pub fn finish(temp: &Path, jpeg: &Path, original: &Path, original_dst: &Path) -> std::io::Result<(String, String)> {
+    let jpeg_name = place(temp, jpeg)?;
     if let Some(dir) = original_dst.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::rename(original, original_dst)
+    Ok((jpeg_name, place(original, original_dst)?))
 }

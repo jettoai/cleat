@@ -77,6 +77,12 @@ pub struct Handle {
 /// this call are converted.
 pub fn start(config: &HeicConfig, home: &Path, events: Sender<Event>, timing: Timing) -> Option<Handle> {
     let watch = config.watch_dir(home);
+    let originals = config.originals_dir(home);
+    if same_folder(&watch, &originals) {
+        let reason = "the originals folder is the watched folder".to_string();
+        let _ = events.send(Event::Photos(Report::Failed { name: paths::tilde(&watch), reason }));
+        return None;
+    }
     // Read before anything runs: what is here now is not new, whatever is added after.
     let baseline = names(&watch).into_iter().filter(|n| plan::is_heic_name(n)).collect();
     let (wake, rx) = mpsc::channel();
@@ -88,7 +94,7 @@ pub fn start(config: &HeicConfig, home: &Path, events: Sender<Event>, timing: Ti
         }
     };
     let worker = Worker {
-        originals: config.originals_dir(home),
+        originals,
         originals_label: config.originals.clone(),
         watch,
         long_edge: config.long_edge,
@@ -106,6 +112,15 @@ pub fn start(config: &HeicConfig, home: &Path, events: Sender<Event>, timing: Ti
     let _ = wake.send(()); // look once at the start: it is how a folder that cannot be read gets reported
     std::thread::Builder::new().name("cleat-photos".into()).spawn(move || worker.run()).ok()?;
     Some(Handle { _watcher: watcher, _wake: wake })
+}
+
+/// Whether two paths are the same folder: through links when both exist, else by their spelling
+/// (`dir/`, `dir/.` and `dir` agree).
+pub fn same_folder(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a.components().eq(b.components()),
+    }
 }
 
 /// The names in a folder's first level; none when it cannot be read.
@@ -254,11 +269,11 @@ impl Worker {
                     let ms = began.elapsed().as_millis();
                     let jpeg = self.watch.join(&job.output);
                     match convert::finish(&temp, &jpeg, &source, &self.originals.join(&job.original)) {
-                        Ok(()) => {
+                        Ok((to, _)) => {
                             self.handled.remove(&job.source);
                             self.report(Report::Converted {
                                 from: job.source.clone(),
-                                to: job.output.clone(),
+                                to,
                                 width,
                                 height,
                                 ms,

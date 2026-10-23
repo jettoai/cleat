@@ -62,11 +62,16 @@ pub fn is_heic_name(name: &str) -> bool {
     split(name).is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("heic") || ext.eq_ignore_ascii_case("heif"))
 }
 
-/// The first of `stem.ext`, `stem 2.ext`, `stem 3.ext`... not in `taken` (compared without case,
-/// like the volume), which it then joins.
+/// The `n`th spelling of a name: `stem.ext`, `stem 2.ext`, `stem 3.ext`...
+pub fn numbered(stem: &str, ext: &str, n: u32) -> String {
+    if n == 1 { format!("{stem}.{ext}") } else { format!("{stem} {n}.{ext}") }
+}
+
+/// The first of `numbered(stem, ext, 1..)` not in `taken` (compared without case, like the
+/// volume), which it then joins.
 fn unique(stem: &str, ext: &str, taken: &mut HashSet<String>) -> String {
     (1..)
-        .map(|n| if n == 1 { format!("{stem}.{ext}") } else { format!("{stem} {n}.{ext}") })
+        .map(|n| numbered(stem, ext, n))
         .find(|name| taken.insert(name.to_lowercase()))
         .expect("an unbounded range has a free name")
 }

@@ -215,3 +215,55 @@ fn dropping_the_handle_ends_the_watch() {
     assert_eq!(next(&rx, Duration::from_millis(500)), None);
     assert_eq!(dir.names(), ["IMG_4.HEIC"]);
 }
+
+#[test]
+fn a_jpeg_that_arrives_while_the_file_settles_is_not_replaced() {
+    let dir = Scratch::new();
+    let timing = Timing { stable: Duration::from_millis(800), ..FAST };
+    let (_handle, rx) = watch(&dir, timing);
+    place("wide.heic", &dir.path("IMG.HEIC"));
+    // The name IMG.jpg is planned by now (debounce 60 ms); the size check still has 800 ms to run.
+    std::thread::sleep(Duration::from_millis(350));
+    std::fs::write(dir.path("IMG.jpg"), b"USER JPEG").unwrap();
+
+    let Report::Converted { to, .. } = expect(&rx) else { panic!("not converted") };
+    assert_eq!(to, "IMG 2.jpg");
+    assert_eq!(std::fs::read(dir.path("IMG.jpg")).unwrap(), b"USER JPEG");
+    assert_eq!(dir.names(), ["HEIC原檔", "IMG 2.jpg", "IMG.jpg"], "the reported name is the one on disk");
+}
+
+/// `originals` as the config would say it for `dir` itself in disguise.
+fn disguises(dir: &Scratch, alias: &Scratch) -> Vec<String> {
+    let abs = dir.0.display().to_string();
+    std::os::unix::fs::symlink(&dir.0, alias.path("link")).unwrap();
+    vec![abs.clone(), String::new(), ".".into(), format!("{abs}/"), format!("{abs}/."), alias.path("link").display().to_string()]
+}
+
+#[test]
+fn an_originals_folder_that_is_the_watched_folder_is_refused() {
+    for case in 0..6 {
+        let (dir, alias) = (Scratch::new(), Scratch::new());
+        let originals = disguises(&dir, &alias).swap_remove(case);
+        let config = HeicConfig { watch: dir.0.display().to_string(), originals: originals.clone(), long_edge: 320, quality: 85 };
+        let (tx, rx) = mpsc::channel();
+        let handle = photos::start(&config, std::path::Path::new("/nonexistent-home"), tx, FAST);
+        assert!(handle.is_none(), "originals {originals:?}");
+        let report = expect(&rx);
+        assert!(matches!(&report, Report::Failed { reason, .. } if reason.contains("originals folder")), "{originals:?}: {report:?}");
+        place("wide.heic", &dir.path("IMG.HEIC"));
+        assert_eq!(next(&rx, Duration::from_millis(500)), None, "{originals:?}");
+        assert_eq!(dir.names(), ["IMG.HEIC"], "originals {originals:?}: nothing is converted");
+    }
+}
+
+#[test]
+fn a_watched_folder_that_does_not_exist_yet_still_refuses_the_same_originals() {
+    let dir = Scratch::new();
+    let missing = dir.path("inbox").display().to_string();
+    for originals in [missing.clone(), format!("{missing}/"), String::new(), ".".into()] {
+        let config = HeicConfig { watch: missing.clone(), originals: originals.clone(), ..HeicConfig::default() };
+        let (tx, rx) = mpsc::channel();
+        assert!(photos::start(&config, std::path::Path::new("/nonexistent-home"), tx, FAST).is_none(), "{originals:?}");
+        assert!(matches!(expect(&rx), Report::Failed { .. }));
+    }
+}
