@@ -1,4 +1,4 @@
-//! The window: 720 x 560, a source-list sidebar of the four panes, the detail pane on the right
+//! The window: 720 x 620, a source-list sidebar of the four panes, the detail pane on the right
 //! (Swift `SettingsWindow.makeWindow`, `SettingsView.body`).
 
 use std::cell::OnceCell;
@@ -199,7 +199,7 @@ pub fn make_window(app: &App) -> (Retained<NSWindow>, Retained<Sidebar>) {
         let name = unsafe { if look == "dark" { objc2_app_kit::NSAppearanceNameDarkAqua } else { objc2_app_kit::NSAppearanceNameAqua } };
         objc2_app_kit::NSApplication::sharedApplication(mtm).setAppearance(NSAppearance::appearanceNamed(name).as_deref());
     }
-    let height = debug_env("CLEAT_SETTINGS_HEIGHT").and_then(|h| h.parse().ok()).unwrap_or(560.0);
+    let height = debug_env("CLEAT_SETTINGS_HEIGHT").and_then(|h| h.parse().ok()).unwrap_or(620.0);
     let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(720.0, height));
     let mask = NSWindowStyleMask::Titled
         | NSWindowStyleMask::Closable
