@@ -249,13 +249,13 @@ fn a_save_with_no_photos_edit_keeps_the_bytes() {
 #[test]
 fn only_the_edited_cell_is_written_and_editing_back_restores_the_file() {
     let raw = r#"{"heic":{"quality":70},"reclaim":[]}"#;
-    let out: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| d.heic_long_edge = 1600)).unwrap();
-    assert_eq!(out["heic"], serde_json::json!({"quality": 70, "longEdge": 1600}), "{out}");
+    let out: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| d.heic_long_edge = 2400)).unwrap();
+    assert_eq!(out["heic"], serde_json::json!({"quality": 70, "longEdge": 2400}), "{out}");
 
     // Away and back, saved once: the file as it was, not a cell spelling out the default.
     let back: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| {
-        d.heic_long_edge = 1600;
         d.heic_long_edge = 2400;
+        d.heic_long_edge = 1200;
     }))
     .unwrap();
     assert_eq!(back["heic"], serde_json::json!({"quality": 70}), "{back}");
@@ -267,11 +267,11 @@ fn only_the_edited_cell_is_written_and_editing_back_restores_the_file() {
 #[test]
 fn without_an_origin_a_cell_is_written_when_the_file_differs() {
     let mut m = default_managed();
-    m.heic_long_edge = 2400;
-    let same = text(Some(r#"{"heic":{"longEdge":2400,"quality":70}}"#), &m);
-    assert!(same.contains("\"longEdge\":2400") && same.contains("\"quality\":70"), "{same}");
-    let differs = text(Some(r#"{"heic":{"longEdge":1600,"quality":70}}"#), &m);
-    assert!(differs.contains("\"longEdge\":2400") && differs.contains("\"quality\":70"), "{differs}");
+    m.heic_long_edge = 1200;
+    let same = text(Some(r#"{"heic":{"longEdge":1200,"quality":70}}"#), &m);
+    assert!(same.contains("\"longEdge\":1200") && same.contains("\"quality\":70"), "{same}");
+    let differs = text(Some(r#"{"heic":{"longEdge":2400,"quality":70}}"#), &m);
+    assert!(differs.contains("\"longEdge\":1200") && differs.contains("\"quality\":70"), "{differs}");
     let default_in_file = text(Some(r#"{"heic":{"quality":70}}"#), &m);
     assert!(!default_in_file.contains("longEdge"), "{default_in_file}");
 }

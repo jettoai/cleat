@@ -274,16 +274,16 @@ fn convert_heic_is_off_and_the_heic_block_has_its_defaults_when_the_keys_are_abs
     assert!(!config.convert_heic);
     assert_eq!(config.heic.watch, "~/Downloads");
     assert_eq!(config.heic.originals, "HEIC原檔");
-    assert_eq!((config.heic.long_edge, config.heic.quality), (2400, 85));
+    assert_eq!((config.heic.long_edge, config.heic.quality), (1200, 60));
     assert_eq!(config.validate(), Ok(()));
 }
 
 #[test]
 fn a_heic_block_may_leave_out_any_field() {
-    let config = decode(r#"{"convertHeic": true, "heic": {"longEdge": 1600}}"#).unwrap();
+    let config = decode(r#"{"convertHeic": true, "heic": {"longEdge": 2400}}"#).unwrap();
     assert!(config.convert_heic);
-    assert_eq!(config.heic.long_edge, 1600);
-    assert_eq!((config.heic.watch.as_str(), config.heic.originals.as_str(), config.heic.quality), ("~/Downloads", "HEIC原檔", 85));
+    assert_eq!(config.heic.long_edge, 2400);
+    assert_eq!((config.heic.watch.as_str(), config.heic.originals.as_str(), config.heic.quality), ("~/Downloads", "HEIC原檔", 60));
 }
 
 #[test]

@@ -85,7 +85,7 @@ pub struct HeicConfig {
 
 impl Default for HeicConfig {
     fn default() -> Self {
-        Self { watch: "~/Downloads".into(), originals: "HEIC原檔".into(), long_edge: 2400, quality: 85 }
+        Self { watch: "~/Downloads".into(), originals: "HEIC原檔".into(), long_edge: 1200, quality: 60 }
     }
 }
 

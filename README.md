@@ -150,7 +150,7 @@ it, the median of the recent ones).
   headset. Bluetooth devices the system does not identify as audio sit in a collapsed group,
   for speakers or headphones that do not announce themselves.
 - **Photos**: the HEIC to JPEG switch (`convertHeic`), the folder watched, the folder the originals move to,
-  and the long edge of the JPEG (1600, 2400, 3200 or the original size). Described under [Config](#config).
+  and the long edge of the JPEG (1200, 1600, 2400, 3200 or the original size). Described under [Config](#config).
 - **General**: whether Cleat starts at login and restarts when it dies (`launchAtLogin`).
 
 Right-click a device in a priority list to move it up or down. Every change is written to the
@@ -237,7 +237,7 @@ virtual device), Cleat leaves it alone.
 | `launchAtLogin` | boolean | `true` | Register the launchd agent that starts Cleat at login and restarts it if it dies |
 | `rememberDisplays` | boolean | `false` | Remember the arrangement you last set for each combination of displays and restore it when macOS rearranges it. Details below |
 | `convertHeic` | boolean | `false` | Convert HEIC pictures that arrive in `heic.watch` to JPEG. Details below |
-| `heic` | object | see below | `watch` (default `"~/Downloads"`), `originals` (default `"HEIC原檔"`), `longEdge` (default `2400`, or `0` for the original size, else 800 to 8000) and `quality` (default `85`, 50 to 100). Every key is optional |
+| `heic` | object | see below | `watch` (default `"~/Downloads"`), `originals` (default `"HEIC原檔"`), `longEdge` (default `1200`, or `0` for the original size, else 800 to 8000) and `quality` (default `60`, 50 to 100). Every key is optional |
 | `errorReports` | boolean | `false` | Send crash and error reports to Sentry. See [Privacy](#privacy) |
 | `usagePing` | boolean | `true` | Send the anonymous daily usage ping. See [Privacy](#privacy) |
 
@@ -261,8 +261,8 @@ you choose another folder) into a JPEG next to it. It is off by default, because
 - **Only new pictures.** A `.heic` or `.heif` file (any case) that was already in the folder when the
   watch started is left alone. A new one is converted once its size has held still for a second.
 - **The JPEG** is `<name>.jpg` in the same folder (`<name> 2.jpg` if that name is taken, never an
-  overwrite), `heic.longEdge` pixels on the long side (2400 unless you choose 1600, 3200 or the original
-  size), at `heic.quality` (85, set in the config file only). It is turned upright, keeps the Display P3
+  overwrite), `heic.longEdge` pixels on the long side (1200 unless you choose 1600, 2400, 3200 or the original
+  size), at `heic.quality` (60, set in the config file only). It is turned upright, keeps the Display P3
   colour profile and carries no location.
 - **The original** moves to `heic.originals`: a name is a folder inside the watched one (`HEIC原檔`),
   a path is used as it is. Nothing is deleted. A Live Photo's movie is not touched.

@@ -6,7 +6,7 @@ use super::SettingsDraft;
 use crate::photos::same_folder;
 
 /// The long edges the page offers, in the order it shows them; 0 keeps the original size.
-pub const LONG_EDGES: [u32; 4] = [1600, 2400, 3200, 0];
+pub const LONG_EDGES: [u32; 5] = [1200, 1600, 2400, 3200, 0];
 
 /// `~` for the home folder in a path as the config file would carry it.
 fn tilde_in(home: &Path, path: &Path) -> String {
