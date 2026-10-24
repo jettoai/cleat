@@ -1,8 +1,9 @@
-//! A plain launchd agent that opens the app at login. SMAppService's registration lives in the
-//! Background Task Management database, which can lose it (B-2739: after a reboot nothing started
-//! Cleat, and only Cleat itself re-registers). This file sits in `~/Library/LaunchAgents`, outside
-//! that database: launchd loads it at login, `open` starts the app, and the app's own sync then
-//! registers the SMAppService agent again and hands over to it.
+//! A plain launchd agent that runs `cleat login-start` at login. SMAppService's registration lives
+//! in the Background Task Management database, which can lose it (B-2739: after a reboot nothing
+//! started Cleat, and only Cleat itself re-registers). This file sits in `~/Library/LaunchAgents`,
+//! outside that database: launchd loads it at login and `login-start` (cli/login_start.rs)
+//! registers the SMAppService agent again and kicks it. It never uses `open`, which would pop the
+//! settings window over a daemon that is already up.
 
 use std::path::{Path, PathBuf};
 
@@ -17,18 +18,18 @@ pub enum Change {
 pub struct LoginPlist {
     /// `~/Library/LaunchAgents`; a tempdir in tests.
     pub dir: PathBuf,
-    /// The running `.app`; None when the executable sits in no bundle.
-    pub app: Option<PathBuf>,
+    /// The running executable inside its `.app`; None when it sits in no bundle.
+    pub exe: Option<PathBuf>,
 }
 
 impl LoginPlist {
-    /// The real directory, and the `.app` this executable sits in (same lookup as `Identity`).
+    /// The real directory, and this executable if it sits in an `.app` (same lookup as `Identity`).
     pub fn current() -> Self {
-        let app = std::env::current_exe()
+        let exe = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.canonicalize().ok())
-            .and_then(|exe| crate::identity::enclosing_app(&exe).map(Path::to_path_buf));
-        Self { dir: crate::config::paths::home().join("Library/LaunchAgents"), app }
+            .filter(|exe| crate::identity::enclosing_app(exe).is_some());
+        Self { dir: crate::config::paths::home().join("Library/LaunchAgents"), exe }
     }
 
     fn path(&self) -> PathBuf {
@@ -36,7 +37,7 @@ impl LoginPlist {
     }
 
     /// Makes the file match `wanted`; Some when it wrote or removed something. Nothing is changed
-    /// when the content already matches, or when wanted but the app's path is unknown.
+    /// when the content already matches, or when wanted but the executable's path is unknown.
     pub fn sync(&self, wanted: bool) -> Result<Option<Change>, String> {
         let path = self.path();
         if !wanted {
@@ -46,8 +47,8 @@ impl LoginPlist {
                 Err(e) => Err(e.to_string()),
             };
         }
-        let Some(app) = &self.app else { return Ok(None) };
-        let content = contents(app);
+        let Some(exe) = &self.exe else { return Ok(None) };
+        let content = contents(exe);
         if std::fs::read_to_string(&path).is_ok_and(|have| have == content) {
             return Ok(None);
         }
@@ -62,9 +63,10 @@ impl LoginPlist {
     }
 }
 
-/// RunAtLoad only: no KeepAlive, so a quit Cleat stays quit until the next login.
-pub fn contents(app: &Path) -> String {
-    let app = app.to_string_lossy().replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+/// Runs at load only (no KeepAlive, so a quit Cleat stays quit until the next login). The
+/// executable path is one `<string>`, so it needs no quoting beyond XML escaping.
+pub fn contents(exe: &Path) -> String {
+    let exe = exe.to_string_lossy().replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -74,9 +76,8 @@ pub fn contents(app: &Path) -> String {
 	<string>{LABEL}</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/bin/open</string>
-		<string>-g</string>
-		<string>{app}</string>
+		<string>{exe}</string>
+		<string>login-start</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

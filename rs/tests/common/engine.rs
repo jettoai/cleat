@@ -237,8 +237,8 @@ pub fn release_identity() -> Identity {
     Identity { bundle_id: Some("ai.jetto.cleat".into()), version: None }
 }
 
-/// The `.app` the fake login plist opens.
-pub const FAKE_APP: &str = "/Applications/Cleat.app";
+/// The executable the fake login plist runs.
+pub const FAKE_EXE: &str = "/Applications/Cleat.app/Contents/MacOS/Cleat";
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -331,7 +331,7 @@ impl Harness {
             agent: Box::new(FakeAgent(agent.clone())),
             login_item: Box::new(FakeAgent(login_item.clone())),
             launchd: Box::new(FakeLaunchd { loaded: opts.job_loaded }),
-            login_plist: LoginPlist { dir: dir.join("LaunchAgents"), app: Some(PathBuf::from(FAKE_APP)) },
+            login_plist: LoginPlist { dir: dir.join("LaunchAgents"), exe: Some(PathBuf::from(FAKE_EXE)) },
             error_reports_changed: Box::new(move |v| sink.borrow_mut().push(v)),
             usage_ping_changed: Box::new(move |v| pings_sink.borrow_mut().push(v)),
             photos_changed: Box::new(move |v| photos_sink.borrow_mut().push(v)),

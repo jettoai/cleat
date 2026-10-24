@@ -1,10 +1,12 @@
 //! `cleat status`, `cleat log`, `cleat restart`, `cleat reclaim`, `cleat settings`, `cleat version`: Swift `CLI.swift`, output and
 //! exit codes word for word. The CLI never talks to the daemon; it reads the files it writes.
 
+mod login_start;
 mod reclaim;
 mod restart;
 mod status;
 
+pub use login_start::start_at_login;
 pub use reclaim::verdict;
 pub use status::{render_log, render_status, supervision};
 
@@ -38,6 +40,7 @@ pub fn run(args: &[String]) -> i32 {
         "status" => status::status(),
         "log" => log(&args[1..]),
         "restart" => restart::restart(),
+        "login-start" => login_start::login_start(),
         "reclaim" => reclaim::reclaim(&args[1..]),
         "settings" => crate::settings::run(&args[1..]),
         "version" | "--version" => {

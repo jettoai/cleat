@@ -7,7 +7,7 @@ use cleat_rs::identity::Identity;
 use cleat_rs::launch::AgentStatus;
 use cleat_rs::model::DeviceSnapshot;
 use cleat_rs::settings::draft::{LiveLevels, SettingsDraft};
-use common::engine::{release_identity, Harness, Opts, FAKE_APP};
+use common::engine::{release_identity, Harness, Opts, FAKE_EXE};
 
 fn start(config_json: &str, identity: Identity, agent: AgentStatus) -> Harness {
     Harness::with_json(
@@ -158,7 +158,9 @@ fn the_login_plist_is_written_when_wanted() {
     let h = start("{}", release_identity(), AgentStatus::NotRegistered);
     let text = plist_text(&h);
     assert!(text.contains("<string>ai.jetto.cleat.login</string>"));
-    assert!(text.contains(&format!("<string>/usr/bin/open</string>\n\t\t<string>-g</string>\n\t\t<string>{FAKE_APP}</string>")));
+    // The executable and `login-start`, no `open`: that would pop the settings window.
+    assert!(text.contains(&format!("<string>{FAKE_EXE}</string>\n\t\t<string>login-start</string>\n\t</array>")));
+    assert!(!text.contains("/usr/bin/open"));
     assert!(text.contains("<key>RunAtLoad</key>\n\t<true/>"));
     assert!(text.contains("<string>Interactive</string>"));
     assert!(!text.contains("KeepAlive"));
@@ -182,7 +184,7 @@ fn a_different_login_plist_is_overwritten() {
     let mut h = start("{}", release_identity(), AgentStatus::NotRegistered);
     std::fs::write(h.login_plist(), "stale").unwrap();
     touch_config(&mut h);
-    assert!(plist_text(&h).contains(FAKE_APP));
+    assert!(plist_text(&h).contains(FAKE_EXE));
     assert_eq!(h.count("launchAtLogin: login plist written"), 2);
 }
 
@@ -228,4 +230,23 @@ fn development_builds_never_touch_the_login_plist() {
 fn a_config_that_did_not_load_leaves_the_login_plist_alone() {
     let h = start(r#"{"balance": 2}"#, release_identity(), AgentStatus::NotRegistered);
     assert!(!h.dir.join("LaunchAgents").exists());
+}
+
+#[test]
+fn a_path_with_markup_characters_stays_one_escaped_argument() {
+    let text = cleat_rs::launch::login_plist::contents(std::path::Path::new("/A & B <x>.app/Contents/MacOS/Cleat"));
+    assert!(text.contains("<string>/A &amp; B &lt;x&gt;.app/Contents/MacOS/Cleat</string>"));
+    assert!(!text.contains("B <x>"));
+}
+
+#[test]
+fn a_login_plist_from_the_first_version_is_replaced_on_the_next_start() {
+    let mut h = start("{}", release_identity(), AgentStatus::NotRegistered);
+    let first_version = plist_text(&h)
+        .replace(&format!("<string>{FAKE_EXE}</string>\n\t\t<string>login-start</string>"), "<string>/usr/bin/open</string>\n\t\t<string>-g</string>");
+    assert!(first_version.contains("/usr/bin/open"));
+    std::fs::write(h.login_plist(), &first_version).unwrap();
+    touch_config(&mut h);
+    assert!(plist_text(&h).contains("<string>login-start</string>") && !plist_text(&h).contains("/usr/bin/open"));
+    assert_eq!(h.count("launchAtLogin: login plist written"), 2);
 }
