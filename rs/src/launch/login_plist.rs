@@ -27,7 +27,7 @@ impl LoginPlist {
         let app = std::env::current_exe()
             .ok()
             .and_then(|exe| exe.canonicalize().ok())
-            .and_then(|exe| exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).map(Path::to_path_buf));
+            .and_then(|exe| crate::identity::enclosing_app(&exe).map(Path::to_path_buf));
         Self { dir: crate::config::paths::home().join("Library/LaunchAgents"), app }
     }
 

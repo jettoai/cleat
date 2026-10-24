@@ -1,6 +1,8 @@
 //! Which build this is, read from the bundle's Info.plist. A bare executable (cargo run, cargo
 //! test) has no bundle and counts as a development build.
 
+use std::path::Path;
+
 use objc2_core_foundation::{CFBundle, CFRetained, CFString, CFURL};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -21,10 +23,15 @@ fn info_string(bundle: &CFBundle, key: &str) -> Option<String> {
 /// symlink it finds no bundle, and a release build would take itself for a development one.
 fn main_bundle() -> Option<CFRetained<CFBundle>> {
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
-    match exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")) {
+    match enclosing_app(&exe) {
         Some(app) => CFBundle::new(None, Some(&*CFURL::from_directory_path(app)?)),
         None => CFBundle::main_bundle(),
     }
+}
+
+/// The nearest `.app` directory above `exe`.
+pub fn enclosing_app(exe: &Path) -> Option<&Path> {
+    exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app"))
 }
 
 impl Identity {
