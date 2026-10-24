@@ -23,6 +23,15 @@ fn the_longer_side_becomes_long_edge_and_a_tall_picture_stays_tall() {
 }
 
 #[test]
+fn a_picture_smaller_than_long_edge_is_not_enlarged() {
+    // Fixtures are 640x360 stored; a long edge above that, or exactly that, leaves the size alone.
+    for long_edge in [1200, 640] {
+        assert_eq!(convert("wide.heic", long_edge, 60).1, Ok((640, 360)), "wide, long edge {long_edge}");
+        assert_eq!(convert("tall.heic", long_edge, 60).1, Ok((360, 640)), "tall, long edge {long_edge}");
+    }
+}
+
+#[test]
 fn the_output_is_a_jpeg_whose_pixels_match_what_was_reported() {
     let (dir, result) = convert("tall.heic", 320, 85);
     let bytes = std::fs::read(dir.path("out.jpg")).unwrap();
