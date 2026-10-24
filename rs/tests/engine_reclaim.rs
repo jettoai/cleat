@@ -286,6 +286,21 @@ fn too_soon_after_a_manual_route_backs_off() {
 }
 
 #[test]
+fn hijack_block_period_retries_soon_but_other_final_refusals_still_back_off() {
+    let mut w = world(Some(answer(0, "Hijack Block Period")));
+    assert_eq!(w.requests().len(), 1);
+    w.advance(secs(DELAY + 1.0));
+    w.reconcile();
+    assert_eq!(w.requests().len(), 2);
+    for reason in ["Not tipi device", "Too soon since last manual route"] {
+        let mut w = world(Some(answer(0, reason)));
+        w.advance(secs(DELAY + 1.0));
+        w.reconcile();
+        assert_eq!(w.requests().len(), 1, "{reason}");
+    }
+}
+
+#[test]
 fn headset_here_but_not_chosen_is_asked_again_next_playback() {
     let mut w = world_where(Some(hijacked()), here);
     w.advance(secs(INTERVAL + 1.0));

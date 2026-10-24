@@ -62,7 +62,7 @@ pub struct ReclaimBook {
 
 fn short_lived(detail: &str) -> bool {
     let d = detail.to_lowercase();
-    d.contains("out of ear") || d.contains("screen locked")
+    d.contains("out of ear") || d.contains("screen locked") || d.contains("hijack block")
 }
 
 fn headset(name: &str, address: &str) -> BluetoothHeadset {
