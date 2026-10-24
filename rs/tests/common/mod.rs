@@ -3,6 +3,7 @@
 
 pub mod displays;
 pub mod engine;
+pub mod fakes;
 pub mod photos;
 pub mod reclaim;
 

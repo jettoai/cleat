@@ -34,7 +34,7 @@ use crate::audio::{AudioSystem, ListenerToken};
 use crate::config::{watcher, Config, HeicConfig};
 use crate::display::DisplaySystem;
 use crate::identity::Identity;
-use crate::launch::{AgentService, Launchd};
+use crate::launch::{AgentService, Launchd, LoginPlist};
 use crate::liveness::{DetectorFactory, LivenessDetecting};
 use crate::model::{Action, DeviceSnapshot, Liveness, MicrophonePermission};
 use crate::reclaim::{BluetoothInventory, RouteRequesting};
@@ -69,6 +69,8 @@ pub struct EngineDeps {
     /// The app as a login item, which versions up to 0.3.2 registered and this retires.
     pub login_item: Box<dyn AgentService>,
     pub launchd: Box<dyn Launchd>,
+    /// The plain launchd agent that starts the app at login even if SMAppService forgot it.
+    pub login_plist: LoginPlist,
     /// Told when `errorReports` changes.
     pub error_reports_changed: Box<dyn FnMut(bool)>,
     /// Told when `usagePing` changes; on at start unless the config turns it off.
@@ -106,6 +108,7 @@ pub struct Engine {
     agent: Box<dyn AgentService>,
     login_item: Box<dyn AgentService>,
     launchd: Box<dyn Launchd>,
+    login_plist: LoginPlist,
     error_reports_changed: Box<dyn FnMut(bool)>,
     usage_ping_changed: Box<dyn FnMut(bool)>,
     photos_changed: Box<dyn FnMut(Option<HeicConfig>)>,
@@ -162,6 +165,7 @@ impl Engine {
             agent: deps.agent,
             login_item: deps.login_item,
             launchd: deps.launchd,
+            login_plist: deps.login_plist,
             error_reports_changed: deps.error_reports_changed,
             usage_ping_changed: deps.usage_ping_changed,
             photos_changed: deps.photos_changed,

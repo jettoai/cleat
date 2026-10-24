@@ -2,6 +2,7 @@
 //! for word), except that a missing config file counts as the defaults here (B-1224).
 
 use super::Engine;
+use crate::launch::login_plist::Change;
 use crate::launch::{domain_target, failure_detail, is_registered, needs_reregistration, AgentStatus};
 
 impl Engine {
@@ -16,8 +17,9 @@ impl Engine {
         }
         self.retire_login_item();
 
-        let status = self.agent.status();
         let wanted = self.config.launch_at_login;
+        self.sync_login_plist(wanted);
+        let status = self.agent.status();
         if wanted && needs_reregistration(status, || self.launchd.loaded_job().0) {
             let result = self.agent.unregister().and_then(|_| self.agent.register());
             match result {
@@ -39,6 +41,20 @@ impl Engine {
             Err(e) => self.note(&format!(
                 "launchAtLogin: {} failed ({e})",
                 if wanted { "register" } else { "unregister" }
+            )),
+        }
+    }
+
+    /// Keeps `~/Library/LaunchAgents/ai.jetto.cleat.login.plist` as `launchAtLogin` says, so a
+    /// login still starts the app when the SMAppService registration has gone missing (B-2739).
+    fn sync_login_plist(&mut self, wanted: bool) {
+        match self.login_plist.sync(wanted) {
+            Ok(Some(Change::Written)) => self.note("launchAtLogin: login plist written"),
+            Ok(Some(Change::Removed)) => self.note("launchAtLogin: login plist removed"),
+            Ok(None) => {}
+            Err(e) => self.note(&format!(
+                "launchAtLogin: login plist {} failed ({e})",
+                if wanted { "write" } else { "remove" }
             )),
         }
     }

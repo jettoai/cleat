@@ -14,7 +14,7 @@ use cleat_rs::config::{paths, HeicConfig};
 use cleat_rs::display::CoreGraphicsDisplays;
 use cleat_rs::engine::{self, Engine, EngineDeps, Mode};
 use cleat_rs::identity::{self, Identity};
-use cleat_rs::launch::{LaunchctlJob, Launchd, SmApp};
+use cleat_rs::launch::{LaunchctlJob, Launchd, LoginPlist, SmApp};
 use cleat_rs::liveness::live_detectors;
 use cleat_rs::model::MicrophonePermission;
 use cleat_rs::outvol::writer_log::LogStream;
@@ -82,6 +82,7 @@ fn daemon(mode: Mode, trace: bool) -> ExitCode {
             agent: Box::new(SmApp::agent(&format!("{label}.plist"))),
             login_item: Box::new(SmApp::main_app()),
             launchd: Box::new(LaunchctlJob { label }),
+            login_plist: LoginPlist::current(),
             usage_ping_changed: make_pinger(&identity),
             photos_changed: make_photos(tx.clone()),
             identity,

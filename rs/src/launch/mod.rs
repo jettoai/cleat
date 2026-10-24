@@ -1,8 +1,10 @@
 //! The launchd agent shipped inside the bundle (Swift `LaunchAgent.swift`), named and talked to
 //! from one place so the daemon and the CLI cannot disagree about it.
 
+pub mod login_plist;
 mod service;
 
+pub use login_plist::LoginPlist;
 pub use service::{AgentService, AgentStatus, SmApp};
 
 use std::io::Read;

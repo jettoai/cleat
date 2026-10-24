@@ -7,7 +7,7 @@ use cleat_rs::identity::Identity;
 use cleat_rs::launch::AgentStatus;
 use cleat_rs::model::DeviceSnapshot;
 use cleat_rs::settings::draft::{LiveLevels, SettingsDraft};
-use common::engine::{release_identity, Harness, Opts};
+use common::engine::{release_identity, Harness, Opts, FAKE_APP};
 
 fn start(config_json: &str, identity: Identity, agent: AgentStatus) -> Harness {
     Harness::with_json(
@@ -135,4 +135,97 @@ fn deleting_the_file_registers_again() {
     std::fs::remove_file(h.dir.join("config.json")).unwrap();
     reload(&mut h);
     assert_eq!(h.agent.registers.get(), 1);
+}
+
+// B-2739: the plain launchd agent that starts the app at login without SMAppService.
+
+/// A config change that keeps launchAtLogin on, so the sync runs again.
+fn touch_config(h: &mut Harness) {
+    std::fs::write(h.dir.join("config.json"), r#"{"usagePing": false}"#).unwrap();
+    reload(h);
+}
+
+fn plist_text(h: &Harness) -> String {
+    std::fs::read_to_string(h.login_plist()).unwrap()
+}
+
+fn no_launch_at_login() -> String {
+    serde_json::to_string(&Config { launch_at_login: false, ..Config::default() }).unwrap()
+}
+
+#[test]
+fn the_login_plist_is_written_when_wanted() {
+    let h = start("{}", release_identity(), AgentStatus::NotRegistered);
+    let text = plist_text(&h);
+    assert!(text.contains("<string>ai.jetto.cleat.login</string>"));
+    assert!(text.contains(&format!("<string>/usr/bin/open</string>\n\t\t<string>-g</string>\n\t\t<string>{FAKE_APP}</string>")));
+    assert!(text.contains("<key>RunAtLoad</key>\n\t<true/>"));
+    assert!(text.contains("<string>Interactive</string>"));
+    assert!(!text.contains("KeepAlive"));
+    assert_eq!(h.count("launchAtLogin: login plist written"), 1);
+}
+
+#[test]
+fn an_identical_login_plist_is_left_alone_and_silent() {
+    let mut h = start("{}", release_identity(), AgentStatus::NotRegistered);
+    let before = std::fs::metadata(h.login_plist()).unwrap().modified().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    // A config change that keeps launchAtLogin on runs the sync again.
+    touch_config(&mut h);
+    assert!(logged(&h, "config: reloaded (ok)"));
+    assert_eq!(std::fs::metadata(h.login_plist()).unwrap().modified().unwrap(), before);
+    assert_eq!(h.count("login plist"), 1, "only the first write was logged");
+}
+
+#[test]
+fn a_different_login_plist_is_overwritten() {
+    let mut h = start("{}", release_identity(), AgentStatus::NotRegistered);
+    std::fs::write(h.login_plist(), "stale").unwrap();
+    touch_config(&mut h);
+    assert!(plist_text(&h).contains(FAKE_APP));
+    assert_eq!(h.count("launchAtLogin: login plist written"), 2);
+}
+
+#[test]
+fn switching_launch_at_login_off_removes_the_login_plist() {
+    let mut h = fresh(AgentStatus::NotRegistered, true);
+    assert!(h.login_plist().exists());
+    save_from_window(&mut h, false);
+    assert!(!h.login_plist().exists());
+    assert!(logged(&h, "launchAtLogin: login plist removed"));
+}
+
+#[test]
+fn removing_a_login_plist_that_is_not_there_is_silent() {
+    let h = start(&no_launch_at_login(), release_identity(), AgentStatus::NotRegistered);
+    assert!(!h.login_plist().exists());
+    assert_eq!(h.count("login plist"), 0);
+}
+
+#[test]
+fn a_login_plist_that_cannot_be_written_is_only_logged() {
+    let h = Harness::with_json(
+        "{}",
+        DeviceSnapshot::default(),
+        Opts { identity: release_identity(), login_plist_blocked: true, ..Opts::default() },
+    );
+    assert_eq!(h.count("launchAtLogin: login plist write failed ("), 1);
+    // The rest of the sync went on.
+    assert_eq!(h.agent.registers.get(), 1);
+}
+
+#[test]
+fn development_builds_never_touch_the_login_plist() {
+    for bundle in ["ai.jetto.cleat.rs", "ai.jetto.cleat.dev"] {
+        let identity = Identity { bundle_id: Some(bundle.into()), version: None };
+        let h = start("{}", identity, AgentStatus::NotRegistered);
+        assert!(!h.dir.join("LaunchAgents").exists(), "{bundle}");
+        assert_eq!(h.count("login plist"), 0, "{bundle}");
+    }
+}
+
+#[test]
+fn a_config_that_did_not_load_leaves_the_login_plist_alone() {
+    let h = start(r#"{"balance": 2}"#, release_identity(), AgentStatus::NotRegistered);
+    assert!(!h.dir.join("LaunchAgents").exists());
 }

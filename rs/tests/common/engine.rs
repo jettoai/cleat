@@ -12,14 +12,15 @@ use cleat_rs::config::{Config, HeicConfig};
 use cleat_rs::display::DisplaySnapshot;
 use cleat_rs::engine::{Engine, EngineDeps, Event, Mode, Status};
 use cleat_rs::identity::Identity;
-use cleat_rs::launch::{AgentService, AgentStatus, Launchd};
+use cleat_rs::launch::{AgentService, AgentStatus, Launchd, LoginPlist};
 use cleat_rs::liveness::LivenessDetecting;
 use cleat_rs::model::{BluetoothHeadset, DeviceSnapshot, MicrophonePermission};
-use cleat_rs::reclaim::{BluetoothInventory, RouteRequesting, RouteResponse};
+use cleat_rs::reclaim::RouteResponse;
 use cleat_rs::state::clock::Clock;
 use cleat_rs::state::EventLog;
 
 use super::displays::{FakeDisplays, FakeDisplayState};
+pub use super::fakes::*;
 
 /// The audio system as a value. Writes land back in the snapshot, so a second pass converges.
 pub struct FakeAudioState {
@@ -186,66 +187,6 @@ impl LivenessDetecting for FakeDetector {
     }
 }
 
-/// The routing daemon as one canned answer (Swift `FakeRouting`). `None` is a request that is
-/// never answered. Answers queue in `delivered` until the harness hands them to the engine, which
-/// is what the real client's GCD hop does.
-pub struct FakeRoutingState {
-    pub available: bool,
-    pub answer: RefCell<Option<RouteResponse>>,
-    pub addresses: RefCell<Vec<String>>,
-    pub scores: RefCell<Vec<i32>>,
-    pub reasons: RefCell<Vec<String>>,
-    pub delivered: RefCell<Vec<(String, String, RouteResponse)>>,
-}
-
-pub struct FakeRouting(pub Rc<FakeRoutingState>);
-
-impl RouteRequesting for FakeRouting {
-    fn is_available(&self) -> bool {
-        self.0.available
-    }
-    fn request(&mut self, name: &str, address: &str, score: i32, reason: &str) {
-        self.0.addresses.borrow_mut().push(address.into());
-        self.0.scores.borrow_mut().push(score);
-        self.0.reasons.borrow_mut().push(reason.into());
-        if let Some(a) = self.0.answer.borrow().clone() {
-            self.0.delivered.borrow_mut().push((name.into(), address.into(), a));
-        }
-    }
-}
-
-pub struct FakePairingsState {
-    pub headsets: RefCell<Vec<BluetoothHeadset>>,
-    pub reads: Cell<usize>,
-}
-
-pub struct FakePairings(pub Rc<FakePairingsState>);
-
-impl BluetoothInventory for FakePairings {
-    fn paired_headsets(&self) -> Vec<BluetoothHeadset> {
-        self.0.reads.set(self.0.reads.get() + 1);
-        self.0.headsets.borrow().clone()
-    }
-}
-
-/// The writer log as a script (Swift `FakeVolumeWriterSource`).
-#[derive(Default)]
-pub struct FakeWriterState {
-    pub start_result: Cell<bool>,
-    pub made: Cell<usize>,
-    pub starts: Cell<usize>,
-}
-
-pub struct FakeWriterSource(pub Rc<FakeWriterState>);
-
-impl cleat_rs::outvol::writer_log::VolumeWriterSource for FakeWriterSource {
-    fn start(&mut self) -> bool {
-        self.0.starts.set(self.0.starts.get() + 1);
-        self.0.start_result.get()
-    }
-    fn stop(&mut self) {}
-}
-
 pub struct Opts {
     pub writer_starts: bool,
     pub routing_available: bool,
@@ -265,6 +206,8 @@ pub struct Opts {
     /// False is macOS taking an origin and putting the display back.
     pub display_honors_writes: bool,
     pub display_write_succeeds: bool,
+    /// A plain file where the login plist directory should be, so writing there fails.
+    pub login_plist_blocked: bool,
 }
 
 impl Default for Opts {
@@ -285,6 +228,7 @@ impl Default for Opts {
             arrangements_file: None,
             display_honors_writes: true,
             display_write_succeeds: true,
+            login_plist_blocked: false,
         }
     }
 }
@@ -292,6 +236,9 @@ impl Default for Opts {
 pub fn release_identity() -> Identity {
     Identity { bundle_id: Some("ai.jetto.cleat".into()), version: None }
 }
+
+/// The `.app` the fake login plist opens.
+pub const FAKE_APP: &str = "/Applications/Cleat.app";
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -367,6 +314,9 @@ impl Harness {
         if let Some(text) = &opts.arrangements_file {
             std::fs::write(dir.join("display-arrangements.json"), text).unwrap();
         }
+        if opts.login_plist_blocked {
+            std::fs::write(dir.join("LaunchAgents"), "").unwrap();
+        }
         let writer = Rc::new(FakeWriterState::default());
         writer.start_result.set(opts.writer_starts);
         let w = writer.clone();
@@ -381,6 +331,7 @@ impl Harness {
             agent: Box::new(FakeAgent(agent.clone())),
             login_item: Box::new(FakeAgent(login_item.clone())),
             launchd: Box::new(FakeLaunchd { loaded: opts.job_loaded }),
+            login_plist: LoginPlist { dir: dir.join("LaunchAgents"), app: Some(PathBuf::from(FAKE_APP)) },
             error_reports_changed: Box::new(move |v| sink.borrow_mut().push(v)),
             usage_ping_changed: Box::new(move |v| pings_sink.borrow_mut().push(v)),
             photos_changed: Box::new(move |v| photos_sink.borrow_mut().push(v)),
@@ -455,6 +406,11 @@ impl Harness {
 
     pub fn set(&self, f: impl FnOnce(&mut DeviceSnapshot)) {
         f(&mut self.audio.snapshot.borrow_mut());
+    }
+
+    /// The login plist the engine keeps in its fake `~/Library/LaunchAgents`.
+    pub fn login_plist(&self) -> PathBuf {
+        self.dir.join("LaunchAgents/ai.jetto.cleat.login.plist")
     }
 
     pub fn log_lines(&self) -> Vec<String> {
