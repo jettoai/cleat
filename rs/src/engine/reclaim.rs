@@ -7,12 +7,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::{Duration, SystemTime};
 
+use super::output_volume::clock;
 use super::{Engine, RETRY_MS};
 use crate::model::presence::judge;
 use crate::model::{Action, AudioDevice, BluetoothHeadset, DeviceSnapshot};
 use crate::reclaim::{Outcome, RouteResponse};
 use crate::rules::reclaim;
-use crate::state::clock::local_seconds;
 
 /// A general playback session. Beats an idle phone (100), loses to media (301) or a call (501).
 pub const RECLAIM_SCORE: i32 = 201;
@@ -321,12 +321,11 @@ impl Engine {
     fn end_block(&mut self, address: &str, why: &str) {
         let Some(b) = self.reclaim.block_spell.remove(address) else { return };
         let name = self.reclaim.names.get(address).map_or(address, String::as_str);
-        let (first, last) = (local_seconds(b.first), local_seconds(b.last));
         let secs = b.last.duration_since(b.first).unwrap_or_default().as_secs();
         let line = format!(
             "reclaim: {name} Hijack Block Period lasted {secs} s (first refused {}, last refused {}, {} refusal{}), then {why}",
-            &first[11..],
-            &last[11..],
+            clock(b.first, true),
+            clock(b.last, true),
             b.refusals,
             if b.refusals == 1 { "" } else { "s" }
         );

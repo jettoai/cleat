@@ -52,7 +52,7 @@ pub struct RevertDetail {
     pub to: f64,
 }
 
-fn clock(t: SystemTime, seconds: bool) -> String {
+pub(super) fn clock(t: SystemTime, seconds: bool) -> String {
     let s = local_seconds(t);
     s[11..if seconds { 19 } else { 16 }].to_string()
 }
