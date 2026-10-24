@@ -40,6 +40,11 @@ words! {
     WriteInvalid: "寫出的設定不合法：{}", "The settings to write are not valid: {}";
     WriteIo: "寫入失敗：{}", "Could not write the config file: {}";
     LaunchRegisterFailed: "開機自動啟動沒有設定成功：{}", "Could not turn on start at login: {}";
+    // The agent is not registered with the system (General page). {} is "Cleat" or the error.
+    LaunchWarnError: "系統沒有登記為開機啟動，原因：{}", "The system has not registered Cleat to start at login. Reason: {}";
+    LaunchWarnApproval: "系統沒有登記為開機啟動，原因：{} 還在等你允許。請到「系統設定 > 一般 > 登入項目」打開 {}。", "The system has not registered Cleat to start at login. Reason: {} is waiting for your approval. Turn it on in System Settings > General > Login Items for {}.";
+    LaunchWarnNotFound: "系統沒有登記為開機啟動，原因：系統找不到 {} 的登入項目。", "The system has not registered Cleat to start at login. Reason: the system cannot find the login item for {}.";
+    LaunchWarnStill: "系統沒有登記為開機啟動，原因：重新登記後 {} 仍是未登記。", "The system has not registered Cleat to start at login. Reason: {} is still not registered after trying again.";
     Unreadable: "設定檔無法讀取：{}。修好檔案後按重新載入。", "Cleat cannot read the config file: {}. Fix the file, then click Reload.";
     Reload: "重新載入", "Reload";
 

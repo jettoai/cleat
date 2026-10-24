@@ -29,6 +29,8 @@ pub struct Store {
     pub draft: SettingsDraft,
     pub error_message: Option<String>,
     pub has_conflict: bool,
+    /// Set when the switch is on and the system still does not list the agent (B-2739).
+    pub launch_warning: Option<String>,
     pub present: Vec<AudioDevice>,
     pub live: LiveLevels,
     pub last_revert: Option<LastRevert>,
@@ -67,6 +69,7 @@ impl Store {
             draft: SettingsDraft::make(&Config::disabled(), &[], &[], &LiveLevels::default()),
             error_message: None,
             has_conflict: false,
+            launch_warning: None,
             present: vec![],
             live: LiveLevels::default(),
             last_revert: None,
@@ -115,6 +118,16 @@ impl Store {
         self.origin = Some(Origin::new(raw.as_deref(), self.draft.managed()));
         self.baseline = raw;
         self.phase = Phase::Ready;
+        self.check_launch_registration();
+    }
+
+    /// The switch shows the file, not the system. A lost registration is made again here; what
+    /// stays unregistered is said under the switch. Development builds have no agent. B-2739.
+    fn check_launch_registration(&mut self) {
+        self.launch_warning = match &self.agent {
+            Some(agent) if self.draft.launch_at_login && agent.status() != AgentStatus::Enabled => launch_warning(agent.as_ref()),
+            _ => None,
+        };
     }
 
     /// Device levels, and one read of status.json for the revert line, the stuck note and the vitals.
@@ -175,5 +188,20 @@ impl Store {
     pub fn reset_errors(&mut self) {
         self.error_message = None;
         self.has_conflict = false;
+    }
+}
+
+/// Registers the agent and reads its status again; Some(text) when it still is not enabled.
+fn launch_warning(agent: &dyn AgentService) -> Option<String> {
+    let l = lang::current();
+    let failed = agent.register().err();
+    let status = agent.status();
+    let app = "Cleat";
+    match (status, failed) {
+        (AgentStatus::RequiresApproval, _) => Some(fill(W::LaunchWarnApproval.get(l), &[app, app])),
+        (AgentStatus::Enabled, None) => None,
+        (_, Some(e)) => Some(fill(W::LaunchWarnError.get(l), &[&e])),
+        (AgentStatus::NotFound, None) => Some(fill(W::LaunchWarnNotFound.get(l), &[app])),
+        (_, None) => Some(fill(W::LaunchWarnStill.get(l), &[app])),
     }
 }

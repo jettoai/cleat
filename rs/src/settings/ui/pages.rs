@@ -307,6 +307,11 @@ fn general(a: &App, ctx: &mut Ctx) -> Retained<NSView> {
     let mtm = ctx.mtm;
     let l = lang::current();
     let on = a.store.borrow().draft.launch_at_login;
-    let rows = [switch_row(mtm, W::LaunchAtLogin.get(l), on, true, |on| app().edit(move |s| s.draft.launch_at_login = on))];
+    let mut rows = vec![switch_row(mtm, W::LaunchAtLogin.get(l), on, true, |on| app().edit(move |s| s.draft.launch_at_login = on))];
+    if let Some(warning) = a.store.borrow().launch_warning.clone() {
+        let red = NSColor::systemRedColor();
+        let line = stack(mtm, false, 6.0, &[&icon(mtm, "exclamationmark.triangle.fill", 16.0, &red), &wrapping(mtm, &warning, 13.0, &red)]);
+        rows.push(to_view(&padded_column(mtm, 0.0, 10.0, &[&line])));
+    }
     section(mtm, Some(("power", W::StartupSection.get(l))), &rows, Some(W::LaunchAtLoginNote.get(l)))
 }
