@@ -329,6 +329,82 @@ fn hijack_block_period_timeline() {
     assert!(times.len() > last_in_window + 1, "back-off still retries: {times:?}");
 }
 
+fn block_period() -> cleat_rs::reclaim::RouteResponse {
+    answer(0, "Hijack Block Period")
+}
+
+fn ask_again(w: &mut Harness) {
+    w.advance(secs(DELAY));
+    w.reconcile();
+}
+
+fn block_lines(w: &Harness) -> Vec<String> {
+    w.log_lines().into_iter().filter(|l| l.contains("Hijack Block Period lasted")).collect()
+}
+
+#[test]
+fn a_block_period_that_ends_in_acceptance_is_logged_once_with_its_length() {
+    let mut w = world(Some(block_period()));
+    ask_again(&mut w);
+    ask_again(&mut w);
+    assert!(block_lines(&w).is_empty());
+    w.set_answer(Some(hijacked()));
+    ask_again(&mut w);
+    let lines = block_lines(&w);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    println!("{}", lines[0]);
+    assert!(lines[0].contains("AirPods Max Hijack Block Period lasted 16 s (first refused "), "{lines:?}");
+    assert!(lines[0].ends_with("3 refusals), then accepted"), "{lines:?}");
+    assert_eq!(w.count("refused (Hijack Block Period)"), 1);
+}
+
+#[test]
+fn a_block_period_cut_short_by_another_refusal_is_settled() {
+    let mut w = world(Some(block_period()));
+    ask_again(&mut w);
+    w.set_answer(Some(answer(0, "Rejected, something else")));
+    ask_again(&mut w);
+    let lines = block_lines(&w);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    println!("{}", lines[0]);
+    assert!(lines[0].contains("lasted 8 s"), "{lines:?}");
+    assert!(lines[0].ends_with("2 refusals), then other refusal"), "{lines:?}");
+}
+
+#[test]
+fn two_block_periods_do_not_share_a_start() {
+    let mut w = world(Some(block_period()));
+    ask_again(&mut w);
+    w.set_answer(Some(hijacked()));
+    ask_again(&mut w);
+    w.set(|s| s.output_running = false);
+    w.reconcile();
+    w.set(|s| s.output_running = true);
+    w.advance(secs(INTERVAL + 1.0));
+    w.set_answer(Some(block_period()));
+    w.reconcile();
+    ask_again(&mut w);
+    w.set_answer(Some(hijacked()));
+    ask_again(&mut w);
+    let lines = block_lines(&w);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    println!("{}\n{}", lines[0], lines[1]);
+    assert!(lines[1].contains("lasted 8 s"), "{lines:?}");
+    assert!(lines[1].ends_with("2 refusals), then accepted"), "{lines:?}");
+    assert_ne!(lines[0], lines[1]);
+}
+
+#[test]
+fn a_block_period_left_by_the_mac_going_quiet_is_settled() {
+    let mut w = world(Some(block_period()));
+    ask_again(&mut w);
+    w.set(|s| s.output_running = false);
+    w.reconcile();
+    let lines = block_lines(&w);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(lines[0].ends_with("2 refusals), then the Mac stopped playing"), "{lines:?}");
+}
+
 #[test]
 fn headset_here_but_not_chosen_is_asked_again_next_playback() {
     let mut w = world_where(Some(hijacked()), here);

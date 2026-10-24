@@ -5,13 +5,14 @@
 //! how long the headset took to become the output.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use super::{Engine, RETRY_MS};
 use crate::model::presence::judge;
 use crate::model::{Action, AudioDevice, BluetoothHeadset, DeviceSnapshot};
 use crate::reclaim::{Outcome, RouteResponse};
 use crate::rules::reclaim;
+use crate::state::clock::local_seconds;
 
 /// A general playback session. Beats an idle phone (100), loses to media (301) or a call (501).
 pub const RECLAIM_SCORE: i32 = 201;
@@ -40,12 +41,20 @@ struct Return {
     arrived: Option<Duration>,
 }
 
+/// A Hijack Block Period being waited out: wall-clock first and last refusal, and how many.
+struct BlockSpell {
+    first: SystemTime,
+    last: SystemTime,
+    refusals: u32,
+}
+
 /// What reclaim remembers between passes (Swift's five engine fields plus `ReclaimWatch`).
 #[derive(Default)]
 pub struct ReclaimBook {
     next_attempt: HashMap<String, Duration>,
     held_logged: HashMap<String, String>,
     retry_window: HashMap<String, Duration>,
+    block_spell: HashMap<String, BlockSpell>,
     names: BTreeMap<String, String>,
     asked_this_playback: HashSet<String>,
     unavailable_logged: bool,
@@ -60,9 +69,13 @@ pub struct ReclaimBook {
     ownership_unreadable_logged: bool,
 }
 
+fn hijack_block(detail: &str) -> bool {
+    detail.to_lowercase().contains("hijack block")
+}
+
 fn short_lived(detail: &str) -> bool {
     let d = detail.to_lowercase();
-    d.contains("out of ear") || d.contains("screen locked") || d.contains("hijack block")
+    d.contains("out of ear") || d.contains("screen locked") || hijack_block(detail)
 }
 
 fn headset(name: &str, address: &str) -> BluetoothHeadset {
@@ -91,6 +104,9 @@ impl Engine {
         // Asked before the pairing list, which costs a subprocess.
         if !snap.output_running {
             self.reclaim.retry_window.clear();
+            for address in self.reclaim.block_spell.keys().cloned().collect::<Vec<_>>() {
+                self.end_block(&address, "the Mac stopped playing");
+            }
             self.reclaim.asked_this_playback.clear();
             self.reclaim.user_chose.clear();
             return vec![];
@@ -203,6 +219,7 @@ impl Engine {
             .map(|(a, _)| a.clone())
             .collect();
         for address in back {
+            self.end_block(&address, "the headset became the output");
             self.end_spell(&address);
             self.reclaim.asked_this_playback.remove(&address);
             self.reclaim.user_chose.remove(&address);
@@ -240,6 +257,7 @@ impl Engine {
         if outcome != Outcome::Routed {
             self.reclaim.returns.remove(address);
         }
+        self.track_block(address, &outcome);
         match outcome {
             Outcome::Routed => {
                 self.end_spell(address);
@@ -277,6 +295,42 @@ impl Engine {
                 self.note_held(&format!("reclaim: {name} refused ({detail})"), address);
             }
         }
+    }
+
+    /// One line per Hijack Block Period, written when something other than a block answers.
+    /// Busy is no answer. A period cut short elsewhere (playback stopped, headset back) ends via
+    /// `end_block`; a headset that just disconnects leaves it until the next answer.
+    fn track_block(&mut self, address: &str, outcome: &Outcome) {
+        let why = match outcome {
+            Outcome::Refused(d) if hijack_block(d) => {
+                let now = self.clock.wall();
+                let b = self.reclaim.block_spell.entry(address.into()).or_insert(BlockSpell { first: now, last: now, refusals: 0 });
+                b.last = now;
+                b.refusals += 1;
+                return;
+            }
+            Outcome::Busy => return,
+            Outcome::Routed => "accepted",
+            Outcome::AlreadyRouted => "already routed",
+            Outcome::HeldByRemote(_) => "held by remote",
+            Outcome::Refused(_) => "other refusal",
+        };
+        self.end_block(address, why);
+    }
+
+    fn end_block(&mut self, address: &str, why: &str) {
+        let Some(b) = self.reclaim.block_spell.remove(address) else { return };
+        let name = self.reclaim.names.get(address).map_or(address, String::as_str);
+        let (first, last) = (local_seconds(b.first), local_seconds(b.last));
+        let secs = b.last.duration_since(b.first).unwrap_or_default().as_secs();
+        let line = format!(
+            "reclaim: {name} Hijack Block Period lasted {secs} s (first refused {}, last refused {}, {} refusal{}), then {why}",
+            &first[11..],
+            &last[11..],
+            b.refusals,
+            if b.refusals == 1 { "" } else { "s" }
+        );
+        self.note(&line);
     }
 
     fn end_spell(&mut self, address: &str) {
