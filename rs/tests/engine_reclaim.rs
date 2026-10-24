@@ -301,6 +301,35 @@ fn hijack_block_period_retries_soon_but_other_final_refusals_still_back_off() {
 }
 
 #[test]
+fn hijack_block_period_timeline() {
+    let mut w = world(Some(answer(0, "Hijack Block Period")));
+    let mut times = vec![0u64];
+    println!("t=0s request #1");
+    let mut seen = 1;
+    for step in 1..=(((SPAN + BACKOFF * 3.0) / DELAY) as u64) {
+        w.advance(secs(DELAY));
+        w.reconcile();
+        let t = step * DELAY as u64;
+        if w.requests().len() > seen {
+            seen = w.requests().len();
+            times.push(t);
+            println!("t={t}s request #{seen}");
+        }
+    }
+    // Every 8 s from t=0 while the 180 s window is open; the last one is sent at the first
+    // tick after the window closes (the window is checked when the refusal comes back).
+    let last_in_window = times.iter().position(|&t| t as f64 >= SPAN).unwrap();
+    let expect: Vec<u64> = (0..=last_in_window as u64).map(|i| i * DELAY as u64).collect();
+    assert_eq!(&times[..=last_in_window], &expect[..]);
+    assert_eq!(times[last_in_window - 1] as f64, SPAN - 4.0);
+    // After the window closes, only the 60 s back-off spaces them.
+    for pair in times[last_in_window..].windows(2) {
+        assert!(pair[1] - pair[0] >= BACKOFF as u64, "{times:?}");
+    }
+    assert!(times.len() > last_in_window + 1, "back-off still retries: {times:?}");
+}
+
+#[test]
 fn headset_here_but_not_chosen_is_asked_again_next_playback() {
     let mut w = world_where(Some(hijacked()), here);
     w.advance(secs(INTERVAL + 1.0));
