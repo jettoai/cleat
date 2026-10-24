@@ -247,6 +247,7 @@ fn a_login_plist_from_the_first_version_is_replaced_on_the_next_start() {
     assert!(first_version.contains("/usr/bin/open"));
     std::fs::write(h.login_plist(), &first_version).unwrap();
     touch_config(&mut h);
-    assert!(plist_text(&h).contains("<string>login-start</string>") && !plist_text(&h).contains("/usr/bin/open"));
+    let text = plist_text(&h);
+    assert!(text.contains("<string>login-start</string>") && !text.contains("/usr/bin/open"));
     assert_eq!(h.count("launchAtLogin: login plist written"), 2);
 }

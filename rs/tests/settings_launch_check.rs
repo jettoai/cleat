@@ -2,7 +2,6 @@
 //! the agent is registered again, and what stays unregistered is said under the switch.
 
 use std::cell::Cell;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use cleat_rs::launch::{AgentService, AgentStatus};
@@ -30,7 +29,7 @@ impl AgentService for Fake {
 
 /// A window opened on `config` with an agent in `start`; returns the store and the register count.
 fn open(tag: &str, config: &str, start: AgentStatus, register_to: Result<AgentStatus, String>) -> (Store, Rc<Cell<usize>>) {
-    let d: PathBuf = std::env::temp_dir().join(format!("cleat-rs-launch-check-{}-{tag}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("cleat-rs-launch-check-{}-{tag}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
     std::fs::write(d.join("config.json"), config).unwrap();
     let registers = Rc::new(Cell::new(0));

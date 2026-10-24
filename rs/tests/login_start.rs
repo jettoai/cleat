@@ -2,7 +2,7 @@
 //! launchd in each situation. Nothing here may open the app or start the daemon itself.
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use cleat_rs::cli::start_at_login;
@@ -92,9 +92,8 @@ fn run(c: &Case) -> (Result<(), String>, Vec<&'static str>) {
     let calls = Calls::default();
     let agent = Agent { status: c.status, register: c.register.clone(), calls: calls.clone() };
     let job = Job { loaded: c.loaded, kickstart: c.kickstart, calls: calls.clone() };
-    let result = start_at_login(&c.identity, Path::new(&c.config), &agent, &job);
-    let seen = calls.borrow().clone();
-    (result, seen)
+    let result = start_at_login(&c.identity, &c.config, &agent, &job);
+    (result, calls.take())
 }
 
 #[test]
