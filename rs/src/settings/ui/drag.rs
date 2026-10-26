@@ -76,6 +76,10 @@ define_class!(
             let Some(row) = parent(self) else { return };
             row.setAlphaValue(1.0);
             let Some(container) = parent(&row) else { return };
+            // The page was rebuilt mid-drag and this grip is gone: its coordinates mean nothing, drop the release.
+            if container.window().is_none() {
+                return;
+            }
             let y = container.convertPoint_fromView(event.locationInWindow(), None).y;
             // The container also holds the hairlines between rows; only the rows are stacks.
             let frames: Vec<(f64, f64)> = container
