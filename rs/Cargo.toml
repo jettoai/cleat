@@ -28,7 +28,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "NSOpenPanel", "NSSavePanel", "NSPanel", "NSColor", "NSColorList", "NSColorSpace", "NSFont", "NSFontDescriptor", "NSBox",
   "NSLayoutConstraint", "NSLayoutAnchor", "NSUserInterfaceLayout", "NSGraphics", "NSGraphicsContext",
   "NSBezierPath", "NSEvent", "NSAppearance", "NSToolbar", "NSAttributedString", "NSStringDrawing",
-  "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSAccessibilityProtocols",
+  "NSTrackingArea", "NSCursor", "NSUserInterfaceItemIdentification", "NSAccessibilityProtocols",
   "NSBitmapImageRep", "NSImageRep", "NSShadow", "NSWindowController", "NSAccessibilityConstants",
   "NSScreen", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSWorkspace", "NSTextAttachment", "NSParagraphStyle",
 ] }

@@ -120,7 +120,7 @@ pub fn priority(a: &App, ctx: &mut Ctx, side: Side) -> Retained<NSView> {
     }
     let count = listed.len();
     for (i, r) in listed.iter().enumerate() {
-        let handle = icon(mtm, "line.3.horizontal", 14.0, &NSColor::tertiaryLabelColor());
+        let handle = super::drag::DragHandle::view(mtm, i, &NSColor::tertiaryLabelColor(), move |to| app().edit(move |s| s.draft.list_mut(side).move_listed(i, to)));
         let number = secondary(mtm, &format!("{}", i + 1), 13.0);
         number.setFont(Some(&objc2_app_kit::NSFont::monospacedDigitSystemFontOfSize_weight(13.0, super::widgets::regular())));
         number.setAlignment(objc2_app_kit::NSTextAlignment::Right);

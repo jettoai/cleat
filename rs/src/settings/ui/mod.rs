@@ -2,6 +2,7 @@
 //! pane after each edit, and saves 400 ms after the last one.
 
 mod devices;
+mod drag;
 mod levels;
 mod pages;
 mod photos;
