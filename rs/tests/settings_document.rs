@@ -280,6 +280,23 @@ fn the_quality_edit_is_written_and_choosing_the_loaded_value_restores_the_file()
     assert_eq!(kept["heic"], serde_json::json!({"quality": 65, "longEdge": 1600}), "{kept}");
 }
 
+#[test]
+fn changing_only_the_quality_leaves_every_other_key_as_the_file_had_it() {
+    let raw = r#"{"convertHeic":true,"launchAtLogin":false,"errorReports":true,"futureKey":{"a":[1,2]},"input":["Mic A"],"output":["Speakers B","Dock C"],"heic":{"watch":"~/Pictures/in","originals":"/Volumes/x/orig","longEdge":2400,"heicFuture":7},"reclaim":[]}"#;
+    let original: serde_json::Value = serde_json::from_str(raw).unwrap();
+    let out: serde_json::Value = serde_json::from_str(&saved_bytes(raw, |d| d.heic_quality = 80)).unwrap();
+
+    let mut expected = original.clone();
+    expected["heic"]["quality"] = serde_json::json!(80);
+    assert_eq!(out, expected, "{out}");
+
+    let keys = |v: &serde_json::Value| v.as_object().unwrap().keys().cloned().collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(keys(&out), keys(&original), "top-level keys: {out}");
+    let mut heic_keys = keys(&original["heic"]);
+    heic_keys.insert("quality".into());
+    assert_eq!(keys(&out["heic"]), heic_keys, "heic keys: {out}");
+}
+
 /// Without an origin (the pure `merged`), a cell is written only when the file does not say it.
 #[test]
 fn without_an_origin_a_cell_is_written_when_the_file_differs() {
