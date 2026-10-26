@@ -6,7 +6,7 @@ use std::cell::Cell;
 
 use objc2::rc::Retained;
 use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{NSCursor, NSEvent, NSImageView, NSStackView, NSView};
+use objc2_app_kit::{NSColor, NSCursor, NSEvent, NSImageView, NSStackView, NSView};
 use objc2_foundation::NSRect;
 
 use super::widgets::{size, symbol_image, to_view};
@@ -59,8 +59,7 @@ define_class!(
 
         #[unsafe(method(mouseDragged:))]
         fn mouse_dragged(&self, _event: &NSEvent) {
-            let i = self.ivars();
-            if !i.dragging.replace(true) {
+            if !self.ivars().dragging.replace(true) {
                 if let Some(row) = parent(self) {
                     row.setAlphaValue(0.5);
                 }
@@ -83,7 +82,10 @@ define_class!(
                 .subviews()
                 .iter()
                 .filter(|v| v.downcast_ref::<NSStackView>().is_some())
-                .map(|v| (v.frame().origin.y, v.frame().origin.y + v.frame().size.height))
+                .map(|v| {
+                    let f = v.frame();
+                    (f.origin.y, f.origin.y + f.size.height)
+                })
                 .collect();
             if let Some(to) = drop_target(&frames, i.from, y, container.isFlipped()) {
                 (i.on_drop)(to);
@@ -109,7 +111,7 @@ define_class!(
 
 impl DragHandle {
     /// `from` is the row's index among the card's rows; `on_drop` gets the `to` for `move_listed`.
-    pub fn view(mtm: MainThreadMarker, from: usize, color: &objc2_app_kit::NSColor, on_drop: impl Fn(usize) + 'static) -> Retained<NSView> {
+    pub fn view(mtm: MainThreadMarker, from: usize, color: &NSColor, on_drop: impl Fn(usize) + 'static) -> Retained<NSView> {
         let this = Self::alloc(mtm).set_ivars(HandleIvars { from, on_drop: Box::new(on_drop), dragging: Cell::new(false) });
         // SAFETY: NSImageView's designated initialiser.
         let view: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: NSRect::ZERO] };
