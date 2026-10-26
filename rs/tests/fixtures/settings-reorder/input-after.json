@@ -1,0 +1,7 @@
+{
+  "input": ["PD400X Podcast Microphone","Brio 100","Wireless microphone"],
+  "blockedInput": [],
+  "output": ["外接耳機","Mac Studio的揚聲器","Studio Display Speakers"],
+  "headphonesTakeOver": true,
+  "balance": 0.5
+}
