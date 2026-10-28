@@ -2,7 +2,7 @@
 <p align="center"><sub>by <a href="https://jetto.ai">Jetto</a></sub></p>
 
 <p align="center">Mac의 오디오 장치를 당신이 정한 자리에 붙잡아 둡니다.<br>맞는 스피커로 소리를 내고, 맞는 마이크를 맞는 음량으로 유지하고, AirPods를 휴대폰에서 되찾아 옵니다.<br>
-<b>Rust로 작성되어 자원을 거의 쓰지 않습니다.</b> 폴링하지 않고 Core Audio 이벤트에 반응하며, 작성자의 Mac에서 메모리 약 29 MB, 바이너리 3.9 MB입니다.</p>
+<b>Rust로 작성되어 자원을 거의 쓰지 않습니다.</b> 폴링하지 않고 Core Audio 이벤트에 반응하며, 작성자의 Mac에서 메모리 약 27 MB, 바이너리 4.0 MB입니다.</p>
 
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <b>한국어</b></p>
 
@@ -80,12 +80,40 @@ Cleat는 하루 종일 백그라운드에서 돌아가므로 Mac 자원을 최�
 
 | 작성자의 Mac에서 측정 | |
 |---|---|
-| 메모리 | 29 MB(활성 상태 보기의 메모리 열 값) |
-| CPU | 유휴 시 0.0%, 이틀 가동 평균 코어 하나의 약 0.06% |
-| 바이너리 | 3.9 MB(`Cleat.app/Contents/MacOS/Cleat`) |
-| 반응 시간 | 변경부터 되돌림까지 중앙값 36 ms(`cleat status`, 최근 20회) |
+| 메모리 | 27 MB(활성 상태 보기의 메모리 열 값) |
+| CPU | 유휴 시 0.0%, 39시간 가동 평균 코어 하나의 약 0.05%(10분 구간에서는 0.08%) |
+| 바이너리 | 4.0 MB(`Cleat.app/Contents/MacOS/Cleat`) |
+| 반응 시간 | 변경부터 되돌림까지 중앙값 119 ms(`cleat status`, 최근 20회) |
 
-<sub>Cleat 0.4.3, Apple M4 Max, macOS 27.0.1, 2026-10-22, 작성자 본인의 설정. 수치는 설정과 설정 창이 열려 있는지에 따라 달라집니다.</sub>
+<sub>Cleat 0.5.4, Apple M4 Max, macOS 27.0.1, 2026-10-28, 작성자 본인의 설정. 수치는 설정과 설정 창이 열려 있는지에 따라 달라집니다.</sub>
+
+**폴링과의 비교.** 같은 Mac에서 같은 되돌림을 셸 루프로 한 경우입니다. 루프는 `SwitchAudioSource`로 기본 출력과 입력 장치를 N초마다 읽고, 바뀌었으면 되돌립니다. Cleat의 규칙 8개 중 2개에 해당합니다.
+
+| 같은 Mac, 같은 작업 | Cleat | 5초마다 폴링 | 1초마다 폴링 |
+|---|---|---|---|
+| CPU(코어 하나 대비) | 0.05% | 1.06% | 4.24% |
+| 하루 CPU 시간 | 43초 | 15분 | 61분 |
+| 변화를 알아차리기까지 | 중앙값 119 ms | 최대 5초 | 최대 1초 |
+| 메모리 | 27 MB | 1.7 MB | 1.7 MB |
+
+메모리는 폴링 쪽이 더 가볍습니다. Cleat는 설정 창을 가진 상주 앱이고 루프는 셸이기 때문입니다. 대신 CPU는 21배에서 85배가 들고, 배터리를 깎는 것은 CPU 시간입니다. 전력(와트) 측정에는 root가 필요한 `powermetrics`를 써야 하므로 여기서는 CPU 시간으로 전력을 대신합니다.
+
+<details><summary>측정 방법</summary>
+
+- **Cleat:** 실행 중인 데몬의 누적 CPU 시간(`ps -o time= -p <pid>`)을 가동 시간(38시간 45분 동안 69.6초)으로 나눈 값, 그리고 10분 구간의 증가분(0.49초). 메모리는 `footprint -p <pid>`의 `Footprint` 줄입니다.
+- **폴링:** 아래 루프를 `/usr/bin/time -l` 아래에서 300초 동안 돌렸습니다. `SwitchAudioSource` 자식 프로세스의 시간도 사용자 시간과 시스템 시간에 더해집니다(5초: CPU 3.18초, 1초: 12.77초). 메모리는 `peak memory footprint`이며, 가장 큰 프로세스는 폴링이 도는 동안 상주 13 MB에 이르렀습니다. 현재 장치에서 시작하므로 아무것도 쓰지 않았습니다.
+- 폴링의 "변화를 알아차리기까지"는 구조상 간격 그 자체입니다.
+
+```sh
+want_out=$(SwitchAudioSource -c -t output); want_in=$(SwitchAudioSource -c -t input)
+while true; do
+  [ "$(SwitchAudioSource -c -t output)" = "$want_out" ] || SwitchAudioSource -s "$want_out" -t output
+  [ "$(SwitchAudioSource -c -t input)" = "$want_in" ] || SwitchAudioSource -s "$want_in" -t input
+  sleep 5   # 1 for the one-second row
+done
+```
+
+</details>
 
 ## 설치
 

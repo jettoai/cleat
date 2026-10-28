@@ -2,7 +2,7 @@
 <p align="center"><sub>by <a href="https://jetto.ai">Jetto</a></sub></p>
 
 <p align="center">Mac のオーディオデバイスを、あなたが決めた場所に留めておきます。<br>正しいスピーカーから音を出し、正しいマイクを正しい音量に保ち、AirPods をスマートフォンから取り戻します。<br>
-<b>Rust で書かれ、ほとんどリソースを使いません。</b>ポーリングではなく Core Audio のイベントに反応し、作者の Mac ではメモリ約 29 MB、バイナリは 3.9 MB です。</p>
+<b>Rust で書かれ、ほとんどリソースを使いません。</b>ポーリングではなく Core Audio のイベントに反応し、作者の Mac ではメモリ約 27 MB、バイナリは 4.0 MB です。</p>
 
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.zh-CN.md">简体中文</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a></p>
 
@@ -80,12 +80,40 @@ Cleat は一日中バックグラウンドで動くので、Mac への負荷を�
 
 | 作者の Mac での実測 | |
 |---|---|
-| メモリ | 29 MB（アクティビティモニタの「メモリ」列の値） |
-| CPU | アイドル時 0.0%、2 日間の稼働平均で 1 コアの約 0.06% |
-| バイナリ | 3.9 MB（`Cleat.app/Contents/MacOS/Cleat`） |
-| 反応時間 | 変更から書き戻しまでの中央値 36 ms（`cleat status`、直近 20 回） |
+| メモリ | 27 MB（アクティビティモニタの「メモリ」列の値） |
+| CPU | アイドル時 0.0%、39 時間の稼働平均で 1 コアの約 0.05%（10 分間の窓では 0.08%） |
+| バイナリ | 4.0 MB（`Cleat.app/Contents/MacOS/Cleat`） |
+| 反応時間 | 変更から書き戻しまでの中央値 119 ms（`cleat status`、直近 20 回） |
 
-<sub>Cleat 0.4.3、Apple M4 Max、macOS 27.0.1、2026-10-22、作者自身の設定で測定。数値は設定や設定ウインドウを開いているかどうかで変わります。</sub>
+<sub>Cleat 0.5.4、Apple M4 Max、macOS 27.0.1、2026-10-28、作者自身の設定で測定。数値は設定や設定ウインドウを開いているかどうかで変わります。</sub>
+
+**ポーリングとの比較。**同じ Mac で、同じ書き戻しをシェルのループで行った場合です。ループは `SwitchAudioSource` で既定の出力と入力を N 秒ごとに読み、動いていれば元に戻します。Cleat の 8 つのルールのうち 2 つに相当します。
+
+| 同じ Mac、同じ仕事 | Cleat | 5 秒ごとにポーリング | 1 秒ごとにポーリング |
+|---|---|---|---|
+| CPU（1 コアに対する割合） | 0.05% | 1.06% | 4.24% |
+| 1 日あたりの CPU 時間 | 43 秒 | 15 分 | 61 分 |
+| 変化に気づくまで | 中央値 119 ms | 最大 5 秒 | 最大 1 秒 |
+| メモリ | 27 MB | 1.7 MB | 1.7 MB |
+
+メモリはポーリングのほうが軽くなります。Cleat は設定ウインドウを持つ常駐アプリで、ループはシェルだからです。その代わり CPU は 21 倍から 85 倍かかり、バッテリーを減らすのは CPU 時間です。消費電力（ワット）の測定には root が必要な `powermetrics` を使うため、ここでは CPU 時間を電力の代わりにしています。
+
+<details><summary>測定方法</summary>
+
+- **Cleat：**実行中のデーモンの累積 CPU 時間（`ps -o time= -p <pid>`）を稼働時間（38 時間 45 分で 69.6 秒）で割った値と、10 分間の窓での増分（0.49 秒）。メモリは `footprint -p <pid>` の `Footprint` 行です。
+- **ポーリング：**下のループを `/usr/bin/time -l` の下で 300 秒動かしました。`SwitchAudioSource` の子プロセスの時間もユーザー時間とシステム時間に加算されます（5 秒：CPU 3.18 秒、1 秒：12.77 秒）。メモリは `peak memory footprint` で、最大のプロセスはポーリング実行中に常駐 13 MB に達しました。現在のデバイスから始めるため、何も書き込んでいません。
+- ポーリングの「変化に気づくまで」は、仕組み上、間隔そのものです。
+
+```sh
+want_out=$(SwitchAudioSource -c -t output); want_in=$(SwitchAudioSource -c -t input)
+while true; do
+  [ "$(SwitchAudioSource -c -t output)" = "$want_out" ] || SwitchAudioSource -s "$want_out" -t output
+  [ "$(SwitchAudioSource -c -t input)" = "$want_in" ] || SwitchAudioSource -s "$want_in" -t input
+  sleep 5   # 1 for the one-second row
+done
+```
+
+</details>
 
 ## インストール
 

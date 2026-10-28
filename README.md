@@ -7,7 +7,7 @@
 
 <p align="center"><b>macOS keeps moving your audio devices. Cleat moves them back.</b><br>
 AirPods back from the phone, your microphone at your level, your volume where you left it.<br>
-<b>Written in Rust, built to cost almost nothing:</b> it reacts to Core Audio events instead of polling, and on the author's Mac it holds about 29 MB of memory and a 3.9 MB binary.</p>
+<b>Written in Rust, built to cost almost nothing:</b> it reacts to Core Audio events instead of polling, and on the author's Mac it holds about 27 MB of memory and a 4.0 MB binary.</p>
 
 <p align="center">
   <a href="https://github.com/jettoai/cleat/releases/latest"><img src="https://img.shields.io/github/v/release/jettoai/cleat?style=flat-square&label=release" alt="Latest release"></a>
@@ -77,12 +77,40 @@ Cleat runs all day in the background, so it is built to use as little of your Ma
 
 | Measured on the author's Mac | |
 |---|---|
-| Memory | 29 MB (the figure Activity Monitor shows as Memory) |
-| CPU | 0.0% when idle; about 0.06% of one core averaged over two days of uptime |
-| Binary | 3.9 MB (`Cleat.app/Contents/MacOS/Cleat`) |
-| Reaction | median 36 ms from a change to the put-back (`cleat status`, last 20) |
+| Memory | 27 MB (the figure Activity Monitor shows as Memory) |
+| CPU | 0.0% when idle; about 0.05% of one core averaged over 39 hours of uptime (0.08% over a 10-minute window) |
+| Binary | 4.0 MB (`Cleat.app/Contents/MacOS/Cleat`) |
+| Reaction | median 119 ms from a change to the put-back (`cleat status`, last 20) |
 
-<sub>Cleat 0.4.3 on an Apple M4 Max, macOS 27.0.1, 2026-10-22, with the author's own config. Your numbers move with your config and whether the settings window is open.</sub>
+<sub>Cleat 0.5.4 on an Apple M4 Max, macOS 27.0.1, 2026-10-28, with the author's own config. Your numbers move with your config and whether the settings window is open.</sub>
+
+**Against polling.** The same put-back done by a shell loop, on the same Mac. The loop reads the default output and input device every N seconds with `SwitchAudioSource` and sets them back if they moved. It covers two of Cleat's eight rules.
+
+| Same Mac, same job | Cleat | Poll every 5 s | Poll every 1 s |
+|---|---|---|---|
+| CPU, share of one core | 0.05% | 1.06% | 4.24% |
+| CPU time per day | 43 s | 15 min | 61 min |
+| Time to notice a change | median 119 ms | up to 5 s | up to 1 s |
+| Memory | 27 MB | 1.7 MB | 1.7 MB |
+
+Polling is lighter in memory, because Cleat is a resident app with a settings window and the loop is a shell. It costs 21 to 85 times the CPU, and CPU time is what drains a battery. Power in watts needs root (`powermetrics`), so CPU time stands in for energy here.
+
+<details><summary>How these were measured</summary>
+
+- **Cleat:** cumulative CPU time of the running daemon from `ps -o time= -p <pid>`, divided by its uptime (69.6 s over 38 h 45 min), and the same difference over a 10-minute window (0.49 s). Memory is the `Footprint` line of `footprint -p <pid>`.
+- **Polling:** the loop below ran for 300 s under `/usr/bin/time -l`, which adds the `SwitchAudioSource` child processes to the user and system time (5 s: 3.18 s of CPU; 1 s: 12.77 s). Memory is its `peak memory footprint`; the largest process reached 13 MB resident while a poll was running. It started on the current devices, so it never wrote anything.
+- The time to notice for polling is the interval itself, by construction.
+
+```sh
+want_out=$(SwitchAudioSource -c -t output); want_in=$(SwitchAudioSource -c -t input)
+while true; do
+  [ "$(SwitchAudioSource -c -t output)" = "$want_out" ] || SwitchAudioSource -s "$want_out" -t output
+  [ "$(SwitchAudioSource -c -t input)" = "$want_in" ] || SwitchAudioSource -s "$want_in" -t input
+  sleep 5   # 1 for the one-second row
+done
+```
+
+</details>
 
 <sub>A cleat is the fitting a rope gets tied to so the boat stops drifting.</sub>
 

@@ -2,7 +2,7 @@
 <p align="center"><sub>by <a href="https://jetto.ai">Jetto</a></sub></p>
 
 <p align="center">讓 Mac 的音訊裝置待在你放好的位置：<br>聲音從對的喇叭出來、對的麥克風停在對的音量，AirPods 從手機那邊要回來。<br>
-<b>用 Rust 寫成，幾乎不花你的資源：</b>靠 Core Audio 事件反應、不輪詢；在作者的 Mac 上約佔 29 MB 記憶體，執行檔 3.9 MB。</p>
+<b>用 Rust 寫成，幾乎不花你的資源：</b>靠 Core Audio 事件反應、不輪詢；在作者的 Mac 上約佔 27 MB 記憶體，執行檔 4.0 MB。</p>
 
 <p align="center"><a href="README.md">English</a> · <b>繁體中文</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a></p>
 
@@ -80,12 +80,40 @@ Cleat 整天在背景執行，所以刻意把對 Mac 的占用壓到最低。常
 
 | 在作者的 Mac 上實測 | |
 |---|---|
-| 記憶體 | 29 MB（活動監視器「記憶體」欄顯示的數字） |
-| CPU | 閒置時 0.0%；連跑兩天平均約佔一顆核心的 0.06% |
-| 執行檔 | 3.9 MB（`Cleat.app/Contents/MacOS/Cleat`） |
-| 反應時間 | 從變動到改回的中位數 36 ms（`cleat status`，最近 20 次） |
+| 記憶體 | 27 MB（活動監視器「記憶體」欄顯示的數字） |
+| CPU | 閒置時 0.0%；連跑 39 小時平均約佔一顆核心的 0.05%（10 分鐘窗口內為 0.08%） |
+| 執行檔 | 4.0 MB（`Cleat.app/Contents/MacOS/Cleat`） |
+| 反應時間 | 從變動到改回的中位數 119 ms（`cleat status`，最近 20 次） |
 
-<sub>Cleat 0.4.3，Apple M4 Max，macOS 27.0.1，2026-10-22，使用作者自己的設定。實際數字會隨你的設定與設定視窗是否開著而變動。</sub>
+<sub>Cleat 0.5.4，Apple M4 Max，macOS 27.0.1，2026-10-28，使用作者自己的設定。實際數字會隨你的設定與設定視窗是否開著而變動。</sub>
+
+**和輪詢比較。**同一台 Mac，用 shell 迴圈做同樣的改回。迴圈每 N 秒用 `SwitchAudioSource` 讀取預設輸出和輸入裝置，變了就改回去。它只對應 Cleat 八條規則中的兩條。
+
+| 同一台 Mac，同一件事 | Cleat | 每 5 秒輪詢 | 每 1 秒輪詢 |
+|---|---|---|---|
+| CPU（佔一顆核心的比例） | 0.05% | 1.06% | 4.24% |
+| 每天的 CPU 時間 | 43 秒 | 15 分鐘 | 61 分鐘 |
+| 發現變化要多久 | 中位數 119 ms | 最長 5 秒 | 最長 1 秒 |
+| 記憶體 | 27 MB | 1.7 MB | 1.7 MB |
+
+輪詢在記憶體上比較輕，因為 Cleat 是帶設定視窗的常駐 App，而迴圈只是一段 shell。代價是 CPU 多花 21 到 85 倍，而耗電池的是 CPU 時間。功耗（瓦）需要 root 權限的 `powermetrics`，所以這裡用 CPU 時間代替耗電。
+
+<details><summary>量測方法</summary>
+
+- **Cleat：**執行中常駐程式的累計 CPU 時間（`ps -o time= -p <pid>`）除以運行時間（38 小時 45 分鐘內 69.6 秒），以及 10 分鐘窗口內的增量（0.49 秒）。記憶體取 `footprint -p <pid>` 的 `Footprint` 一行。
+- **輪詢：**下面的迴圈在 `/usr/bin/time -l` 下跑 300 秒，`SwitchAudioSource` 子行程的時間也會算進使用者時間和系統時間（5 秒：CPU 3.18 秒；1 秒：12.77 秒）。記憶體取 `peak memory footprint`，最大的行程在輪詢執行時常駐記憶體達 13 MB。迴圈從目前的裝置開始，所以沒有寫入任何東西。
+- 輪詢的「發現變化要多久」依機制就是間隔本身。
+
+```sh
+want_out=$(SwitchAudioSource -c -t output); want_in=$(SwitchAudioSource -c -t input)
+while true; do
+  [ "$(SwitchAudioSource -c -t output)" = "$want_out" ] || SwitchAudioSource -s "$want_out" -t output
+  [ "$(SwitchAudioSource -c -t input)" = "$want_in" ] || SwitchAudioSource -s "$want_in" -t input
+  sleep 5   # 1 for the one-second row
+done
+```
+
+</details>
 
 ## 安裝
 
