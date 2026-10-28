@@ -80,7 +80,7 @@ Cleat runs all day in the background, so it is built to use as little of your Ma
 | Memory | 27 MB (the figure Activity Monitor shows as Memory) |
 | CPU | 0.0% when idle; about 0.05% of one core averaged over 39 hours of uptime (0.08% over a 10-minute window) |
 | Binary | 4.0 MB (`Cleat.app/Contents/MacOS/Cleat`) |
-| Reaction | median 119 ms from a change to the put-back (`cleat status`, last 20) |
+| Reaction | median 68 ms from a change to the put-back (16 ms with a bare config) |
 
 <sub>Cleat 0.5.4 on an Apple M4 Max, macOS 27.0.1, 2026-10-28, with the author's own config. Your numbers move with your config and whether the settings window is open.</sub>
 
@@ -90,7 +90,7 @@ Cleat runs all day in the background, so it is built to use as little of your Ma
 |---|---|---|---|
 | CPU, share of one core | 0.05% | 1.06% | 4.24% |
 | CPU time per day | 43 s | 15 min | 61 min |
-| Time to notice a change | median 119 ms | up to 5 s | up to 1 s |
+| Time to notice a change | median 68 ms | up to 5 s | up to 1 s |
 | Memory | 27 MB | 1.7 MB | 1.7 MB |
 
 Polling is lighter in memory, because Cleat is a resident app with a settings window and the loop is a shell. It costs 21 to 85 times the CPU, and CPU time is what drains a battery. Power in watts needs root (`powermetrics`), so CPU time stands in for energy here.
@@ -100,6 +100,7 @@ Polling is lighter in memory, because Cleat is a resident app with a settings wi
 - **Cleat:** cumulative CPU time of the running daemon from `ps -o time= -p <pid>`, divided by its uptime (69.6 s over 38 h 45 min), and the same difference over a 10-minute window (0.49 s). Memory is the `Footprint` line of `footprint -p <pid>`.
 - **Polling:** the loop below ran for 300 s under `/usr/bin/time -l`, which adds the `SwitchAudioSource` child processes to the user and system time (5 s: 3.18 s of CPU; 1 s: 12.77 s). Memory is its `peak memory footprint`; the largest process reached 13 MB resident while a poll was running. It started on the current devices, so it never wrote anything.
 - The time to notice for polling is the interval itself, by construction.
+- **Reaction:** 50 input volume changes (`osascript -e 'set volume input volume 40'` with `"inputVolume": {"*": 100}`), reading `performance.lastReactionMs` from `status.json` after each. Median 68 ms on the installed daemon with the author's config; 16 ms for a build run alone with only that one rule, the same for 0.4.3 and 0.5.4. The number `cleat status` prints is the median of the last 20 events of any kind, so it moves with them (36 ms and 119 ms were both printed on this Mac).
 
 ```sh
 want_out=$(SwitchAudioSource -c -t output); want_in=$(SwitchAudioSource -c -t input)
