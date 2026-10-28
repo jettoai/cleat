@@ -4,8 +4,8 @@
      would show the author's own hardware. Strings are the app's own (rs/src/settings/words.rs,
      rs/src/app/menubar.rs:171-193). Window layout and colours follow assets/screenshot-output*.png.
      Numbers: CPU 0.01 % is the daemon's figure in that screenshot (`cleat status` does not print it);
-     29 MB is the physical footprint measured with `footprint` on the installed 0.4.3, 2026-10-22;
-     "36 ms, median of the last 20" is `cleat status` reaction line, 2026-10-22 01:33.
+     27 MB is the physical footprint measured with `footprint` on the installed 0.5.4, 2026-10-28;
+     68 ms is the median of 50 timed input volume changes on that daemon (B-3171, README numbers table).
      Rendered by render.mjs at 840x480, deviceScaleFactor 2. -->
 <link rel="stylesheet" href="tokens.css">
 <style>
@@ -84,7 +84,7 @@ h1 { position: absolute; top: 31px; font-size: 25px; font-weight: 700; letter-sp
 <div class="wrap"><div class="win">
   <div class="side">
     <div class="dots"><b style="background:#f3564a"></b><b style="background:#fbba00"></b><b style="background:#2ec840"></b></div>
-    <div class="brand"><img class="dark-inv" src="../../../rs/bundle/MenuBarIcon@2x.png" alt=""><span>Cleat</span><small>0.4.3</small></div>
+    <div class="brand"><img class="dark-inv" src="../../../rs/bundle/MenuBarIcon@2x.png" alt=""><span>Cleat</span><small>0.5.4</small></div>
     <div class="nav">
       <div class="on"><svg class="i"><use href="#volume"/></svg>Output</div>
       <div><svg class="i"><use href="#mic"/></svg>Input</div>
@@ -99,8 +99,8 @@ h1 { position: absolute; top: 31px; font-size: 25px; font-weight: 700; letter-sp
       <div class="run"><i></i>Cleat is running</div>
       <div class="cols">
         <div><b>0.01%</b><div class="l">CPU</div><div class="n">61-second average</div></div>
-        <div><b>29 MB</b><div class="l">Memory</div><div class="n">Physical memory</div></div>
-        <div><b>36 ms</b><div class="l">Reclaim speed</div><div class="n">Median of the last 20</div></div>
+        <div><b>27 MB</b><div class="l">Memory</div><div class="n">Physical memory</div></div>
+        <div><b>68 ms</b><div class="l">Reclaim speed</div><div class="n">Median of the last 20</div></div>
       </div>
     </div>
     <div class="sec" style="top:248px"><svg class="i"><use href="#volume"/></svg>Output priority</div>
