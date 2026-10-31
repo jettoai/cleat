@@ -190,6 +190,28 @@ fn an_unreadable_folder_is_reported_once_and_the_watch_recovers() {
 }
 
 #[test]
+fn a_folder_that_was_unreadable_then_gone_and_is_back_reports_readable() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Scratch::new();
+    let (_handle, rx) = watch(&dir, FAST);
+    std::thread::sleep(Duration::from_millis(300)); // the watch has opened the readable folder, so it sees the changes below
+    std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let first = expect(&rx);
+    assert!(matches!(first, Report::NoAccess { .. }), "{first:?}");
+
+    // Deleted while unreadable: the reason changes to "not found", said once.
+    std::fs::remove_dir(&dir.0).unwrap();
+    let gone = next(&rx, Duration::from_secs(5));
+    assert!(matches!(gone, Some(Report::Failed { .. })), "{gone:?}");
+
+    // Back and readable: the earlier NoAccess must be cleared even though the last error was not PermissionDenied.
+    std::fs::create_dir(&dir.0).unwrap();
+    let back = next(&rx, Duration::from_secs(5));
+    assert!(matches!(&back, Some(Report::Readable { .. })), "{back:?}");
+    assert_eq!(next(&rx, Duration::from_millis(2600)), None, "Readable is said once");
+}
+
+#[test]
 fn a_folder_that_appears_later_is_picked_up_with_what_it_holds() {
     let dir = Scratch::new();
     let inbox = dir.path("inbox");

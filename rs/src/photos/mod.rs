@@ -107,6 +107,7 @@ pub fn start(config: &HeicConfig, home: &Path, events: Sender<Event>, timing: Ti
         handled: HashMap::new(),
         noted: HashSet::new(),
         folder_error: None,
+        no_access_reported: false,
         woken: false,
     };
     let _ = wake.send(()); // look once at the start: it is how a folder that cannot be read gets reported
@@ -152,6 +153,8 @@ struct Worker {
     noted: HashSet<String>,
     /// Why the folder could not be read at the last look; the same reason is reported once.
     folder_error: Option<ErrorKind>,
+    /// `NoAccess` was reported and `Readable` has not followed yet, whatever else went wrong in between.
+    no_access_reported: bool,
     /// A folder change arrived while the worker was busy.
     woken: bool,
 }
@@ -203,6 +206,7 @@ impl Worker {
                 if self.folder_error != Some(e.kind()) {
                     self.folder_error = Some(e.kind());
                     let path = paths::tilde(&self.watch);
+                    self.no_access_reported |= e.kind() == ErrorKind::PermissionDenied;
                     self.report(match e.kind() {
                         ErrorKind::PermissionDenied => Report::NoAccess { path },
                         _ => Report::Failed { name: path, reason: e.to_string() },
@@ -211,7 +215,8 @@ impl Worker {
                 return true;
             }
         };
-        if self.folder_error.take() == Some(ErrorKind::PermissionDenied) {
+        self.folder_error = None;
+        if std::mem::take(&mut self.no_access_reported) {
             self.report(Report::Readable { path: paths::tilde(&self.watch) });
         }
         let mut existing = HashSet::new();
