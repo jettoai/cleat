@@ -51,7 +51,7 @@ fn folder_row(
     title: W,
     value: &str,
     base: Option<&str>,
-    pick: fn(&mut SettingsDraft, &std::path::Path, &std::path::Path),
+    pick: fn(&mut SettingsDraft, &Path, &Path),
 ) -> Retained<NSView> {
     let mtm = ctx.mtm;
     let l = lang::current();
@@ -131,16 +131,17 @@ pub fn views(a: &App, ctx: &mut Ctx) -> Vec<Retained<NSView>> {
 mod tests {
     use super::*;
 
-    /// A scratch home holding `Downloads/` (and nothing under it).
-    fn home() -> PathBuf {
-        let home = std::env::temp_dir().join(format!("cleat-start-folder-{}", std::process::id()));
+    /// A scratch home holding `Downloads/` (and nothing under it), one per test so parallel tests do not share it.
+    fn home(name: &str) -> PathBuf {
+        let home = std::env::temp_dir().join(format!("cleat-start-folder-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(home.join("Downloads")).unwrap();
         home
     }
 
     #[test]
     fn the_panel_starts_at_the_folder_or_the_nearest_one_above_it() {
-        let home = home();
+        let home = home("nearest");
         let watch = Some("~/Downloads");
         // Relative value sits inside the watch folder, which exists but the originals folder does not yet.
         assert_eq!(start_folder("HEIC原檔", watch, &home), home.join("Downloads"));
@@ -149,7 +150,7 @@ mod tests {
         // Absolute and `~` values ignore the base.
         assert_eq!(start_folder(&home.join("Downloads").display().to_string(), watch, &home), home.join("Downloads"));
         assert_eq!(start_folder("~/Downloads/HEIC原檔", Some("/nonexistent"), &home), home.join("Downloads/HEIC原檔"));
-        // Nothing exists above a missing absolute value but the root: back to home only when no ancestor is a folder.
+        // A missing folder starts at the nearest existing one above it.
         assert_eq!(start_folder("~/Downloads/a/b/c", None, &home), home.join("Downloads"));
         // The watch row has no base.
         assert_eq!(start_folder("~/Downloads", None, &home), home.join("Downloads"));
@@ -158,7 +159,7 @@ mod tests {
 
     #[test]
     fn a_relative_value_with_nothing_existing_falls_back_to_home() {
-        let home = home();
+        let home = home("fallback");
         assert_eq!(start_folder("HEIC原檔", Some("nope/nowhere"), &home), home);
         assert_eq!(start_folder("sub", None, &home), home);
         let _ = std::fs::remove_dir_all(&home);
